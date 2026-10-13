@@ -1,0 +1,353 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name" translatable="false">MediaDuet</string>
+    <string name="listener_label">MediaDuet media sessions</string>
+
+    <!-- Tabs -->
+
+    <!-- Notification channels -->
+    <string name="channel_link">Connection status</string>
+    <string name="channel_link_desc">Ongoing status while MediaDuet stays reachable for your PC.</string>
+    <string name="channel_mirror">PC media controls</string>
+    <string name="channel_mirror_desc">Shows what the PC is playing in the system media controls (optional).</string>
+    <string name="channel_pairing">Pairing requests</string>
+    <string name="channel_pairing_desc">Asks you to confirm the code when a PC wants to pair.</string>
+    <string name="pairing_notification_title">Pair with %1$s?</string>
+    <string name="pairing_notification_text">Compare the code %1$s with your PC and confirm in MediaDuet.</string>
+    <string name="mirror_subtext">Playing on PC</string>
+
+    <!-- Status -->
+    <string name="status_waiting">Waiting for your PC</string>
+    <string name="status_listening">Reachable via %1$s</string>
+    <string name="status_connected_to">Connected to %1$s · %2$s</string>
+    <string name="transport_bt">Bluetooth</string>
+    <string name="transport_lan">LAN</string>
+    <string name="status_playing">Playing</string>
+    <string name="status_paused">Paused</string>
+    <string name="status_stopped">Stopped</string>
+    <string name="status_buffering">Buffering</string>
+    <string name="status_unknown">Unknown</string>
+    <string name="stale">Disconnected</string>
+    <string name="unknown_title">Unknown title</string>
+
+    <!-- Actions -->
+    <string name="action_play">Play</string>
+    <string name="action_pause">Pause</string>
+    <string name="action_next">Next</string>
+    <string name="action_previous">Previous</string>
+    <string name="cancel">Cancel</string>
+    <string name="grant">Grant</string>
+    <string name="fix">Fix</string>
+    <string name="set_up">Set up</string>
+    <string name="open_settings">Settings</string>
+    <string name="open_app_info">Open app info</string>
+
+    <!-- Now playing -->
+    <string name="empty_no_media">Nothing is playing on the PC</string>
+    <string name="setup_permissions">Grant access</string>
+    <string name="error_action_unsupported">The player on the PC does not support this action.</string>
+    <string name="error_timeout">The PC did not answer in time.</string>
+    <string name="error_not_connected">Not connected to the PC.</string>
+    <string name="error_command_failed">Command failed (%1$s).</string>
+    <string name="policy_last_action">Last: %1$s (%2$s) %3$s</string>
+    <string name="policy_mode_off">Off</string>
+    <string name="policy_mode_windows_first">Windows first</string>
+    <string name="policy_mode_android_first">Phone first</string>
+    <string name="policy_mode_latest">Latest wins</string>
+    <string name="policy_mode_custom">Custom</string>
+
+    <!-- Phone media -->
+    <string name="phone_title">Phone media</string>
+    <string name="phone_subtitle">The phone\'s media sessions exactly as your PC receives them.</string>
+    <string name="phone_no_access">Media session access is off</string>
+    <string name="phone_empty">No active media sessions</string>
+    <string name="phone_active">Active</string>
+    <string name="phone_actions">Supports: %1$s</string>
+    <string name="phone_no_actions">This player does not report supported actions.</string>
+    <string name="phone_sync_none">No snapshot sent yet.</string>
+    <string name="phone_last_command">Last command from PC: %1$s (%2$s) at %3$s</string>
+    <string name="origin_user">user</string>
+    <string name="origin_policy">arbitration</string>
+
+    <!-- Connection -->
+    <string name="connection_title">Connection</string>
+    <string name="conn_disconnected">Disconnected</string>
+    <string name="conn_primary">primary</string>
+    <string name="conn_rtt">RTT %1$d ms</string>
+    <string name="conn_since">for %1$s</string>
+    <string name="conn_waiting_title">Waiting for your PC</string>
+    <string name="conn_waiting_text">The PC connects to this phone. Keep Bluetooth on or stay on the same network.</string>
+    <string name="pairing_header">Pairing</string>
+    <string name="pairing_mode">Pairing mode</string>
+    <string name="pairing_mode_hint">Turn on, then start pairing on the PC. Closes automatically after 5 minutes.</string>
+    <string name="pairing_open_for">Open for %1$s</string>
+    <string name="pairing_success">Paired with %1$s</string>
+    <string name="pairing_failed">Pairing with %1$s failed: %2$s</string>
+    <string name="trusted_header">Trusted PCs</string>
+    <string name="trusted_empty">No PC paired yet.</string>
+    <string name="trusted_connected">Connected now</string>
+    <string name="trusted_last_seen">Last seen %1$s</string>
+    <string name="trusted_revoke">Remove</string>
+    <string name="revoke_title">Remove %1$s?</string>
+    <string name="revoke_text">The pairing key is deleted. The PC is disconnected and must pair again.</string>
+    <string name="cdm_header">Companion device</string>
+    <string name="cdm_text">Associate your PC as a companion device. Android then wakes MediaDuet when the PC is nearby and exempts it from some background limits.</string>
+    <string name="cdm_unsupported">This device does not support companion device setup.</string>
+    <string name="cdm_associate">Associate PC</string>
+    <string name="cdm_remove">Remove</string>
+    <string name="cdm_failed">Association failed: %1$s</string>
+    <string name="cdm_no_presence">Presence detection requires Android 12 or newer.</string>
+    <string name="transports_header">Transports</string>
+    <string name="transport_bt_rfcomm">Bluetooth (RFCOMM)</string>
+    <string name="transport_lan_tcp">LAN (TCP)</string>
+    <string name="bt_listening">Listening for your PC</string>
+    <string name="bt_off">Bluetooth is off</string>
+    <string name="bt_no_permission">Nearby devices permission needed</string>
+    <string name="bt_unsupported">No Bluetooth on this device</string>
+    <string name="bt_error">Could not start the Bluetooth listener</string>
+    <string name="lan_error">LAN listener failed (%1$s)</string>
+    <string name="lan_no_network">No Wi‑Fi or Ethernet network (port %1$d)</string>
+    <string name="nsd_title">Network discovery</string>
+    <string name="nsd_registered">Advertised as _mediaduet._tcp</string>
+    <string name="nsd_registering">Registering…</string>
+    <string name="nsd_failed">Advertisement failed; connect manually by address</string>
+    <string name="nsd_off">Not advertised</string>
+    <string name="device_id_label">Device ID %1$s</string>
+
+    <!-- Pairing dialog -->
+    <string name="pair_dialog_title">Pair with this PC?</string>
+    <string name="pair_dialog_text">%1$s wants to pair over %2$s. Check that the PC shows the same code.</string>
+    <string name="pair_accept">Codes match</string>
+    <string name="pair_reject">Reject</string>
+    <string name="pair_waiting_peer">Waiting for the PC to confirm…</string>
+
+    <!-- Permissions -->
+    <string name="permissions_title">Permissions &amp; background</string>
+    <string name="permissions_subtitle">What MediaDuet needs and why. Anything missing only disables the related feature.</string>
+    <string name="perm_required_header">Required access</string>
+    <string name="perm_listener">Media session access</string>
+    <string name="perm_listener_text">Granted through notification access. MediaDuet only uses it to see and control media sessions; notification contents are never read, stored or sent.</string>
+    <string name="perm_listener_restricted">Installed outside an app store? On Android 13+ first open App info → ⋮ → “Allow restricted settings”.</string>
+    <string name="perm_notifications">Notifications</string>
+    <string name="perm_notifications_text">For the status notification, pairing requests and the optional PC media controls.</string>
+    <string name="perm_bluetooth">Nearby devices (Bluetooth)</string>
+    <string name="perm_bluetooth_text">Lets the PC connect over Bluetooth RFCOMM. Without it only LAN works.</string>
+    <string name="perm_local_network">Local network</string>
+    <string name="perm_local_network_text">Android 17+: lets the PC reach this phone over Wi‑Fi/Ethernet and advertises it on the network. Without it only Bluetooth works.</string>
+    <string name="perm_background_header">Running in the background</string>
+    <string name="perm_listener_bound">System binding</string>
+    <string name="perm_listener_bound_text">While media session access is granted, Android keeps MediaDuet\'s listener bound, which keeps it running.</string>
+    <string name="perm_battery">Battery optimisation</string>
+    <string name="perm_battery_text">Doze can delay network traffic. If the PC loses the phone while the screen is off, set MediaDuet to “Unrestricted”. A companion association usually grants this automatically.</string>
+    <string name="perm_bg_restricted">Background restricted</string>
+    <string name="perm_bg_restricted_text">You restricted MediaDuet\'s background activity. It can\'t stay connected until this is lifted in App info → Battery.</string>
+    <string name="perm_companion">Companion device</string>
+    <string name="perm_companion_text">Lets Android start MediaDuet when the PC comes into Bluetooth range.</string>
+    <string name="state_granted">Granted</string>
+    <string name="state_missing">Not granted</string>
+    <string name="state_running">Running</string>
+    <string name="state_not_running">Not running</string>
+    <string name="state_bound">Bound</string>
+    <string name="state_not_bound">Not bound</string>
+    <string name="state_unrestricted">Unrestricted</string>
+    <string name="state_optimized">Optimised</string>
+    <string name="state_restricted">Restricted</string>
+    <string name="state_associated">Associated</string>
+    <string name="state_not_associated">Not associated</string>
+    <string name="state_unsupported">Not supported</string>
+    <string name="oem_header">Manufacturer settings</string>
+    <string name="oem_intro">Some manufacturers stop background apps beyond Android\'s rules. If the connection drops when the screen is off:</string>
+    <string name="oem_xiaomi">Xiaomi / HyperOS: App info → Autostart on; Battery saver → No restrictions.</string>
+    <string name="oem_huawei">Huawei / Honor: Battery → App launch → MediaDuet → Manage manually (all on).</string>
+    <string name="oem_oppo">OPPO / OnePlus / realme: App info → Battery usage → Allow background activity and auto launch.</string>
+    <string name="oem_vivo">vivo / iQOO: Battery → Background power consumption → Allow.</string>
+    <string name="oem_samsung">Samsung: Battery → Background usage limits → add MediaDuet to “Never sleeping apps”.</string>
+    <string name="oem_pixel">Pixel / stock Android: Battery → Unrestricted is enough.</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_device_header">This device</string>
+    <string name="settings_device_name">Name shown on the PC</string>
+    <string name="settings_fgs">Keep connection service running</string>
+    <string name="settings_policy_header">Playback arbitration</string>
+    <string name="settings_policy_current">PC mode: %1$s</string>
+    <string name="settings_policy_unknown">The PC has not reported its arbitration mode.</string>
+    <string name="settings_policy_text">The PC decides which side keeps playing. You can request a different mode here.</string>
+    <string name="settings_policy_unavailable">Connect to a PC that runs the arbitration engine to change the mode.</string>
+    <string name="settings_policy_sent">Request sent to the PC.</string>
+    <string name="settings_policy_failed">Could not send the request.</string>
+    <string name="settings_mirror_header">System media controls</string>
+    <string name="settings_mirror">Show PC playback in media controls</string>
+    <string name="settings_mirror_text">Creates a media session for what the PC plays so it appears in the notification shade and lock screen. Note: this session can take media-button focus (e.g. headset buttons may control the PC). Never sent back to the PC.</string>
+    <string name="settings_mirror_needs_notifications">Notifications are off, so the controls can\'t be shown.</string>
+    <string name="settings_audio_header">Audio from PC (experimental)</string>
+    <string name="settings_audio">Receive PC audio over LAN</string>
+    <string name="settings_audio_text">Plays uncompressed audio streamed by the PC (about 1.5 Mbit/s). Takes effect for new connections.</string>
+    <string name="audio_idle">No stream.</string>
+    <string name="audio_waiting">Waiting for the PC to connect the audio stream…</string>
+    <string name="audio_error">Stream ended: %1$s</string>
+    <string name="settings_diagnostics_header">Diagnostics</string>
+    <string name="diag_connection">Connection</string>
+    <string name="diag_rtt">Round-trip time</string>
+    <string name="diag_uptime">Engine uptime</string>
+    <string name="diag_bytes">Bytes</string>
+    <string name="diag_messages">Messages</string>
+    <string name="diag_blobs">Artwork chunks</string>
+    <string name="diag_handshakes">Handshakes OK / failed</string>
+    <string name="diag_errors">Protocol errors</string>
+    <string name="diag_resumes">Session resumes</string>
+
+
+    <!-- Formatting, labels and plurals -->
+    <string name="list_separator" translatable="false">" · "</string>
+    <string name="placeholder_none" translatable="false">—</string>
+    <string name="bullet_item" translatable="false">• %1$s</string>
+    <string name="lan_endpoint" translatable="false">%1$s:%2$d</string>
+    <string name="sas_format" translatable="false">%1$s %2$s</string>
+    <string name="position_of_duration" translatable="false">%1$s / %2$s</string>
+    <string name="language_zh_cn" translatable="false">简体中文</string>
+    <string name="language_en" translatable="false">English</string>
+    <string name="transport_primary">%1$s (%2$s)</string>
+    <string name="conn_transport_line">#%1$d · %2$s · %3$s</string>
+    <string name="transport_with_port">%1$s, port %2$d</string>
+    <string name="traffic_in_out">in %1$s · out %2$s</string>
+    <string name="ok_failed_counts">OK: %1$d · failed: %2$d</string>
+    <string name="rtt_ms">%1$d ms</string>
+    <string name="version_protocol">%1$s · protocol v%2$d</string>
+    <string name="duration_days_hours">%1$d d %2$d h</string>
+    <string name="duration_hours_minutes">%1$d h %2$d min</string>
+    <string name="duration_minutes_seconds">%1$d min %2$d s</string>
+    <string name="duration_seconds">%1$d s</string>
+    <string name="action_toggle">Play/Pause</string>
+    <string name="action_seek">Seek</string>
+    <string name="action_stop">Stop</string>
+    <string name="reason_rejected">rejected</string>
+    <string name="reason_timeout">timed out</string>
+    <string name="reason_mac_mismatch">the codes did not match</string>
+    <string name="reason_pairing_disabled">pairing mode was off</string>
+    <string name="reason_busy">another pairing is in progress</string>
+    <string name="reason_connection_lost">the connection was lost</string>
+    <string name="reason_peer_error">the PC reported an error</string>
+    <string name="reason_other">error (%1$s)</string>
+    <string name="policy_state_policy_paused">paused by arbitration</string>
+    <string name="policy_state_user_paused">paused by user</string>
+    <string name="policy_what_pause_remote">Paused the phone</string>
+    <string name="policy_what_resume_remote">Resumed the phone</string>
+    <string name="policy_what_pause_local">Paused the PC</string>
+    <string name="policy_what_resume_local">Resumed the PC</string>
+    <string name="settings_language_header">Language</string>
+    <string name="settings_language_text">Choose the app language. On Android 13 and newer it can also be changed in system settings.</string>
+    <string name="language_system">Follow system</string>
+    <string name="audio_streaming">Streaming · %1$d Hz · channels: %2$d</string>
+    <string name="lan_no_permission">Local network access not granted. Reachable over USB/adb only (port %1$d).</string>
+    <plurals name="phone_sync_gen">
+        <item quantity="one">Last snapshot sent: #%1$d · %2$d session</item>
+        <item quantity="other">Last snapshot sent: #%1$d · %2$d sessions</item>
+    </plurals>
+    <plurals name="audio_packets">
+        <item quantity="one">%1$d packet</item>
+        <item quantity="other">%1$d packets</item>
+    </plurals>
+    <plurals name="audio_underruns">
+        <item quantity="one">%1$d underrun</item>
+        <item quantity="other">%1$d underruns</item>
+    </plurals>
+    <string name="audio_error_timeout">the PC did not connect in time</string>
+    <string name="audio_error_protocol">the stream failed verification</string>
+    <string name="audio_error_io">the connection was interrupted</string>
+
+    <!-- Player / settings navigation -->
+    <string name="back">Back</string>
+    <string name="a11y_selected">Selected</string>
+    <string name="source_title">Playing on</string>
+    <string name="this_phone">This phone</string>
+    <string name="banner_access">Media access is off — tap to fix</string>
+    <string name="banner_pair">Pair your PC to get started</string>
+    <string name="summary_all_set">All set</string>
+    <string name="summary_translations_on">Translations on</string>
+    <string name="summary_translations_off">Translations off</string>
+    <string name="summary_on">On</string>
+    <string name="summary_off">Off</string>
+    <string name="summary_streaming">Streaming</string>
+    <string name="settings_lyrics_header">Lyrics &amp; display</string>
+    <string name="settings_translations">Show translation</string>
+    <string name="settings_translations_text">Show translated lines (when the PC provides them) under the original lyrics.</string>
+    <string name="about_title">About</string>
+    <string name="about_text">MediaDuet links your phone and your PC: each side sees and controls what the other is playing. Connections are end-to-end encrypted; notification contents are never read.</string>
+    <string name="about_licenses">Open-source licences</string>
+    <string name="about_license_backdrop">Backdrop (liquid glass) by Kyant — Apache License 2.0. Slider and toggle adapted from its catalog.</string>
+    <string name="about_license_androidx">AndroidX, Jetpack Compose, Kotlin coroutines and kotlinx.serialization — Apache License 2.0.</string>
+    <string name="about_license_icons">Material Symbols icons — Apache License 2.0.</string>
+    <plurals name="summary_missing">
+        <item quantity="one">%1$d missing</item>
+        <item quantity="other">%1$d missing</item>
+    </plurals>
+    <string name="settings_audio_row">Audio from PC</string>
+
+    <!-- Control target / volume -->
+    <string name="empty_nothing_playing_phone">Nothing is playing</string>
+    <string name="pc_generic">PC</string>
+    <string name="volume_mute">Mute</string>
+    <string name="volume_unmute">Unmute</string>
+    <string name="volume_fixed">The volume of this device is fixed by the system.</string>
+    <string name="target_auto_caption">Auto · %1$s</string>
+    <string name="target_auto">Automatic</string>
+    <string name="target_auto_text">Follows whatever started playing most recently, on the PC or this phone</string>
+
+    <!-- Round 3: interaction -->
+    <string name="pill_pc_disconnected">PC not connected · Tap to connect</string>
+    <string name="sheet_pc_disconnected_text">Open Connection settings</string>
+    <string name="time_remaining" translatable="false">-%1$s</string>
+    <string name="lyrics_back_to_current">Back to current line</string>
+    <string name="a11y_open_player">open the player</string>
+    <string name="a11y_details">show details</string>
+    <string name="pairing_retry">Try again</string>
+    <string name="dismiss">Dismiss</string>
+    <string name="pairing_steps">On your PC open MediaDuet › Add phone, choose “%1$s”, then check that both devices show the same 6-digit code.</string>
+    <string name="cdm_remove_title">Remove %1$s as companion device?</string>
+    <string name="cdm_remove_text">Android will no longer wake MediaDuet when this PC is nearby. The pairing itself is kept.</string>
+    <string name="saved">Saved</string>
+    <string name="settings_device_name_hint">Saved when you press Done.</string>
+    <string name="perm_fix_all">Fix all</string>
+    <string name="lyrics_show_translation">Show translation</string>
+    <string name="lyrics_hide_translation">Hide translation</string>
+
+    <!-- Round 4: crash reports -->
+    <string name="diag_crash_title">The app crashed last time</string>
+    <string name="diag_crash_text">%1$s · A report with the error and the last log lines was saved on this phone. Nothing is uploaded; share it if you want to report the problem.</string>
+    <string name="diag_crash_share">Share report</string>
+    <string name="diag_crash_copy">Copy</string>
+    <string name="diag_crash_copied">Report copied</string>
+    <string name="diag_crash_subject">MediaDuet crash report</string>
+
+    <!-- Round 4: background volume restriction -->
+    <string name="channel_attention">Needs your attention</string>
+    <string name="channel_attention_desc">Rare, quiet notices when Android blocks something MediaDuet needs.</string>
+    <string name="volume_restricted_title">Volume control from your PC is paused</string>
+    <string name="volume_restricted_text">Android blocked a volume change because MediaDuet is in the background. Tap to allow volume control from your PC.</string>
+
+    <!-- Round 4: lyrics timing -->
+    <string name="lyrics_timing">Lyrics timing</string>
+    <string name="lyrics_offset_earlier">Show lyrics earlier</string>
+    <string name="lyrics_offset_later">Show lyrics later</string>
+    <string name="lyrics_offset_reset">Reset lyrics timing</string>
+    <string name="lyrics_offset_value">%1$s s</string>
+    <string name="lyrics_offset_auto">incl. %1$d ms output delay</string>
+    <string name="settings_lyrics_timing_header">Timing</string>
+    <string name="settings_latency_auto">Compensate Bluetooth delay automatically</string>
+    <string name="settings_latency_auto_text">Bluetooth headphones and speakers play a little late. Lyrics wait for the sound, on this phone and on the PC.</string>
+    <string name="settings_latency_route">This phone plays on: %1$s</string>
+    <string name="route_speaker">Phone speaker</string>
+    <string name="route_wired">Wired / USB</string>
+    <string name="route_bluetooth">Bluetooth</string>
+    <string name="route_other">Other output</string>
+    <string name="settings_bt_delay">Bluetooth delay</string>
+    <string name="settings_offsets">Per-app adjustments</string>
+    <string name="settings_offsets_empty">None yet. If lyrics run early or late for an app, use the stopwatch button in the lyrics view.</string>
+    <string name="reset">Reset</string>
+    <string name="lyrics_show">Show lyrics</string>
+    <string name="lyrics_hide">Hide lyrics</string>
+    <string name="lyrics_unavailable">No lyrics for this track</string>
+    <string name="a11y_playback_position">Playback position</string>
+    <string name="a11y_volume">Volume</string>
+</resources>
