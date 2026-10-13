@@ -1,0 +1,31 @@
+# title|artist|album|durationMs  (durations blank: the test does not guess them)
+晴天|周杰伦|叶惠美|
+稻香|周杰伦|魔杰座|
+孤勇者|陈奕迅|孤勇者|
+富士山下|陈奕迅|What's Going On...?|
+光年之外|G.E.M.邓紫棋|光年之外|
+起风了|买辣椒也用券|起风了|
+平凡之路|朴树|猎户星座|
+后来|刘若英|我等你|
+海阔天空|Beyond|乐与怒|
+小幸运|田馥甄|小幸运|
+十年|陈奕迅|黑·白·灰|
+告白气球|周杰伦|周杰伦的床边故事|
+演员|薛之谦|绅士|
+成都|赵雷|无法长大|
+如愿|王菲|如愿|
+年少有为|李荣浩|耳朵|
+可能|程响|可能|
+Lemon|米津玄師|Lemon|
+夜に駆ける|YOASOBI|夜に駆ける|
+紅蓮華|LiSA|紅蓮華|
+Dynamite|BTS|Dynamite|
+Shape of You|Ed Sheeran|÷|
+Blinding Lights|The Weeknd|After Hours|
+Someone Like You|Adele|21|
+Bohemian Rhapsody|Queen|A Night at the Opera|
+Viva La Vida|Coldplay|Viva la Vida or Death and All His Friends|
+Yesterday|The Beatles|Help!|
+Hotel California|Eagles|Hotel California|
+See You Again|Wiz Khalifa/Charlie Puth|Furious 7|
+STAY|The Kid LAROI/Justin Bieber|F*CK LOVE 3|
