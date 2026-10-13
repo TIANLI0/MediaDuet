@@ -1,0 +1,109 @@
+{
+  "description": "MediaDuet protocol v1 crypto vectors. Hex unless noted.",
+  "ids": {
+    "client": "0123456789abcdef0123456789abcdef",
+    "server": "fedcba9876543210fedcba9876543210"
+  },
+  "ephemeral": {
+    "client_private": "1f2e3d4c5b6a79881f2e3d4c5b6a79881f2e3d4c5b6a79881f2e3d4c5b6a7988",
+    "client_public": "04bd7c73b88b2e9b4ceda62022b2da8be13193a5b56edc26e7df7842e24cd0b5eb0605ada7bda83ac6a2b80d7e314040fa47ff16b83bac85cedb014451bb7ce71a",
+    "server_private": "6a5b4c3d2e1f00116a5b4c3d2e1f00116a5b4c3d2e1f00116a5b4c3d2e1f0011",
+    "server_public": "04ad325ccfb6b5ec7c414ed6d5e2bc5284b901ab583d9aa2726087a37241ab224f592bb9a777dab945e6b303c03c0a12a8826a15c2bed158b80b229727f65197d1",
+    "client_nonce": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+    "server_nonce": "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+    "shared_secret": "56eac64ee2db99feb39f930114ceb3c7ef15716b00cf2bbf49e237c90ef9bb83"
+  },
+  "pairing": {
+    "transcript_hash": "285c792fcc7ab04c490d466347b49db7be4b7d6c15e7bff7d293e5f56405ff62",
+    "prk": "9bc3013bd8ccb7bde2c3951036ed0fe7ba68de0d223d5c9c30d1ecdb85719abc",
+    "sas": "410860",
+    "pairing_key": "3631923bea09baaed93d7de2a615aaed90c32768fd925bfc629f895582434a64",
+    "confirm_mac_client": "e9eaa478edc6b51ab2c9557e0fd1944a0fda3361e2f667c602ca8ccb603d6ee9",
+    "confirm_mac_server": "cc01529efbade8dd65be058e9758e4eb05e16e13f6a82695baefbb8e6c9cc5e7"
+  },
+  "session": {
+    "pairing_key": "3631923bea09baaed93d7de2a615aaed90c32768fd925bfc629f895582434a64",
+    "transcript_hash": "2ca99a5df68e902ef18889d73dd4e2db73a8ec27cba95029d7452a8c1e5089ae",
+    "mac_server": "947648d6818a8e744738e1961ead260dc62a8f2e20ee9bb77ddae23c0f5ad0d2",
+    "mac_client": "cc89cf3f4501f082ba3fdd63d3d994d7fb70b6ae7b69125993bfa6118ce30870",
+    "prk": "7d944d047ad13616fa199e06e1d1db49cea1041f5e2125e984dfcf3eb82f51b8",
+    "key_c2s": "c4e5abef0198b3614140bb32072ab6f8f8c67f80f030d72ef8edd87f8717234b",
+    "key_s2c": "a745dc35e35d608efc12169018460b03f9f52ddc720accd4719843ab7e624894",
+    "iv_c2s": "84a81b49",
+    "iv_s2c": "a0fae08e"
+  },
+  "records": [
+    {
+      "dir": "c2s",
+      "seq": 0,
+      "frame_type": 2,
+      "plaintext": "017b2276223a312c2274797065223a2270696e67222c226964223a312c227473223a313736303030303030303030302c22737263223a223031323334353637383961626364656630313233343536373839616263646566222c22736964223a223030313132323333343435353636373738383939616162626363646465656666222c22626f6479223a7b2274223a313233347d7d",
+      "ciphertext": "d1825009e53ebfb43e1b444f421173aa804c0441bbdafe34210ad039b38ade401820ee927f04adb8cc0b3213c053170ce6af8d6453389459b410c6a81be1ed5ac3ccda416b5e26f4d3a0e4ba455d22a40fd891a32d12eba5a1bdff5acde7c4ed88dbc6be7e0a2fc9357dada7913d86e2c70feea30a79c33852d2fc7af3ae467b004a019335d20ece798d4c017f5dc0e81f265fab33d91e97d91ab8d1227a5b8dddc986f8",
+      "frame": "000000a502d1825009e53ebfb43e1b444f421173aa804c0441bbdafe34210ad039b38ade401820ee927f04adb8cc0b3213c053170ce6af8d6453389459b410c6a81be1ed5ac3ccda416b5e26f4d3a0e4ba455d22a40fd891a32d12eba5a1bdff5acde7c4ed88dbc6be7e0a2fc9357dada7913d86e2c70feea30a79c33852d2fc7af3ae467b004a019335d20ece798d4c017f5dc0e81f265fab33d91e97d91ab8d1227a5b8dddc986f8"
+    },
+    {
+      "dir": "c2s",
+      "seq": 1,
+      "frame_type": 2,
+      "plaintext": "017b2268656c6c6f223a22e4b896e7958c227d",
+      "ciphertext": "25271405870bba2725f50bf7f4795e3c8f2f3554462d61c3d15096f5eeba206a319817",
+      "frame": "000000240225271405870bba2725f50bf7f4795e3c8f2f3554462d61c3d15096f5eeba206a319817"
+    },
+    {
+      "dir": "s2c",
+      "seq": 0,
+      "frame_type": 2,
+      "plaintext": "017b7d",
+      "ciphertext": "dc62de123b2a6f359099fe3c5ec2d823f8d080",
+      "frame": "0000001402dc62de123b2a6f359099fe3c5ec2d823f8d080"
+    }
+  ],
+  "audio": {
+    "stream_id": "a1a2a3a4a5a6a7a8a9aaabacadaeafb0",
+    "base": "key_c2s",
+    "audio_key": "4614e85b46caa0fd453407b0288c5baad9cfebb45dececc69fbefd73f5715bd1",
+    "audio_iv": "6f3d4e8a",
+    "seq": 0,
+    "plaintext": "00000000075bcd150100020003000400",
+    "ciphertext": "6ffe4aa8d0834946476d41c7aefd6d65ae61f17e2d1970917400d3548c90f363"
+  },
+  "blob": {
+    "content_sha256": "785b0751fc2c53dc14a4ce3d800e69ef9ce1009eb327ccf458afe09c242c26c9",
+    "total": 1024,
+    "first_chunk_plaintext": "02785b0751fc2c53dc14a4ce3d800e69ef9ce1009eb327ccf458afe09c242c26c90000040000000000000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff"
+  },
+  "handshake_frame": {
+    "json": "{\"v\":1,\"type\":\"auth\",\"id\":3,\"ts\":0,\"src\":\"0123456789abcdef0123456789abcdef\",\"sid\":\"\",\"body\":{\"mac\":\"AA==\"}}",
+    "frame": "0000006c017b2276223a312c2274797065223a2261757468222c226964223a332c227473223a302c22737263223a223031323334353637383961626364656630313233343536373839616263646566222c22736964223a22222c22626f6479223a7b226d6163223a2241413d3d227d7d"
+  },
+  "track_ids": [
+    {
+      "title": "晴天",
+      "artist": "周杰伦",
+      "album": "叶惠美",
+      "durationMs": 269000,
+      "trackId": "e8009a1747e46254"
+    },
+    {
+      "title": "Song",
+      "artist": "",
+      "album": "",
+      "durationMs": null,
+      "trackId": "08a3d9910415944e"
+    },
+    {
+      "title": "Round",
+      "artist": "A",
+      "album": "B",
+      "durationMs": 1499,
+      "trackId": "31b9becc34a8a339"
+    },
+    {
+      "title": "Half",
+      "artist": "A",
+      "album": "B",
+      "durationMs": 2500,
+      "trackId": "4425e763e378391b"
+    }
+  ]
+}
