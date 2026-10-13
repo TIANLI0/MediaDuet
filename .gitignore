@@ -1,0 +1,45 @@
+# Build outputs
+/build/
+/out/
+windows/build*/
+windows/out/
+**/x64/
+**/ARM64/
+**/Debug/
+**/Release/
+**/obj/
+**/bin/
+*.user
+*.aps
+*.VC.db
+*.VC.opendb
+.vs/
+packages/
+Generated Files/
+
+# Android / Gradle
+android/.gradle/
+android/build/
+android/app/build/
+android/testplayer/build/
+android/local.properties
+android/.kotlin/
+android/captures/
+*.apk
+*.aab
+!android/gradle/wrapper/gradle-wrapper.jar
+*.jks
+*.keystore
+android/keystore.properties
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Python
+__pycache__/
+
+# Misc
+*.log
+dist/
