@@ -1,0 +1,15 @@
+# Third-party components
+
+| Component | Where | License | Why / runtime impact |
+|-----------|-------|---------|----------------------|
+| [nlohmann/json](https://github.com/nlohmann/json) 3.12.0 | `windows/third_party/nlohmann` (header only) | MIT | JSON for protocol, IPC and settings; compiled in, no runtime DLL |
+| [doctest](https://github.com/doctest/doctest) 2.4.12 | `windows/third_party/doctest` (tests only) | MIT | unit-test framework; not shipped |
+| Windows App SDK / WinUI 3 | NuGet (UI process only) | MIT | UI framework; loaded only while the UI is open |
+| C++/WinRT, WIL | NuGet (UI build) / Windows SDK | MIT | language projection / helpers |
+| [Kyant0 Backdrop (AndroidLiquidGlass)](https://github.com/Kyant0/AndroidLiquidGlass) `io.github.kyant0:backdrop` | Android app | Apache-2.0 | liquid-glass visual effects in the Compose UI; GPU RenderEffect/RuntimeShader on API 31+/33+, graceful fallback below |
+| `io.github.kyant0:shapes` | Android app | Apache-2.0 | continuous-corner shapes used by Backdrop |
+| AndroidX / Jetpack Compose / Kotlin coroutines / kotlinx.serialization | Android app | Apache-2.0 | UI, concurrency, JSON |
+| [LRCLIB](https://lrclib.net) (online service, optional) | runtime HTTP | public API, lyrics contributed by users | optional lyrics lookup; sends title/artist/album/duration only; can be disabled |
+
+The Python `cryptography` package is used only by the test-vector generator in
+`protocol/tools` (Apache-2.0/BSD), not by either app.
