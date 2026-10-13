@@ -1,0 +1,9 @@
+namespace MediaDuetUI
+{
+    // Lays out the segments of a karaoke line (see LyricSegments.h) on wrapping rows.
+    [default_interface]
+    runtimeclass LyricWrapPanel : Microsoft.UI.Xaml.Controls.Panel
+    {
+        LyricWrapPanel();
+    }
+}

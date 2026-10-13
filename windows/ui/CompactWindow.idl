@@ -1,0 +1,8 @@
+namespace MediaDuetUI
+{
+    [default_interface]
+    runtimeclass CompactWindow : Microsoft.UI.Xaml.Window
+    {
+        CompactWindow();
+    }
+}

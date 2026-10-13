@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="ARM64" />
+  </Configurations>
+  <Project Path="MediaDuetUI.vcxproj" Id="6b7e2c1a-4d0b-4e8f-9a55-2f3c8d1e7b40" />
+</Solution>

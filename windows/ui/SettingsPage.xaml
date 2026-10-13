@@ -1,0 +1,956 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="MediaDuetUI.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:MediaDuetUI">
+
+    <Grid x:Name="Root">
+        <NavigationView x:Name="Nav" PaneDisplayMode="Auto" ExpandedModeThresholdWidth="900" CompactModeThresholdWidth="0"
+                        IsBackButtonVisible="Collapsed" IsSettingsVisible="False" IsPaneToggleButtonVisible="True" OpenPaneLength="268"
+                        IsTitleBarAutoPaddingEnabled="False">
+            <NavigationView.MenuItems>
+                <NavigationViewItem x:Uid="NavGeneral" Tag="general">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE713;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem x:Uid="NavDevices" Tag="devices">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE8EA;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem x:Uid="NavConnection" Tag="connection">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE702;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem x:Uid="NavArbitration" Tag="arbitration">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE8AB;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem x:Uid="NavLyrics" Tag="lyrics">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE7F0;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem x:Uid="NavTaskbar" Tag="taskbar">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE75B;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem x:Uid="NavIntegration" Tag="integration">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE93E;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem x:Uid="NavCompat" Tag="compat">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE90F;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem x:Uid="NavAudio" Tag="audio">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE767;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem x:Uid="NavDiagnostics" Tag="diagnostics">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE9D9;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+            </NavigationView.MenuItems>
+            <NavigationView.FooterMenuItems>
+                <NavigationViewItem x:Uid="NavAbout" Tag="about">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE946;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+            </NavigationView.FooterMenuItems>
+
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <InfoBar x:Name="HostBar" Margin="36,12,36,0" MaxWidth="860" Severity="Warning" IsClosable="False" IsOpen="False">
+                    <InfoBar.ActionButton>
+                        <Button x:Name="StartHostButton" x:Uid="StartHostButton" />
+                    </InfoBar.ActionButton>
+                </InfoBar>
+                <InfoBar x:Name="ResultBar" Margin="36,12,36,0" MaxWidth="860" Severity="Error" IsClosable="True" IsOpen="False" />
+
+                <ScrollViewer x:Name="PageScroller" Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                    <Grid x:Name="Pages" MaxWidth="900" Padding="36,16,36,40">
+
+                        <!-- ================= General ================= -->
+                        <StackPanel x:Name="PageGeneral" Spacing="0">
+                            <TextBlock x:Uid="NavGeneralTitle" Style="{StaticResource PageTitleStyle}" />
+
+                            <TextBlock x:Uid="HdrAppearance" Style="{StaticResource SectionHeaderStyle}" />
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE774;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetLanguageTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="SetLanguageDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                    <ComboBox x:Name="LanguageCombo" Grid.Column="2" MinWidth="200" VerticalAlignment="Center">
+                                        <ComboBoxItem x:Uid="LangAuto" Tag="auto" />
+                                        <ComboBoxItem x:Uid="LangZh" Tag="zh-CN" />
+                                        <ComboBoxItem x:Uid="LangEn" Tag="en-US" />
+                                    </ComboBox>
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE790;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetThemeTitle" Style="{StaticResource CardTitleStyle}" />
+                                    </StackPanel>
+                                    <ComboBox x:Name="ThemeCombo" Grid.Column="2" MinWidth="200" VerticalAlignment="Center">
+                                        <ComboBoxItem x:Uid="ThemeSystem" Tag="system" />
+                                        <ComboBoxItem x:Uid="ThemeLight" Tag="light" />
+                                        <ComboBoxItem x:Uid="ThemeDark" Tag="dark" />
+                                    </ComboBox>
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE945;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetAnimationsTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="SetAnimationsDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                    <ToggleSwitch x:Name="AnimationsToggle" Grid.Column="2" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xEBB5;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetLowPowerTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="SetLowPowerDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                    <ToggleSwitch x:Name="LowPowerToggle" Grid.Column="2" />
+                                </Grid>
+                            </Border>
+
+                            <TextBlock x:Uid="HdrWindows" Style="{StaticResource SectionHeaderStyle}" />
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE718;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetMainOnTopTitle" Style="{StaticResource CardTitleStyle}" />
+                                    </StackPanel>
+                                    <ToggleSwitch x:Name="MainOnTopToggle" Grid.Column="2" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE73F;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetCompactOnTopTitle" Style="{StaticResource CardTitleStyle}" />
+                                    </StackPanel>
+                                    <ToggleSwitch x:Name="CompactOnTopToggle" Grid.Column="2" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE7C4;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetCompactSnapTitle" Style="{StaticResource CardTitleStyle}" />
+                                    </StackPanel>
+                                    <ToggleSwitch x:Name="CompactSnapToggle" Grid.Column="2" />
+                                </Grid>
+                            </Border>
+
+                            <TextBlock x:Uid="HdrStartup" Style="{StaticResource SectionHeaderStyle}" />
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE7E8;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetAutostartTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="SetAutostartDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                    <ToggleSwitch x:Name="AutostartToggle" Grid.Column="2" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE7E8;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetQuitTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="SetQuitDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                    <Button x:Name="QuitHostButton" x:Uid="QuitHostButton" Grid.Column="2" />
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+
+                        <!-- ================= Devices & pairing ================= -->
+                        <StackPanel x:Name="PageDevices" Visibility="Collapsed">
+                            <TextBlock x:Uid="NavDevicesTitle" Style="{StaticResource PageTitleStyle}" />
+
+                            <TextBlock x:Uid="HdrPaired" Style="{StaticResource SectionHeaderStyle}" />
+                            <StackPanel x:Name="PairedList" />
+                            <Border x:Name="PairedEmpty" Style="{StaticResource CardStyle}">
+                                <TextBlock x:Uid="PairedEmptyText" Style="{StaticResource CardDescriptionStyle}" />
+                            </Border>
+
+                            <TextBlock x:Name="PairNewHeader" x:Uid="HdrPairNew" Style="{StaticResource SectionHeaderStyle}" />
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE721;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="PairHowTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="PairHowDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                        <ProgressRing x:Name="DiscoveryRing" Width="16" Height="16" IsActive="False" />
+                                        <TextBlock x:Uid="Searching" Style="{StaticResource CardDescriptionStyle}" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                            <StackPanel x:Name="DiscoveredList" />
+                            <Border x:Name="DiscoveredEmpty" Style="{StaticResource CardStyle}">
+                                <TextBlock x:Uid="DiscoveredEmptyText" Style="{StaticResource CardDescriptionStyle}" />
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}" Margin="0,8,0,4">
+                                <StackPanel Spacing="10">
+                                    <StackPanel>
+                                        <TextBlock x:Uid="ManualTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="ManualDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <TextBox x:Name="ManualHost" x:Uid="ManualHost" Width="220" />
+                                        <NumberBox x:Name="ManualPort" Width="110" Minimum="1" Maximum="65535" Value="47321" SpinButtonPlacementMode="Hidden" />
+                                        <Button x:Name="ManualPairButton" x:Uid="ManualPairButton" Style="{StaticResource AccentButtonStyle}" />
+                                        <Button x:Name="ManualConnectButton" x:Uid="ManualConnectButton" />
+                                    </StackPanel>
+                                    <TextBlock x:Name="ManualError" Foreground="{ThemeResource SystemFillColorCriticalBrush}" Style="{StaticResource CardDescriptionStyle}" Visibility="Collapsed" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+
+                        <!-- ================= Connection ================= -->
+                        <StackPanel x:Name="PageConnection" Visibility="Collapsed">
+                            <TextBlock x:Uid="NavConnectionTitle" Style="{StaticResource PageTitleStyle}" />
+
+                            <TextBlock x:Uid="HdrConnStatus" Style="{StaticResource SectionHeaderStyle}" />
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition />
+                                    </Grid.RowDefinitions>
+                                    <TextBlock x:Uid="LblStatus" Style="{StaticResource ValueLabelStyle}" />
+                                    <TextBlock x:Name="ConnStatusValue" Grid.Column="1" Style="{StaticResource ValueTextStyle}" />
+                                    <TextBlock x:Uid="LblPeer" Grid.Row="1" Style="{StaticResource ValueLabelStyle}" />
+                                    <TextBlock x:Name="ConnPeerValue" Grid.Row="1" Grid.Column="1" Style="{StaticResource ValueTextStyle}" />
+                                    <TextBlock x:Uid="LblTransport" Grid.Row="2" Style="{StaticResource ValueLabelStyle}" />
+                                    <TextBlock x:Name="ConnTransportValue" Grid.Row="2" Grid.Column="1" Style="{StaticResource ValueTextStyle}" />
+                                    <TextBlock x:Uid="LblLatency" Grid.Row="3" Style="{StaticResource ValueLabelStyle}" />
+                                    <TextBlock x:Name="ConnRttValue" Grid.Row="3" Grid.Column="1" Style="{StaticResource ValueTextStyle}" />
+                                    <TextBlock x:Uid="LblConnectedFor" Grid.Row="4" Style="{StaticResource ValueLabelStyle}" />
+                                    <TextBlock x:Name="ConnSinceValue" Grid.Row="4" Grid.Column="1" Style="{StaticResource ValueTextStyle}" />
+                                    <TextBlock x:Uid="LblTraffic" Grid.Row="5" Style="{StaticResource ValueLabelStyle}" />
+                                    <TextBlock x:Name="ConnTrafficValue" Grid.Row="5" Grid.Column="1" Style="{StaticResource ValueTextStyle}" />
+                                    <TextBlock x:Uid="LblLastError" Grid.Row="6" Style="{StaticResource ValueLabelStyle}" />
+                                    <TextBlock x:Name="ConnErrorValue" Grid.Row="6" Grid.Column="1" Style="{StaticResource CardDescriptionStyle}" IsTextSelectionEnabled="True" VerticalAlignment="Center" />
+                                    <TextBlock x:Uid="LblBluetooth" Grid.Row="7" Style="{StaticResource ValueLabelStyle}" />
+                                    <TextBlock x:Name="ConnBtValue" Grid.Row="7" Grid.Column="1" Style="{StaticResource ValueTextStyle}" />
+                                </Grid>
+                            </Border>
+
+                            <TextBlock x:Uid="HdrConnMode" Style="{StaticResource SectionHeaderStyle}" />
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel>
+                                    <TextBlock x:Uid="SetConnModeTitle" Style="{StaticResource CardTitleStyle}" />
+                                    <TextBlock x:Uid="SetConnModeDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    <RadioButtons x:Name="ConnModeRadios" Margin="0,8,0,0">
+                                        <RadioButton x:Uid="ConnModeAuto" Tag="auto" />
+                                        <RadioButton x:Uid="ConnModeBt" Tag="bt_only" />
+                                        <RadioButton x:Uid="ConnModeLan" Tag="lan_only" />
+                                    </RadioButtons>
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE895;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetSwitchBackTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="SetSwitchBackDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                    <NumberBox x:Name="SwitchBackBox" Grid.Column="2" Width="120" Minimum="0" Maximum="600" SmallChange="1"
+                                               SpinButtonPlacementMode="Compact" VerticalAlignment="Center" />
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+
+                        <!-- ================= Arbitration ================= -->
+                        <StackPanel x:Name="PageArbitration" Visibility="Collapsed">
+                            <TextBlock x:Uid="NavArbitrationTitle" Style="{StaticResource PageTitleStyle}" />
+                            <TextBlock x:Uid="ArbIntro" Style="{StaticResource CardDescriptionStyle}" Margin="0,0,0,4" />
+
+                            <TextBlock x:Uid="HdrArbLive" Style="{StaticResource SectionHeaderStyle}" />
+                            <Border Style="{StaticResource CardStyle}">
+                                <TextBlock x:Name="PolicyLiveText" Style="{StaticResource ValueTextStyle}" />
+                            </Border>
+
+                            <TextBlock x:Uid="HdrArbMode" Style="{StaticResource SectionHeaderStyle}" />
+                            <Border Style="{StaticResource CardStyle}">
+                                <RadioButtons x:Name="PolicyModeRadios" x:Uid="PolicyModeRadios">
+                                    <RadioButton Tag="off">
+                                        <StackPanel>
+                                            <TextBlock x:Uid="ModeOffTitle" />
+                                            <TextBlock x:Uid="ModeOffDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                        </StackPanel>
+                                    </RadioButton>
+                                    <RadioButton Tag="windows_first">
+                                        <StackPanel>
+                                            <TextBlock x:Uid="ModeWinTitle" />
+                                            <TextBlock x:Uid="ModeWinDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                        </StackPanel>
+                                    </RadioButton>
+                                    <RadioButton Tag="android_first">
+                                        <StackPanel>
+                                            <TextBlock x:Uid="ModeAndroidTitle" />
+                                            <TextBlock x:Uid="ModeAndroidDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                        </StackPanel>
+                                    </RadioButton>
+                                    <RadioButton Tag="latest">
+                                        <StackPanel>
+                                            <TextBlock x:Uid="ModeLatestTitle" />
+                                            <TextBlock x:Uid="ModeLatestDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                        </StackPanel>
+                                    </RadioButton>
+                                    <RadioButton Tag="custom">
+                                        <StackPanel>
+                                            <TextBlock x:Uid="ModeCustomTitle" />
+                                            <TextBlock x:Uid="ModeCustomDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                        </StackPanel>
+                                    </RadioButton>
+                                </RadioButtons>
+                            </Border>
+
+                            <TextBlock x:Uid="HdrArbBehaviour" Style="{StaticResource SectionHeaderStyle}" />
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE768;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetAutoResumeTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="SetAutoResumeDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                    <ToggleSwitch x:Name="AutoResumeToggle" Grid.Column="2" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE916;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetResumeDelayTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="SetResumeDelayDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                    <NumberBox x:Name="ResumeDelayBox" Grid.Column="2" Width="120" Minimum="0" Maximum="300" SmallChange="1"
+                                               SpinButtonPlacementMode="Compact" VerticalAlignment="Center" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE121;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetActivationTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="SetActivationDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                    <NumberBox x:Name="ActivationBox" Grid.Column="2" Width="120" Minimum="100" Maximum="10000" SmallChange="100"
+                                               LargeChange="500" SpinButtonPlacementMode="Compact" VerticalAlignment="Center" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE767;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetSensitivityTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="SetSensitivityDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                        <Slider x:Name="SensitivitySlider" Width="180" Minimum="0.001" Maximum="0.1" StepFrequency="0.001"
+                                                SmallChange="0.001" LargeChange="0.01" IsThumbToolTipEnabled="False" VerticalAlignment="Center" />
+                                        <TextBlock x:Name="SensitivityValue" Width="44" VerticalAlignment="Center" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE717;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetCallsTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="SetCallsDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                    <ToggleSwitch x:Name="PauseForCallsToggle" Grid.Column="2" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE7F6;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetHeadsetAssistTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="SetHeadsetAssistDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                    <ToggleSwitch x:Name="HeadsetAssistToggle" Grid.Column="2" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel Spacing="8">
+                                    <TextBlock x:Uid="OnlyWithOutputsTitle" Style="{StaticResource CardTitleStyle}" />
+                                    <TextBlock x:Uid="OnlyWithOutputsDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    <StackPanel x:Name="OutputsPanel" Spacing="0" />
+                                    <TextBlock x:Name="OutputsGatedText" Style="{StaticResource CardDescriptionStyle}" Visibility="Collapsed"
+                                               Foreground="{ThemeResource SystemFillColorCautionBrush}" />
+                                </StackPanel>
+                            </Border>
+
+                            <TextBlock x:Uid="HdrArbApps" Style="{StaticResource SectionHeaderStyle}" />
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel Spacing="8">
+                                    <TextBlock x:Uid="BlacklistTitle" Style="{StaticResource CardTitleStyle}" />
+                                    <TextBlock x:Uid="BlacklistDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    <StackPanel x:Name="BlacklistPanel" Spacing="4" />
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <TextBox x:Name="BlacklistInput" x:Uid="ProcessInput" Width="240" />
+                                        <Button x:Name="BlacklistAdd" x:Uid="AddButton" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel Spacing="8">
+                                    <TextBlock x:Uid="WhitelistTitle" Style="{StaticResource CardTitleStyle}" />
+                                    <TextBlock x:Uid="WhitelistDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    <StackPanel x:Name="WhitelistPanel" Spacing="4" />
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <TextBox x:Name="WhitelistInput" x:Uid="ProcessInput" Width="240" />
+                                        <Button x:Name="WhitelistAdd" x:Uid="AddButton" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel Spacing="8">
+                                    <TextBlock x:Uid="PrioritiesTitle" Style="{StaticResource CardTitleStyle}" />
+                                    <TextBlock x:Uid="PrioritiesDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    <StackPanel x:Name="PriorityPanel" Spacing="4" />
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <TextBox x:Name="PriorityAppInput" x:Uid="PriorityAppInput" Width="240" />
+                                        <NumberBox x:Name="PriorityValueBox" Width="100" Minimum="-100" Maximum="100" Value="10" SpinButtonPlacementMode="Compact" />
+                                        <Button x:Name="PriorityAdd" x:Uid="AddButton" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+
+                        <!-- ================= Lyrics ================= -->
+                        <StackPanel x:Name="PageLyrics" Visibility="Collapsed">
+                            <TextBlock x:Uid="NavLyricsTitle" Style="{StaticResource PageTitleStyle}" />
+
+                            <TextBlock x:Uid="HdrLyricsSources" Style="{StaticResource SectionHeaderStyle}" />
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel Spacing="10">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                        <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE774;" />
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                            <TextBlock x:Uid="SetOnlineLyricsTitle" Style="{StaticResource CardTitleStyle}" />
+                                            <TextBlock x:Uid="SetOnlineLyricsDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                        </StackPanel>
+                                        <ToggleSwitch x:Name="OnlineLyricsToggle" Grid.Column="2" />
+                                    </Grid>
+                                    <InfoBar x:Uid="PrivacyNoteProviders" IsOpen="True" IsClosable="False" Severity="Informational" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel Spacing="8">
+                                    <TextBlock x:Uid="ProvidersTitle" Style="{StaticResource CardTitleStyle}" />
+                                    <TextBlock x:Uid="ProvidersDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    <StackPanel x:Name="ProvidersPanel" Spacing="4" Margin="0,4,0,0" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE8B7;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetLocalFolderTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Name="LocalFolderText" Style="{StaticResource CardDescriptionStyle}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                                    </StackPanel>
+                                    <Button x:Name="BrowseFolderButton" x:Uid="BrowseButton" Grid.Column="2" VerticalAlignment="Center" />
+                                    <Button x:Name="ClearFolderButton" x:Uid="ClearButton" Grid.Column="3" VerticalAlignment="Center" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE8C1;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetTranslationTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="SetTranslationDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                    <ToggleSwitch x:Name="TranslationToggle" Grid.Column="2" />
+                                </Grid>
+                            </Border>
+
+                            <TextBlock x:Uid="HdrLyricsTiming" Style="{StaticResource SectionHeaderStyle}" />
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE702;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetLatencyAutoTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="SetLatencyAutoDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                        <TextBlock x:Name="LatencyStatusText" Style="{StaticResource CardDescriptionStyle}" Margin="0,4,0,0" Visibility="Collapsed" />
+                                    </StackPanel>
+                                    <ToggleSwitch x:Name="LatencyAutoToggle" Grid.Column="2" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE7F6;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetLatencyBtTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="SetLatencyBtDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                        <Slider x:Name="LatencyBtSlider" Width="180" Minimum="0" Maximum="1000" StepFrequency="10"
+                                                SmallChange="10" LargeChange="50" IsThumbToolTipEnabled="False" VerticalAlignment="Center" />
+                                        <TextBlock x:Name="LatencyBtValue" Width="56" VerticalAlignment="Center" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel Spacing="8">
+                                    <TextBlock x:Uid="LyricsOffsetsTitle" Style="{StaticResource CardTitleStyle}" />
+                                    <TextBlock x:Uid="LyricsOffsetsDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    <StackPanel x:Name="OffsetsPanel" Spacing="4" Margin="0,4,0,0" />
+                                </StackPanel>
+                            </Border>
+
+                            <TextBlock x:Uid="HdrOverlay" Style="{StaticResource SectionHeaderStyle}" />
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE7F0;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetOverlayShowTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="SetOverlayShowDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                    <ToggleSwitch x:Name="OverlayShowToggle" Grid.Column="2" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE72E;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetOverlayLockTitle" Style="{StaticResource CardTitleStyle}" />
+                                    </StackPanel>
+                                    <ToggleSwitch x:Name="OverlayLockToggle" Grid.Column="2" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE8B0;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetOverlayClickTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="SetOverlayClickDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                    <ToggleSwitch x:Name="OverlayClickThroughToggle" Grid.Column="2" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE7B3;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetOverlayAutoHideTitle" Style="{StaticResource CardTitleStyle}" />
+                                    </StackPanel>
+                                    <ToggleSwitch x:Name="OverlayAutoHideToggle" Grid.Column="2" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE8D2;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetOverlayFontTitle" Style="{StaticResource CardTitleStyle}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                        <ComboBox x:Name="OverlayFontCombo" Width="220" MaxDropDownHeight="420" />
+                                        <NumberBox x:Name="OverlayFontSizeBox" Width="110" Minimum="12" Maximum="96" SmallChange="1" SpinButtonPlacementMode="Compact" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE706;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetOverlayOpacityTitle" Style="{StaticResource CardTitleStyle}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                        <Slider x:Name="OverlayOpacitySlider" Width="180" Minimum="0.2" Maximum="1" StepFrequency="0.01"
+                                                SmallChange="0.05" LargeChange="0.1" IsThumbToolTipEnabled="False" VerticalAlignment="Center" />
+                                        <TextBlock x:Name="OverlayOpacityValue" Width="44" VerticalAlignment="Center" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE8E9;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetOverlayKaraokeTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="SetOverlayKaraokeDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                    <ToggleSwitch x:Name="OverlayKaraokeToggle" Grid.Column="2" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE8FD;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetOverlayTwoLinesTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="SetOverlayTwoLinesDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                    <ToggleSwitch x:Name="OverlayTwoLinesToggle" Grid.Column="2" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE718;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetOverlayTopmostTitle" Style="{StaticResource CardTitleStyle}" />
+                                    </StackPanel>
+                                    <ToggleSwitch x:Name="OverlayTopmostToggle" Grid.Column="2" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE740;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetOverlayHideFullscreenTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="SetOverlayHideFullscreenDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                    <ToggleSwitch x:Name="OverlayHideFullscreenToggle" Grid.Column="2" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE8E3;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetOverlayLayoutTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="SetOverlayLayoutDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                    <ComboBox x:Name="OverlayLayoutCombo" Grid.Column="2" MinWidth="200" VerticalAlignment="Center">
+                                        <ComboBoxItem x:Uid="OverlayLayoutAlternate" Tag="alternate" />
+                                        <ComboBoxItem x:Uid="OverlayLayoutCenter" Tag="center" />
+                                    </ComboBox>
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE790;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetOverlayColorsTitle" Style="{StaticResource CardTitleStyle}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                        <DropDownButton x:Name="ActiveColorButton">
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <Border x:Name="ActiveColorSwatch" Width="18" Height="18" CornerRadius="4" BorderThickness="1"
+                                                        BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}" />
+                                                <TextBlock x:Uid="ColorActive" />
+                                            </StackPanel>
+                                            <DropDownButton.Flyout>
+                                                <Flyout x:Name="ActiveColorFlyout">
+                                                    <StackPanel Spacing="8">
+                                                        <ColorPicker x:Name="ActiveColorPicker" IsAlphaEnabled="True" IsMoreButtonVisible="False"
+                                                                     IsColorChannelTextInputVisible="False" IsHexInputVisible="True" />
+                                                        <Button x:Name="ActiveColorApply" x:Uid="ApplyButton" HorizontalAlignment="Right"
+                                                                Style="{StaticResource AccentButtonStyle}" />
+                                                    </StackPanel>
+                                                </Flyout>
+                                            </DropDownButton.Flyout>
+                                        </DropDownButton>
+                                        <DropDownButton x:Name="InactiveColorButton">
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <Border x:Name="InactiveColorSwatch" Width="18" Height="18" CornerRadius="4" BorderThickness="1"
+                                                        BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}" />
+                                                <TextBlock x:Uid="ColorInactive" />
+                                            </StackPanel>
+                                            <DropDownButton.Flyout>
+                                                <Flyout x:Name="InactiveColorFlyout">
+                                                    <StackPanel Spacing="8">
+                                                        <ColorPicker x:Name="InactiveColorPicker" IsAlphaEnabled="True" IsMoreButtonVisible="False"
+                                                                     IsColorChannelTextInputVisible="False" IsHexInputVisible="True" />
+                                                        <Button x:Name="InactiveColorApply" x:Uid="ApplyButton" HorizontalAlignment="Right"
+                                                                Style="{StaticResource AccentButtonStyle}" />
+                                                    </StackPanel>
+                                                </Flyout>
+                                            </DropDownButton.Flyout>
+                                        </DropDownButton>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE7C4;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetOverlayResetTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="SetOverlayResetDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                    <Button x:Name="OverlayResetButton" x:Uid="OverlayResetButton" Grid.Column="2" VerticalAlignment="Center" />
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+
+                        <!-- ================= Taskbar ================= -->
+                        <StackPanel x:Name="PageTaskbar" Visibility="Collapsed">
+                            <TextBlock x:Uid="NavTaskbarTitle" Style="{StaticResource PageTitleStyle}" />
+                            <TextBlock x:Uid="TaskbarIntro" Style="{StaticResource CardDescriptionStyle}" Margin="0,0,0,4" />
+                            <TextBlock x:Uid="HdrTaskbarStatus" Style="{StaticResource SectionHeaderStyle}" />
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <Ellipse x:Name="TaskbarStatusDot" Width="8" Height="8" VerticalAlignment="Center" Fill="Gray" />
+                                    <TextBlock x:Name="TaskbarStatusText" Style="{StaticResource ValueTextStyle}" />
+                                </StackPanel>
+                            </Border>
+                            <TextBlock x:Uid="HdrTaskbarWidget" Style="{StaticResource SectionHeaderStyle}" />
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE75B;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetTaskbarEnabledTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="SetTaskbarEnabledDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                    <ToggleSwitch x:Name="TaskbarEnabledToggle" Grid.Column="2" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE8BC;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetTaskbarContentTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="SetTaskbarContentDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                    <ComboBox x:Name="TaskbarContentCombo" Grid.Column="2" MinWidth="200" VerticalAlignment="Center">
+                                        <ComboBoxItem x:Uid="TaskbarContentAuto" Tag="auto" />
+                                        <ComboBoxItem x:Uid="TaskbarContentLyrics" Tag="lyrics" />
+                                        <ComboBoxItem x:Uid="TaskbarContentPlayer" Tag="player" />
+                                    </ComboBox>
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE8A0;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetTaskbarPositionTitle" Style="{StaticResource CardTitleStyle}" />
+                                    </StackPanel>
+                                    <ComboBox x:Name="TaskbarPositionCombo" Grid.Column="2" MinWidth="200" VerticalAlignment="Center">
+                                        <ComboBoxItem x:Uid="TaskbarPositionLeft" Tag="left" />
+                                        <ComboBoxItem x:Uid="TaskbarPositionRight" Tag="right" />
+                                    </ComboBox>
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE7C2;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetTaskbarOffsetTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="SetTaskbarOffsetDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                        <Slider x:Name="TaskbarOffsetSlider" Width="200" Minimum="-800" Maximum="800" StepFrequency="1"
+                                                SmallChange="4" LargeChange="40" IsThumbToolTipEnabled="False" VerticalAlignment="Center" />
+                                        <TextBlock x:Name="TaskbarOffsetValue" Width="56" VerticalAlignment="Center" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE9A6;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetTaskbarWidthTitle" Style="{StaticResource CardTitleStyle}" />
+                                    </StackPanel>
+                                    <NumberBox x:Name="TaskbarWidthBox" Grid.Column="2" Width="120" Minimum="160" Maximum="1200" SmallChange="10"
+                                               LargeChange="50" SpinButtonPlacementMode="Compact" VerticalAlignment="Center" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE8E9;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetTaskbarFontSizeTitle" Style="{StaticResource CardTitleStyle}" />
+                                    </StackPanel>
+                                    <NumberBox x:Name="TaskbarFontSizeBox" Grid.Column="2" Width="120" Minimum="9" Maximum="24" SmallChange="1"
+                                               SpinButtonPlacementMode="Compact" VerticalAlignment="Center" />
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+
+                        <!-- ================= Compatibility ================= -->
+                        <StackPanel x:Name="PageCompat" Visibility="Collapsed">
+                            <TextBlock x:Uid="NavCompatTitle" Style="{StaticResource PageTitleStyle}" />
+                            <TextBlock x:Uid="CompatIntro" Style="{StaticResource CardDescriptionStyle}" Margin="0,0,0,16" />
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE8D6;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetNeteaseDesktopTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="SetNeteaseDesktopDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                    <ToggleSwitch x:Name="NeteaseDesktopToggle" Grid.Column="2" />
+                                </Grid>
+                            </Border>
+                            <InfoBar x:Uid="CompatLimits" IsOpen="True" IsClosable="False" Severity="Informational" Margin="0,8,0,0" />
+                        </StackPanel>
+
+                        <!-- ================= Windows media integration ================= -->
+                        <StackPanel x:Name="PageIntegration" Visibility="Collapsed">
+                            <TextBlock x:Uid="NavIntegrationTitle" Style="{StaticResource PageTitleStyle}" />
+                            <Border Style="{StaticResource CardStyle}" Margin="0,16,0,4">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE93E;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetSmtcTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="SetSmtcDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                    <ToggleSwitch x:Name="SmtcToggle" Grid.Column="2" />
+                                </Grid>
+                            </Border>
+                            <TextBlock x:Uid="SmtcNote" Style="{StaticResource CardDescriptionStyle}" Margin="2,8,0,0" />
+                        </StackPanel>
+
+                        <!-- ================= Audio ================= -->
+                        <StackPanel x:Name="PageAudio" Visibility="Collapsed">
+                            <TextBlock x:Uid="NavAudioTitle" Style="{StaticResource PageTitleStyle}" />
+
+                            <TextBlock x:Uid="HdrA2dp" Style="{StaticResource SectionHeaderStyle}" />
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel Spacing="8">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                        <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE7F6;" />
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                            <TextBlock x:Uid="SetA2dpTitle" Style="{StaticResource CardTitleStyle}" />
+                                            <TextBlock x:Uid="SetA2dpDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                            <TextBlock x:Name="A2dpStatus" Style="{StaticResource CardDescriptionStyle}" Margin="0,4,0,0" />
+                                        </StackPanel>
+                                        <ToggleSwitch x:Name="A2dpToggle" Grid.Column="2" />
+                                    </Grid>
+                                    <InfoBar x:Name="A2dpError" Severity="Error" IsClosable="False" IsOpen="False" />
+                                </StackPanel>
+                            </Border>
+
+                            <TextBlock x:Uid="HdrLanSend" Style="{StaticResource SectionHeaderStyle}" />
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel Spacing="8">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                        <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE7F5;" />
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                            <TextBlock x:Uid="SetLanSendTitle" Style="{StaticResource CardTitleStyle}" />
+                                            <TextBlock x:Name="LanSendStatus" Style="{StaticResource CardDescriptionStyle}" Margin="0,4,0,0" />
+                                        </StackPanel>
+                                        <ToggleSwitch x:Name="LanSendToggle" Grid.Column="2" />
+                                    </Grid>
+                                    <InfoBar x:Uid="LanSendWarning" Severity="Warning" IsClosable="False" IsOpen="True" />
+                                    <InfoBar x:Name="LanSendError" Severity="Error" IsClosable="False" IsOpen="False" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+
+                        <!-- ================= Diagnostics ================= -->
+                        <StackPanel x:Name="PageDiagnostics" Visibility="Collapsed">
+                            <TextBlock x:Uid="NavDiagnosticsTitle" Style="{StaticResource PageTitleStyle}" />
+                            <Border Style="{StaticResource CardStyle}" Margin="0,16,0,4">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE9D9;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetDiagTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="SetDiagDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                    <ToggleSwitch x:Name="DiagnosticsToggle" Grid.Column="2" />
+                                </Grid>
+                            </Border>
+                            <Border x:Name="DiagCard" Style="{StaticResource CardStyle}" Visibility="Collapsed">
+                                <Grid x:Name="DiagGrid">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                </Grid>
+                            </Border>
+                            <TextBlock x:Name="DiagWaiting" x:Uid="DiagWaiting" Style="{StaticResource CardDescriptionStyle}" Margin="2,8,0,0" Visibility="Collapsed" />
+                        </StackPanel>
+
+                        <!-- ================= About ================= -->
+                        <StackPanel x:Name="PageAbout" Visibility="Collapsed">
+                            <StackPanel Orientation="Horizontal" Spacing="16" Margin="0,8,0,8">
+                                <Image x:Name="AboutIcon" Width="64" Height="64" />
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock x:Uid="AboutAppName" Style="{StaticResource TitleTextBlockStyle}" />
+                                    <TextBlock x:Uid="AboutTagline" Style="{StaticResource CardDescriptionStyle}" />
+                                </StackPanel>
+                            </StackPanel>
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions><RowDefinition /><RowDefinition /><RowDefinition /></Grid.RowDefinitions>
+                                    <TextBlock x:Uid="LblUiVersion" Style="{StaticResource ValueLabelStyle}" />
+                                    <TextBlock x:Name="UiVersionValue" Grid.Column="1" Style="{StaticResource ValueTextStyle}" />
+                                    <TextBlock x:Uid="LblHostVersion" Grid.Row="1" Style="{StaticResource ValueLabelStyle}" />
+                                    <TextBlock x:Name="HostVersionValue" Grid.Row="1" Grid.Column="1" Style="{StaticResource ValueTextStyle}" />
+                                    <TextBlock x:Uid="LblLicense" Grid.Row="2" Style="{StaticResource ValueLabelStyle}" />
+                                    <TextBlock Grid.Row="2" Grid.Column="1" x:Uid="AboutLicenseValue" Style="{StaticResource ValueTextStyle}" />
+                                </Grid>
+                            </Border>
+                            <TextBlock x:Uid="HdrThirdParty" Style="{StaticResource SectionHeaderStyle}" />
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel Spacing="10">
+                                    <StackPanel>
+                                        <TextBlock x:Uid="ThirdWasdkTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="ThirdWasdkDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                    <StackPanel>
+                                        <TextBlock x:Uid="ThirdCppWinrtTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="ThirdCppWinrtDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                    <StackPanel>
+                                        <TextBlock x:Uid="ThirdWilTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="ThirdWilDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                    <StackPanel>
+                                        <TextBlock x:Uid="ThirdJsonTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="ThirdJsonDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                    <StackPanel>
+                                        <TextBlock x:Uid="ThirdLrclibTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="AboutLrclib" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Grid>
+                </ScrollViewer>
+            </Grid>
+        </NavigationView>
+    </Grid>
+</UserControl>

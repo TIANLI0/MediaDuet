@@ -1,0 +1,8 @@
+namespace MediaDuetUI
+{
+    [default_interface]
+    runtimeclass SettingsPage : Microsoft.UI.Xaml.Controls.UserControl
+    {
+        SettingsPage();
+    }
+}
