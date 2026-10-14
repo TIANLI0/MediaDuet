@@ -1,0 +1,146 @@
+name: Release
+
+# Push a tag like v1.3.0 (matching every version number in the repo) to build and publish:
+#   MediaDuet-<v>-x64-setup.exe, MediaDuet-<v>-win-x64.zip, MediaDuet-<v>-android.apk
+# Android signing needs these repository secrets (Settings > Secrets and variables > Actions):
+#   ANDROID_KEYSTORE_BASE64  base64 of the release keystore (.jks)
+#   ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)build, e.g. v1.3.0"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  version:
+    name: Check versions
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      tag: ${{ steps.v.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+      - id: v
+        shell: bash
+        run: |
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          version="${tag#v}"
+          cmake=$(sed -nE 's/^project\(MediaDuet VERSION ([0-9.]+).*/\1/p' windows/CMakeLists.txt)
+          ui=$(sed -nE 's/^#define MDUI_VERSION_STRING "([0-9.]+)"/\1/p' windows/ui/Version.h)
+          android=$(sed -nE 's/^\s*versionName = "([0-9.]+)"/\1/p' android/app/build.gradle.kts)
+          echo "tag=$tag cmake=$cmake ui=$ui android=$android"
+          for v in "$cmake" "$ui" "$android"; do
+            if [ "$v" != "$version" ]; then
+              echo "::error::Version mismatch: tag $tag, CMake $cmake, WinUI $ui, Android $android"
+              exit 1
+            fi
+          done
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+  windows:
+    name: Windows x64 (installer + zip)
+    needs: version
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+      - name: NSIS
+        shell: pwsh
+        run: |
+          if (-not (Get-Command makensis.exe -ErrorAction SilentlyContinue) -and
+              -not (Test-Path "${env:ProgramFiles(x86)}\NSIS\Bin\makensis.exe")) {
+            choco install nsis -y --no-progress
+          }
+      - name: Build, test and package
+        shell: pwsh
+        run: windows/packaging/package.ps1 -Arch x64 -Version ${{ needs.version.outputs.version }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            dist/MediaDuet-${{ needs.version.outputs.version }}-x64-setup.exe
+            dist/MediaDuet-${{ needs.version.outputs.version }}-win-x64.zip
+          if-no-files-found: error
+
+  android:
+    name: Android (signed APK)
+    needs: version
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@v3
+      - name: Install SDK 37
+        run: sdkmanager "platforms;android-37.0" "build-tools;37.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 is not set: the APK must be signed with the release key so it updates installed copies."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > release.jks
+          {
+            echo "storeFile=release.jks"
+            echo "storePassword=$KEYSTORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > keystore.properties
+      - name: Tests and release build
+        run: ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleRelease
+      - name: Check signature
+        run: |
+          "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --print-certs app/build/outputs/apk/release/app-release.apk | head -3
+          cp app/build/outputs/apk/release/app-release.apk "MediaDuet-${{ needs.version.outputs.version }}-android.apk"
+      - name: Remove key
+        if: always()
+        run: rm -f release.jks keystore.properties
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: android/MediaDuet-${{ needs.version.outputs.version }}-android.apk
+          if-no-files-found: error
+
+  publish:
+    name: Publish release
+    needs: [version, windows, android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - name: Checksums
+        working-directory: out
+        run: sha256sum MediaDuet-* > SHA256SUMS.txt && cat SHA256SUMS.txt
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.version.outputs.tag }}
+          name: MediaDuet ${{ needs.version.outputs.version }}
+          generate_release_notes: true
+          files: |
+            out/MediaDuet-*
+            out/SHA256SUMS.txt

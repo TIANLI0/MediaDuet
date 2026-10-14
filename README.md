@@ -4,6 +4,8 @@
 <p align="center">Lightweight cross-device media control for Windows and Android<br>
 Windows 与 Android 之间的轻量双向媒体控制与智能播放协调</p>
 
+**[官网 / Website](https://tianli0.github.io/MediaDuet/)** · **[下载 / Download](https://github.com/TIANLI0/MediaDuet/releases/latest)**
+
 [中文](#中文) · [English](#english) · [Protocol](protocol/specification.md) · [Architecture](docs/architecture.md) · [Testing & status](docs/testing.md) · [Compatibility](docs/compatibility.md)
 
 ---
@@ -18,7 +20,10 @@ Windows 与 Android 之间的轻量双向媒体控制与智能播放协调</p>
 - **原生集成**：手机正在播放的歌曲出现在 Windows 系统媒体浮窗/键盘媒体键里；Windows 媒体出现在手机 App 中。
 - **精美界面**：Windows 端 WinUI 3 媒体卡片、悬停才显示控制的迷你播放器、可置顶、可点击穿透的桌面歌词（描边字、双行交替/居中、长句横向滚动、渐进式逐字/逐行填充）；Android 端 Kyant0 液态玻璃、无底部导航栏的全高“正在播放”主页（设置从右上角进入）、类 Apple Music 的播放器与歌词一体界面。
 - **歌词**：本地 LRC、手机推送、网易云（含逐字 yrc）、QQ 音乐、LRCLIB 依次查找（只发送歌名/歌手/专辑/时长，可调整顺序或关闭）；30 首测试曲目命中 29 首。不会伪造歌词。歌词时间轴经过平滑，并自动补偿蓝牙耳机延迟，每个播放器可单独微调偏移（±0.1 秒）。
-- **任务栏歌词**：在 Windows 11 任务栏空白处显示渐进式歌词或播放控件（悬停显示按钮）。
+- **手机自己找歌词**：手机不连电脑时也会用同样的规则在网易云、QQ 音乐、LRCLIB 中查找并缓存歌词；同一首歌的元数据反复变化（如 QQ 音乐）时歌词不会闪烁。
+- **任务栏歌词**：在 Windows 11（居中或靠左）和 Windows 10 任务栏的空白处显示渐进式歌词或播放控件（悬停显示按钮）。
+- **高清封面**：播放器提供的封面太小时，自动查找同一首歌的高清封面（可关闭）。
+- **单设备也能用**：首次启动选择「搭配使用」或「仅此手机 / 仅此电脑」；配对后两端互相显示版本号，版本不一致时提醒。
 - **音量**：双向调节对方设备音量；Windows 端可单独调节每个应用的音量。
 - **多点耳机辅助**：耳机因另一台设备占用而自动暂停你刚播放的音乐时，自动接管；可设置仅在指定音频输出（如耳机）时才进行播放干预。
 - **网易云 Windows 兼容**：网易云未公开系统媒体会话时，通过窗口标题、本地播放队列和音频活动识别，并按歌曲 ID 精确获取歌词。
@@ -72,7 +77,10 @@ Windows 与 Android 之间的轻量双向媒体控制与智能播放协调</p>
 - **Native integration**: phone media appears in the Windows media flyout and media keys; Windows media appears on the phone.
 - **Polished UI**: WinUI 3 media card, hover-only mini player, always-on-top, click-through desktop lyrics (outlined text, two-line alternate or centred layout, scrolling long lines, progressive word/line fill) on Windows; Kyant0 liquid glass, a full-height Now Playing home without a tab bar (settings from the top-right) and an Apple-Music-style integrated player/lyrics screen on Android.
 - **Lyrics**: local LRC, phone-provided, NetEase (word-timed yrc), QQ Music, LRCLIB in a configurable order (title/artist/album/duration only; can be disabled); 30/30 hit rate on a mixed test set. **Translations** (NetEase / QQ Music) shown under each line on every surface, with a toggle. Never invented. Lyric timing is smoothed, compensates Bluetooth output latency automatically and has a per-player offset (±0.1 s steps).
-- **Taskbar lyrics** on the Windows 11 taskbar, with hover controls.
+- **Lyrics on the phone alone**: without a PC the phone looks lyrics up itself (same providers and matching rules, cached); lyrics no longer flicker when a player (QQ Music) keeps re-reporting the same song.
+- **Taskbar lyrics** on the Windows 11 (centred or left-aligned) and Windows 10 taskbar, with hover controls.
+- **HD covers**: when a player's own cover is small, the song's high-resolution cover is looked up (optional).
+- **One device is enough**: choose "with my phone/PC" or "this device only" on first launch; once paired, each side shows the other's version and warns on a mismatch.
 - **Volume**: control the other device's volume; per-app volume on Windows.
 - **Multipoint headset assist** and optional *only intervene when this output is in use*.
 - **NetEase Cloud Music for Windows** compatibility when it publishes no media session.
@@ -106,4 +114,7 @@ docs/       architecture, ipc, bluetooth, media sessions, audio routing, testing
 
 ### License
 
-MIT — see [LICENSE](LICENSE) and [third-party notices](docs/THIRD_PARTY_NOTICES.md).
+MIT © 2026 tianli — see [LICENSE](LICENSE). Bundled third-party components keep their own licences, see
+[third-party notices](docs/THIRD_PARTY_NOTICES.md); in particular the HarmonyOS Sans fonts in
+`windows/ui/Assets/Fonts` are © Huawei Device Co., Ltd. under the HarmonyOS Sans Fonts License
+Agreement (shipped unmodified) and are not covered by the MIT licence.
