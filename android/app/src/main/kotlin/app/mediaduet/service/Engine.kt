@@ -94,7 +94,10 @@ class Engine private constructor(private val app: Context) : LinkHost {
     )
     val remote = RemoteMediaStore(scope, clock, link, app.cacheDir)
     /** Lyrics from the PC and the phone's own lookup (see [LyricsRepository]). */
-    val lyrics = LyricsRepository(scope, app.filesDir, settings.onlineLyrics)
+    val lyrics = LyricsRepository(scope, app.filesDir, settings.onlineLyrics, onFound = { trackId, lrc, tr, source ->
+        // The PC's own lookup may miss what the phone found (other match rules / endpoints).
+        scope.launch { if (link.sendLyrics(trackId, lrc, tr, source)) MdLog.i(TAG, "shared lyrics for $trackId with the PC") }
+    })
     val audio = AudioReceiver(scope, settings.audioReceiveEnabled) { peer, stream, reason -> link.sendAudioStop(peer, stream, reason) }
     val mirror = MirrorSessionController(app, scope, remote, settings.mirrorEnabled)
     val volume = VolumeController(app)
@@ -381,7 +384,19 @@ class Engine private constructor(private val app: Context) : LinkHost {
         lyrics.onPcNone(trackId, remote.sessionForTrack(trackId)?.let(LyricsRepository::songOf))
     override fun onPolicyStatus(peerId: String, status: PolicyStatus) = remote.onPolicyStatus(status)
     override fun onSinkState(peerId: String, state: SinkState) = remote.onSinkState(state)
-    override fun mediaQueue(key: String): MediaQueue? = media.queues.value[key]
+    override fun mediaQueue(key: String): MediaQueue? = media.queues.value[key]?.let { fitRecord(it) }
+
+    /** Shrinks the queue window (keeping the current entry) until it fits one control record. */
+    private fun fitRecord(queue: MediaQueue): MediaQueue {
+        var q = queue
+        while (q.items.size > 20 && q.toJson().toString().toByteArray(Charsets.UTF_8).size > 56_000) {
+            val keep = q.items.size * 3 / 4
+            val at = q.items.indexOfFirst { it.id == q.activeId }.coerceAtLeast(0)
+            val start = (at - 10).coerceIn(0, q.items.size - keep)
+            q = q.copy(offset = q.offset + start, items = q.items.subList(start, start + keep))
+        }
+        return q
+    }
 
     /**
      * "Play on the PC": asks the PC to receive this phone's Bluetooth audio (Windows A2DP sink).

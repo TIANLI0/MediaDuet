@@ -633,6 +633,24 @@ class LinkManager(
         send(session, null, MsgType.AUDIO_SINK_SET, buildJsonObject { put("enable", enable) }) != null
     }
 
+    /**
+     * Lyrics the phone found itself for [trackId] (a phone or PC track), for the PC to show and
+     * cache (`lyrics.push`, §8.2). Only when the PC takes lyrics and the record fits in one frame.
+     */
+    suspend fun sendLyrics(trackId: String, lrc: String, translation: String?, source: String): Boolean = withContext(dispatcher) {
+        val session = currentSession() ?: return@withContext false
+        if (Caps.LYRICS !in session.peerCaps) return@withContext false
+        val body = buildJsonObject {
+            put("trackId", trackId)
+            put("format", "lrc")
+            put("source", source.take(StrLimit.MISC))
+            put("text", lrc)
+            if (!translation.isNullOrBlank()) put("translation", translation)
+        }
+        if (body.toString().toByteArray(Charsets.UTF_8).size > MAX_LYRICS_RECORD) return@withContext false
+        send(session, null, MsgType.LYRICS_PUSH, body) != null
+    }
+
     /** Asks the Windows arbitration engine to change mode (§8.2 policy.config). */
     suspend fun sendPolicyConfig(mode: String): Boolean = withContext(dispatcher) {
         val session = currentSession() ?: return@withContext false
@@ -730,6 +748,8 @@ class LinkManager(
     }
 
     companion object {
+        /** Lyrics records above this stay off the link (a control record is at most 64 KiB). */
+        private const val MAX_LYRICS_RECORD = 60_000
         private const val TAG = "MD/Link"
         const val RESUME_WINDOW_MS = 10 * 60 * 1000L
         const val RESEND_WINDOW_MS = 5_000L

@@ -184,12 +184,18 @@ void HostApp::init() {
             int64_t now = sched_.nowMs();
             int64_t sinceSound = audio_ && audio_->lastStreamStartMs() >= 0 ? now - audio_->lastStreamStartMs() : -1;
             int64_t sinceOutput = outputChangedAt_ >= 0 ? now - outputChangedAt_ : -1;
+            int64_t sinceLink = linkUpAt_ >= 0 ? now - linkUpAt_ : -1;
             bool afterSound = sinceSound >= 0 && sinceSound < kSystemCommandWindowMs;
             bool afterOutput = sinceOutput >= 0 && sinceOutput < kSystemCommandWindowMs;
-            if (afterSound || afterOutput) {
+            // The bridged session is published anew when the phone (re)connects; Windows /
+            // headsets answer that with a pause of their own (user log: ~200 ms after each link up).
+            bool afterLink = sinceLink >= 0 && sinceLink < kSystemCommandWindowMs;
+            if (afterSound || afterOutput || afterLink) {
                 log::info("host", "ignored {} from Windows media controls {} ms after {} (headset / system, not a key press)",
-                          media::toString(a), afterSound ? sinceSound : sinceOutput,
-                          afterSound ? "a sound started on this PC" : "the output device changed");
+                          media::toString(a), afterSound ? sinceSound : afterOutput ? sinceOutput : sinceLink,
+                          afterSound    ? "a sound started on this PC"
+                          : afterOutput ? "the output device changed"
+                                        : "the phone connected");
                 return;
             }
         }
@@ -488,6 +494,7 @@ void HostApp::updateDiscoveryWatchers() {
 
 void HostApp::onLinkUp(const std::string& peerId, bool resumed) {
     log::info("host", "link up with {} ({})", peerId.substr(0, 8), resumed ? "resumed" : "new");
+    linkUpAt_ = sched_.nowMs();
     if (auto* d = devices_.find(peerId)) {
         d->lastSeen = sched_.wallMs();
         rememberPeerApp(*d, cm_->status().peerApp);
@@ -1100,12 +1107,13 @@ void HostApp::pushLyricsToPhone(const platform::LyricsService::Result& r) {
 
 void HostApp::onLyrics(const platform::LyricsService::Result& r) {
     if (r.trackId != lyricsTrack_) return;
+    if (r.status == "loading") lyricsAskedAt_ = sched_.nowMs();
     if (r.status == "found") {
         lyricsData_ = std::make_shared<lyrics::Lyrics>(r.lyrics);
         overlay_->setLyrics(lyricsData_, r.trackId);
         taskbar_->setLyrics(lyricsData_, r.trackId);
-        log::info("lyrics", "lyrics for {} from {} ({} lines{})", r.trackId, r.source, r.lyrics.lines.size(),
-                  r.lyrics.synced ? ", synced" : "");
+        log::info("lyrics", "lyrics for {} from {} ({} lines{}) after {} ms", r.trackId, r.source, r.lyrics.lines.size(),
+                  r.lyrics.synced ? ", synced" : "", lyricsAskedAt_ >= 0 ? sched_.nowMs() - lyricsAskedAt_ : 0);
         pushLyricsToPhone(r);
     } else {
         lyricsData_.reset();

@@ -33,6 +33,11 @@ class LyricsRepository(
     filesDir: File,
     private val onlineEnabled: StateFlow<Boolean>,
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    /**
+     * Lyrics the phone found itself (its cache or its own online lookup), as LRC (+ translation
+     * LRC), so the PC can show them too when its own lookup came up empty (`lyrics.push`).
+     */
+    private val onFound: (trackId: String, lrc: String, translation: String?, source: String) -> Unit = { _, _, _, _ -> },
 ) {
     private val _entries = MutableStateFlow<Map<String, LyricsState>>(emptyMap())
     val entries: StateFlow<Map<String, LyricsState>> = _entries
@@ -77,7 +82,10 @@ class LyricsRepository(
                     }
                     val found = withContext(io) { lookUp(id, song) }
                     // A PC push that arrived meanwhile wins.
-                    if (_entries.value[id]?.available != true) put(found)
+                    if (_entries.value[id]?.available != true) {
+                        put(found)
+                        if (found.available) withContext(io) { share(id, found.source) }
+                    }
                 } finally {
                     synchronized(inFlight) { inFlight.remove(id) }
                     _pending.update { it - id }
@@ -159,6 +167,18 @@ class LyricsRepository(
         }
         if (definitive) write(missFile, "")
         return none
+    }
+
+    /** Hands the cached files of [trackId] (only ever the phone's own finds) to [onFound]. */
+    private fun share(trackId: String, source: String) {
+        val stem = safe(trackId)
+        val lrc = runCatching { File(cacheDir, "$stem.lrc").readText() }.getOrNull()?.takeIf { it.isNotBlank() } ?: return
+        val tr = runCatching { File(cacheDir, "$stem.tlrc").takeIf { it.isFile }?.readText() }.getOrNull()?.takeIf { it.isNotBlank() }
+        try {
+            onFound(trackId, lrc, tr, source)
+        } catch (e: Exception) {
+            MdLog.w(TAG, "sharing lyrics failed", e)
+        }
     }
 
     private fun readCached(lrcFile: File, trFile: File): LyricsState? {

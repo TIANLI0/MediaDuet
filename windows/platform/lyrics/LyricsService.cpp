@@ -410,7 +410,11 @@ void LyricsService::offerRemote(const std::string& trackId, const std::string& l
     if (!translation.empty()) lyrics::mergeTranslation(parsed, lyrics::parseLrc(translation));
     writeText(cacheDir_ / (text::toWide(trackId) + L".lrc"), lrc);
     if (!translation.empty()) writeText(cacheDir_ / (text::toWide(trackId) + L".tlrc"), translation);
+    std::error_code ec;
+    fs::remove(cacheDir_ / (text::toWide(trackId) + L".none"), ec); // our own "not found" is outdated
     if (trackId != cur_.trackId || cur_.status == "found") return;
+    log::info("lyrics", "lyrics for {} from the phone ({}, {} lines)", trackId, source.empty() ? "remote" : source,
+              parsed.lines.size());
     ++gen_;
     deliver({trackId, "found", source.empty() ? "remote" : source, std::move(parsed), lrc, translation});
 }
@@ -494,6 +498,9 @@ void LyricsService::request(const media::MediaSessionInfo& t, int64_t neteaseId)
                 r.translation = *tr;
         }
         if (r.status == "found" && r.lyrics.empty()) r.status = "notfound";
+        if (r.status == "notfound")
+            log::info("lyrics", "no lyrics found for {} ({} - {}){}", t.trackId, t.title, t.artist,
+                      negative ? " (remembered miss)" : "");
         self->sched_.post([self, alive, gen, r = std::move(r)]() mutable {
             if (alive.expired() || gen != self->gen_) return;
             // rekey() relabelled the track while this lookup ran (same song, new trackId).

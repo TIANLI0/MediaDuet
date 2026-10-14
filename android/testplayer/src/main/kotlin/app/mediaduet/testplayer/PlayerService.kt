@@ -97,11 +97,12 @@ class PlayerService : Service() {
                     }
                 }
             })
-            // The play queue (all fixture tracks), for MediaDuet's "Up next".
-            setQueue(tracks.mapIndexed { i, t ->
+            // The play queue for MediaDuet's "Up next": every track twice with the same queue id,
+            // like real players that repeat ids (duplicate ids once crashed the queue sheet).
+            setQueue((tracks + tracks).mapIndexed { i, t ->
                 MediaSession.QueueItem(
                     android.media.MediaDescription.Builder().setMediaId("t$i").setTitle(t.title).setSubtitle(t.artist).build(),
-                    i.toLong(),
+                    (i % tracks.size).toLong(),
                 )
             })
             setQueueTitle("Fixture queue")

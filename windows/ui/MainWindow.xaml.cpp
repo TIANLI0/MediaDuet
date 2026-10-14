@@ -697,12 +697,14 @@ namespace winrt::MediaDuetUI::implementation
         auto count = StrF(L"QueueCount", { std::to_wstring(q->total) });
         QueueSubtitle().Text(sub.empty() ? count : sub + L"  \x00B7  " + count);
         FrameworkElement current{ nullptr };
+        bool marked = false; // players may repeat an id: only its first entry is "now playing"
         auto secondary = Application::Current().Resources().Lookup(box_value(L"TextFillColorSecondaryBrush")).as<Brush>();
         auto accent = Application::Current().Resources().Lookup(box_value(L"AccentTextFillColorPrimaryBrush")).as<Brush>();
         for (size_t i = 0; i < q->items.size(); ++i)
         {
             auto const& e = q->items[i];
-            bool active = q->hasActive && e.id == q->activeId;
+            bool active = !marked && q->hasActive && e.id == q->activeId;
+            marked |= active;
             Grid row;
             row.ColumnSpacing(10);
             row.Padding(Thickness{ 0, 4, 0, 4 });

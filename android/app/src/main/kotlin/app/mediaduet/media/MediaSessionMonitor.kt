@@ -223,10 +223,11 @@ class MediaSessionMonitor(
             return ""
         }
         val duration = runCatching { md?.getLong(MediaMetadata.METADATA_KEY_DURATION) }.getOrNull()?.takeIf { it > 0 }
-        val customActions = ps?.customActions.orEmpty().take(CustomAction.MAX_COUNT).mapNotNull { a ->
-            val id = a.action ?: return@mapNotNull null
-            CustomAction(id, a.name?.toString().orEmpty().trim(), artwork.icon(c.packageName, a.icon))
-        }
+        val customActions = ps?.customActions.orEmpty().filter { CustomActionFilter.isControl(it.name?.toString(), it.icon != 0) }
+            .take(CustomAction.MAX_COUNT).mapNotNull { a ->
+                val id = a.action ?: return@mapNotNull null
+                CustomAction(id, a.name?.toString().orEmpty().trim(), artwork.icon(c.packageName, a.icon))
+            }
         val activeQueueId = ps?.activeQueueItemId?.takeIf { it != MediaSession.QueueItem.UNKNOWN_ID.toLong() }
         val queueHint = if (t.queue.isEmpty()) null else QueueHint(t.queue.size, t.queueRev, activeQueueId)
         val contentType = runCatching { c.playbackInfo.audioAttributes.contentType }.getOrDefault(0)

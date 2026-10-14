@@ -114,6 +114,8 @@ private:
     // Media-control commands this soon after a stream start / output change come from headsets.
     static constexpr int64_t kSystemCommandWindowMs = 2500;
     int64_t outputChangedAt_ = -1;
+    int64_t linkUpAt_ = -1;
+    int64_t lyricsAskedAt_ = -1; // the current track's lyrics lookup started (log timing)
     std::string lastSinkJson_;
     void setLanSend(bool enable);
 

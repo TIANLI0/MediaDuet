@@ -1302,9 +1302,11 @@ private fun QueueSheet(ui: UiContext, view: PlayerView?, open: Boolean, onClose:
                 val activeIndex = q.items.indexOfFirst { it.id == q.activeId }
                 val listState = androidx.compose.foundation.lazy.rememberLazyListState((activeIndex - 1).coerceAtLeast(0))
                 androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxWidth().heightIn(max = 480.dp), state = listState) {
-                    items(q.items.size, key = { q.items[it].id }) { i ->
+                    // No item keys: players may repeat a queue id (the same song twice, or every
+                    // entry 0), and duplicate keys crash the list.
+                    items(q.items.size) { i ->
                         val e = q.items[i]
-                        val current = e.id == q.activeId
+                        val current = i == activeIndex // a repeated id is current only once
                         Row(
                             Modifier
                                 .fillMaxWidth()

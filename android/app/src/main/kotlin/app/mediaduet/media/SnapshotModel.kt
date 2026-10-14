@@ -140,6 +140,34 @@ data class LocalSessionState(
     }
 }
 
+/**
+ * Which of a player's custom actions are real controls (like / favourite, shuffle, repeat, …).
+ * Some players also publish promotions there — NetEase Cloud Music lists playlists and campaigns
+ * such as "中文乐队 | 自驾…" or "2026洛天依纯蓝…": text without a glyph, long titles, separators.
+ * Those are dropped at the source, so neither the PC nor this app shows them.
+ */
+object CustomActionFilter {
+    /** Display width: CJK counts 2, everything else 1 ("收藏到歌单" = 10, "Repeat one" = 10). */
+    private const val MAX_WIDTH = 12
+    private val separators = charArrayOf('|', '｜', '丨', '·', '•', '#', '【', '】', '《', '》')
+
+    fun isControl(title: String?, hasIcon: Boolean): Boolean {
+        val t = title.orEmpty().trim()
+        if (!hasIcon) return false                       // controls have a glyph; promotions are text
+        var width = 0
+        var i = 0
+        while (i < t.length) {
+            val cp = t.codePointAt(i)
+            width += if (Character.isIdeographic(cp) || cp in 0x3000..0x30FF || cp in 0xFF00..0xFFEF) 2 else 1
+            i += Character.charCount(cp)
+        }
+        if (width > MAX_WIDTH) return false
+        if (t.any { it in separators }) return false
+        if (Regex("\\d{4}").containsMatchIn(t)) return false // "2026…" campaigns
+        return true
+    }
+}
+
 object SnapshotBuilder {
     /**
      * Active session: actively playing sessions win; among equals the most recently changed one.
