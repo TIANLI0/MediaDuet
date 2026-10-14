@@ -394,3 +394,39 @@ TEST_CASE("the peer's app version is reported; no peers means no link (standalon
     CHECK_FALSE(w.cm->isUp());
     CHECK(w.rec.ups == 1);
 }
+
+TEST_CASE("LAN: the phone changes its IP; the new address over Bluetooth is used at once") {
+    // The user's network: no DNS-SD, the phone moves between 10.x addresses.
+    World w;
+    w.s.advance(1000);
+    REQUIRE(w.primary() == TransportKind::Lan);
+    REQUIRE(w.srv.liveConns(TransportKind::Bluetooth) == 1);
+    // The old address goes dark without a reset (the phone left it).
+    w.fac.lanHostMode["192.0.2.10"] = "silent";
+    for (auto& c : w.srv.conns)
+        if (c->t->kind() == TransportKind::Lan) c->t->setServer(nullptr);
+    // The phone reports its new address over its Bluetooth standby link.
+    FakeServer::Conn* bt = nullptr;
+    for (auto& c : w.srv.conns)
+        if (c->t->kind() == TransportKind::Bluetooth && c->st == FakeServer::Conn::St::Up) bt = c.get();
+    REQUIRE(bt);
+    w.srv.sendSecure(*bt, "transport.info", {{"lan", proto::json::array({{{"host", "192.0.2.20"}, {"port", 47321}}})}});
+    w.s.advance(6'000); // probe (5 s) fails, the new address connects right away
+    CHECK(w.fac.attemptsTo("192.0.2.20") >= 1);
+    CHECK(w.srv.liveConns(TransportKind::Lan) == 1);
+    CHECK(w.rec.downs == 0); // Bluetooth carried the session meanwhile
+    CHECK(w.cm->isUp());
+    // The new address is preferred from now on; the old one is no longer tried first.
+    w.s.advance(30'000);
+    CHECK(w.primary() == TransportKind::Lan);
+}
+
+TEST_CASE("LAN: an unanswered heartbeat is followed up instead of waiting three intervals") {
+    World w(link::ConnMode::LanOnly);
+    w.s.advance(1000);
+    REQUIRE(w.cm->isUp());
+    for (auto& c : w.srv.conns) c->t->setServer(nullptr);
+    // Idle heartbeat every 60 s, then 5 s for the pong and 5 s for the probe.
+    w.s.advance(60'000 + 11'000);
+    CHECK(w.rec.downs >= 1);
+}

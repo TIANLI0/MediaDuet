@@ -16,6 +16,7 @@
 #include <winrt/Windows.System.h>
 #include <winrt/Microsoft.UI.Text.h>
 #include <winrt/Microsoft.UI.Windowing.h>
+#include <winrt/Microsoft.UI.Xaml.Automation.h>
 #include <winrt/Microsoft.UI.Xaml.Input.h>
 #include <winrt/Microsoft.UI.Xaml.Media.Imaging.h>
 #include <winrt/Windows.UI.h>
@@ -239,6 +240,16 @@ namespace winrt::MediaDuetUI::implementation
         });
 
         SourceFlyout().Opening([this](auto&&, auto&&) { BuildSourceMenu(); });
+        // The player's own buttons / its play queue (phone sessions).
+        QueueFlyout().Opening([this](auto&&, auto&&) { FillQueue(); });
+        QueueList().ItemClick([this](auto&&, ItemClickEventArgs const& e) {
+            auto item = e.ClickedItem().try_as<FrameworkElement>();
+            if (!item || !m_session) return;
+            auto id = unbox_value_or<int64_t>(item.Tag(), INT64_MIN);
+            if (id == INT64_MIN) return;
+            Controller::Get().PlayQueueItem(m_session->side, m_session->key, id);
+            QueueFlyout().Hide();
+        });
         A2dpQuickToggle().Click([this](auto&&, auto&&) {
             bool on = A2dpQuickToggle().IsChecked().Value();
             m_a2dpRequested = on;
@@ -618,6 +629,137 @@ namespace winrt::MediaDuetUI::implementation
         UpdateTimer();
     }
 
+    void MainWindow::UpdateExtras()
+    {
+        auto const* s = m_session ? &*m_session : nullptr;
+        auto const* queue = s ? Controller::Get().QueueFor(s->side, s->key) : nullptr;
+        std::string sig;
+        if (s)
+            for (auto const& a : s->customActions) sig += a.id + '\x1f' + a.title + '\x1f' + a.iconPath + '\x1e';
+        if (sig != m_extrasSignature)
+        {
+            m_extrasSignature = sig;
+            auto panel = CustomActionsPanel();
+            panel.Children().Clear();
+            for (size_t i = 0; s && i < s->customActions.size() && i < 4; ++i)
+            {
+                auto const& a = s->customActions[i];
+                Button b;
+                b.Style(Application::Current().Resources().Lookup(box_value(L"IconButtonStyle")).as<Microsoft::UI::Xaml::Style>());
+                auto title = Widen(a.title);
+                if (!a.iconPath.empty())
+                {
+                    // The app's icon as a monochrome glyph tinted like the other buttons.
+                    BitmapIcon icon;
+                    icon.ShowAsMonochrome(true);
+                    icon.Width(18);
+                    icon.Height(18);
+                    icon.UriSource(winrt::Windows::Foundation::Uri(L"file:///" + Widen(a.iconPath)));
+                    b.Content(icon);
+                }
+                else
+                {
+                    TextBlock t;
+                    t.Text(title.empty() ? Widen(a.id) : title);
+                    t.FontSize(12);
+                    t.MaxWidth(96);
+                    t.TextTrimming(TextTrimming::CharacterEllipsis);
+                    b.Content(t);
+                    b.Width(std::numeric_limits<double>::quiet_NaN());
+                    b.Padding(Thickness{ 10, 4, 10, 4 });
+                }
+                if (!title.empty())
+                {
+                    ToolTipService::SetToolTip(b, box_value(title));
+                    Microsoft::UI::Xaml::Automation::AutomationProperties::SetName(b, title);
+                }
+                std::string id = a.id;
+                b.Click([this, id](auto&&, auto&&) {
+                    if (m_session) Controller::Get().PressCustomAction(m_session->side, m_session->key, id);
+                });
+                panel.Children().Append(b);
+            }
+        }
+        bool hasActions = s && !s->customActions.empty();
+        bool hasQueue = s && s->queueCount > 0 && queue && !queue->items.empty();
+        QueueButton().Visibility(hasQueue ? Visibility::Visible : Visibility::Collapsed);
+        ExtrasRow().Visibility(hasActions || hasQueue ? Visibility::Visible : Visibility::Collapsed);
+        if (QueueFlyout().IsOpen()) FillQueue();
+    }
+
+    void MainWindow::FillQueue()
+    {
+        auto list = QueueList();
+        list.Items().Clear();
+        auto const* q = m_session ? Controller::Get().QueueFor(m_session->side, m_session->key) : nullptr;
+        if (!q) return;
+        std::wstring sub = Widen(q->title);
+        auto count = StrF(L"QueueCount", { std::to_wstring(q->total) });
+        QueueSubtitle().Text(sub.empty() ? count : sub + L"  \x00B7  " + count);
+        FrameworkElement current{ nullptr };
+        auto secondary = Application::Current().Resources().Lookup(box_value(L"TextFillColorSecondaryBrush")).as<Brush>();
+        auto accent = Application::Current().Resources().Lookup(box_value(L"AccentTextFillColorPrimaryBrush")).as<Brush>();
+        for (size_t i = 0; i < q->items.size(); ++i)
+        {
+            auto const& e = q->items[i];
+            bool active = q->hasActive && e.id == q->activeId;
+            Grid row;
+            row.ColumnSpacing(10);
+            row.Padding(Thickness{ 0, 4, 0, 4 });
+            ColumnDefinition c0, c1;
+            c0.Width(GridLength{ 28, GridUnitType::Pixel });
+            c1.Width(GridLength{ 1, GridUnitType::Star });
+            row.ColumnDefinitions().Append(c0);
+            row.ColumnDefinitions().Append(c1);
+            FrameworkElement lead{ nullptr };
+            if (active)
+            {
+                FontIcon f;
+                f.Glyph(L"\xE767");
+                f.FontSize(14);
+                f.Foreground(accent);
+                lead = f;
+            }
+            else
+            {
+                TextBlock n;
+                n.Text(std::to_wstring(q->offset + static_cast<int>(i) + 1));
+                n.FontSize(12);
+                n.Foreground(secondary);
+                lead = n;
+            }
+            lead.VerticalAlignment(VerticalAlignment::Center);
+            row.Children().Append(lead);
+            StackPanel texts;
+            Grid::SetColumn(texts, 1);
+            TextBlock t;
+            t.Text(e.title.empty() ? std::wstring(Str(L"UnknownTitle")) : Widen(e.title));
+            t.TextTrimming(TextTrimming::CharacterEllipsis);
+            t.TextWrapping(TextWrapping::NoWrap);
+            if (active)
+            {
+                t.Foreground(accent);
+                t.FontWeight(Microsoft::UI::Text::FontWeights::SemiBold());
+            }
+            texts.Children().Append(t);
+            if (!e.subtitle.empty())
+            {
+                TextBlock st;
+                st.Text(Widen(e.subtitle));
+                st.FontSize(12);
+                st.Foreground(secondary);
+                st.TextTrimming(TextTrimming::CharacterEllipsis);
+                st.TextWrapping(TextWrapping::NoWrap);
+                texts.Children().Append(st);
+            }
+            row.Children().Append(texts);
+            row.Tag(box_value(e.id));
+            list.Items().Append(row);
+            if (active) current = row;
+        }
+        if (current) list.ScrollIntoView(current, ScrollIntoViewAlignment::Leading);
+    }
+
     void MainWindow::UpdateA2dpQuick()
     {
         auto const& st = Controller::Get().Model();
@@ -838,6 +980,7 @@ namespace winrt::MediaDuetUI::implementation
         UpdatePlayState();
         PrevButton().IsEnabled(s->Has("previous"));
         NextButton().IsEnabled(s->Has("next"));
+        UpdateExtras();
 
         m_updatingSlider = true;
         ProgressSlider().Maximum(s->durationMs > 0 ? static_cast<double>(s->durationMs) : 1.0);

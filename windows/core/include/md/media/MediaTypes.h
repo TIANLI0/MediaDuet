@@ -13,7 +13,9 @@ using json = nlohmann::json;
 
 enum class PlaybackStatus { Unknown, Playing, Paused, Stopped, Buffering };
 enum class MediaKind { Music, Video, Other };
-enum class CommandAction { Play, Pause, Toggle, Next, Previous, Seek, Stop };
+// Custom (the player's own button, MediaCommand::customAction) and PlayQueueItem
+// (MediaCommand::queueId) are never part of a session's `actions` bit set.
+enum class CommandAction { Play, Pause, Toggle, Next, Previous, Seek, Stop, Custom, PlayQueueItem };
 enum class Origin { User, Policy };
 
 namespace action {
@@ -41,6 +43,42 @@ struct ArtworkRef {
     bool operator==(const ArtworkRef&) const = default;
 };
 
+// A player's own button (Android custom action: like, favourite, ...); spec §8.3.
+struct CustomAction {
+    std::string id;
+    std::string title;
+    std::optional<ArtworkRef> icon; // small PNG with alpha, fetched like artwork
+    bool operator==(const CustomAction&) const = default;
+};
+inline constexpr size_t kMaxCustomActions = 8;
+
+// The session exposes a play queue: fetch it (media.queue.get) when rev changes.
+struct QueueHint {
+    int count = 0;
+    std::string rev;
+    std::optional<int64_t> activeId;
+    bool operator==(const QueueHint&) const = default;
+};
+
+struct QueueEntry {
+    int64_t id = 0;
+    std::string title;
+    std::string subtitle;
+};
+
+// media.queue: a window of up to 300 entries (offset = index of the first one).
+struct MediaQueue {
+    std::string key;
+    std::string rev;
+    std::string title;
+    std::optional<int64_t> activeId;
+    int total = 0;
+    int offset = 0;
+    std::vector<QueueEntry> items;
+};
+std::optional<MediaQueue> queueFromWire(const json& j, std::string* err = nullptr);
+json toJson(const MediaQueue& q);
+
 struct MediaSessionInfo {
     std::string key;
     std::string appId;
@@ -63,6 +101,8 @@ struct MediaSessionInfo {
     // Estimated delay (ms, 0..2000) between the reported position and the sound
     // being audible on the playing device (e.g. a Bluetooth headset); spec §8.3.
     std::optional<int> outputLatencyMs;
+    std::vector<CustomAction> customActions;
+    std::optional<QueueHint> queue;
 
     // Local monotonic time (ms) at which positionMs was valid. Not serialised.
     int64_t positionAtMs = 0;
@@ -112,6 +152,8 @@ struct MediaCommand {
     std::optional<int64_t> positionMs;
     Origin origin = Origin::User;
     std::string reason;
+    std::string customAction;       // CommandAction::Custom
+    std::optional<int64_t> queueId; // CommandAction::PlayQueueItem
 };
 json toWire(const MediaCommand& c);
 std::optional<MediaCommand> commandFromWire(const json& j, std::string* err = nullptr);

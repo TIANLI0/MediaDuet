@@ -64,6 +64,7 @@ class PlayerService : Service() {
     @Volatile private var playing = false
     private var engine: Thread? = null
     private var foreground = false
+    private val liked = HashSet<Int>() // custom action "like" per track (fixture for MediaDuet's player buttons)
 
     override fun onCreate() {
         super.onCreate()
@@ -79,7 +80,31 @@ class PlayerService : Service() {
                 override fun onSkipToPrevious() = skip(-1)
                 override fun onSeekTo(pos: Long) = seek(pos)
                 override fun onStop() = stopPlayback()
+                override fun onSkipToQueueItem(id: Long) {
+                    val wasPlaying = playing
+                    pause()
+                    index = id.toInt().coerceIn(0, tracks.size - 1)
+                    positionMs = 0
+                    updateMetadata()
+                    if (wasPlaying) play() else updateState()
+                    Log.i(TAG, "queue item $id")
+                }
+                override fun onCustomAction(action: String, extras: android.os.Bundle?) {
+                    if (action == ACTION_LIKE) {
+                        if (!liked.add(index)) liked.remove(index)
+                        Log.i(TAG, "like ${tracks[index].title}: ${index in liked}")
+                        updateState()
+                    }
+                }
             })
+            // The play queue (all fixture tracks), for MediaDuet's "Up next".
+            setQueue(tracks.mapIndexed { i, t ->
+                MediaSession.QueueItem(
+                    android.media.MediaDescription.Builder().setMediaId("t$i").setTitle(t.title).setSubtitle(t.artist).build(),
+                    i.toLong(),
+                )
+            })
+            setQueueTitle("Fixture queue")
             isActive = true
         }
         updateMetadata()
@@ -267,6 +292,13 @@ class PlayerService : Service() {
                         PlaybackState.ACTION_SEEK_TO or PlaybackState.ACTION_STOP,
                 )
                 .setState(state, positionMs, if (playing) 1f else 0f, SystemClock.elapsedRealtime())
+                .setActiveQueueItemId(index.toLong())
+                .addCustomAction(
+                    PlaybackState.CustomAction.Builder(
+                        ACTION_LIKE, if (index in liked) "Liked" else "Like",
+                        if (index in liked) R.drawable.ic_heart else R.drawable.ic_heart_outline,
+                    ).build(),
+                )
                 .build(),
         )
         if (foreground) getSystemService(NotificationManager::class.java).notify(1, notification())
@@ -285,6 +317,7 @@ class PlayerService : Service() {
     companion object {
         private const val TAG = "TestPlayer"
         private const val CHANNEL = "player"
+        private const val ACTION_LIKE = "app.mediaduet.testplayer.LIKE"
 
         fun send(context: Context, action: String) {
             context.startForegroundService(Intent(context, PlayerService::class.java).setAction(action))

@@ -89,17 +89,26 @@ std::vector<LanEndpoint> ConnectionManager::lanCandidates(const Peer& p) const {
         auto it = p.eps.find(e.str());
         return it == p.eps.end() ? nullptr : &it->second;
     };
+    // The phone's own report of its current addresses comes first: on networks where it
+    // changes address often (and DNS-SD does not get through) the last good / manual address
+    // is usually the stale one. Peer-reported addresses (VPN, cellular, virtual interfaces
+    // ...) are only trusted for a while unless one of them actually worked; a candidate that
+    // never handshakes is raced and demoted (see below), so trying them first costs little.
+    auto fresh = [&](const LanEndpoint& e) {
+        const auto* i = info(e);
+        return i && i->reportedAt >= 0 && now - i->reportedAt <= cfg_.peerEndpointTtlMs;
+    };
+    auto confirmed = [&](const LanEndpoint& e) {
+        const auto* i = info(e);
+        return i && i->lastUp >= 0 && now - i->lastUp <= cfg_.peerEndpointTtlMs;
+    };
+    for (auto& e : p.reported)
+        if (fresh(e)) add(e);
     if (p.lastGood) add(*p.lastGood);
     for (auto& e : p.mdns) add(e);
     for (auto& e : p.rec.manualEndpoints) add(e);
-    for (auto& e : p.reported) {
-        // Peer-reported addresses (VPN, cellular, virtual interfaces ...) are only
-        // trusted for a while unless one of them actually worked.
-        const auto* i = info(e);
-        bool fresh = i && i->reportedAt >= 0 && now - i->reportedAt <= cfg_.peerEndpointTtlMs;
-        bool confirmed = i && i->lastUp >= 0 && now - i->lastUp <= cfg_.peerEndpointTtlMs;
-        if (fresh || confirmed) add(e);
-    }
+    for (auto& e : p.reported)
+        if (confirmed(e)) add(e);
     std::vector<LanEndpoint> ok, cooling;
     for (auto& e : ranked) {
         const auto* i = info(e);
@@ -231,6 +240,8 @@ void ConnectionManager::setPeers(std::vector<PeerRecord> peers) {
             np->lan.retry.bind(&sched_);
             np->bt.heartbeat.bind(&sched_);
             np->lan.heartbeat.bind(&sched_);
+            np->bt.pongCheck.bind(&sched_);
+            np->lan.pongCheck.bind(&sched_);
             np->promote.bind(&sched_);
             np->rec = rec;
             peers_[id] = std::move(np);
@@ -608,7 +619,46 @@ void ConnectionManager::armHeartbeat(Peer& p, Slot& s) {
         }
         s.conn->sendEnvelope(p->session.make(proto::types::Ping, {{"t", sched_.nowMs()}}));
         ++p->msgsOut;
+        armPongCheck(*p, s);
         armHeartbeat(*p, s);
+    });
+}
+
+void ConnectionManager::armPongCheck(Peer& p, Slot& s) {
+    // Every ping is answered within milliseconds on a live link. No answer at all within
+    // kPongWaitMs: probe once more and give up after a second silent wait. A phone that
+    // changed its IP is noticed in ~2 x kPongWaitMs instead of after three heartbeats.
+    std::string peerId = p.rec.id;
+    TransportKind k = s.kind;
+    uint64_t connId = s.conn->id();
+    int64_t sentAt = sched_.nowMs();
+    s.pongCheck.start(kPongWaitMs, [this, peerId, k, connId, sentAt] {
+        Peer* p = find(peerId);
+        if (!p) return;
+        Slot& s = slot(*p, k);
+        if (!s.conn || s.conn->id() != connId || s.conn->state() != Connection::State::Up) return;
+        if (s.conn->lastReceiveMs() >= sentAt) return; // answered
+        probe(*p, s, "no answer to a heartbeat");
+    });
+}
+
+void ConnectionManager::probe(Peer& p, Slot& s, const std::string& why) {
+    if (!s.conn || s.conn->state() != Connection::State::Up) return;
+    std::string peerId = p.rec.id;
+    TransportKind k = s.kind;
+    uint64_t connId = s.conn->id();
+    int64_t sentAt = sched_.nowMs();
+    log::info("link", "probing the {} link to {} ({})", toString(k), p.rec.name, why);
+    s.conn->sendEnvelope(p.session.make(proto::types::Ping, {{"t", sentAt}}));
+    ++p.msgsOut;
+    s.pongCheck.start(kPongWaitMs, [this, peerId, k, connId, sentAt] {
+        Peer* p = find(peerId);
+        if (!p) return;
+        Slot& s = slot(*p, k);
+        if (!s.conn || s.conn->id() != connId || s.conn->state() != Connection::State::Up) return;
+        if (s.conn->lastReceiveMs() >= sentAt) return; // alive after all
+        log::warn("link", "{} link to {} does not answer, closing", toString(k), p->rec.name);
+        s.conn->close("no answer to probe");
     });
 }
 
@@ -666,11 +716,35 @@ void ConnectionManager::onConnEnvelope(Peer& p, Connection& c, proto::Envelope e
                 if (ep.host.empty() || ep.host.size() > 64 || ep.port == 0) continue;
                 eps.push_back(ep);
             }
+            int64_t now = sched_.nowMs();
+            bool anyNew = false;
             for (auto& ep : eps) {
-                if (std::find(p.reported.begin(), p.reported.end(), ep) == p.reported.end()) p.reported.push_back(ep);
-                p.eps[ep.str()].reportedAt = sched_.nowMs();
+                anyNew |= std::find(p.reported.begin(), p.reported.end(), ep) == p.reported.end();
+                auto& info = p.eps[ep.str()];
+                info.reportedAt = now;
+                info.coolUntil = -1; // the phone says it has this address right now
             }
+            // The report is the phone's complete current list: addresses it no longer has are
+            // dropped at once instead of lingering for the TTL.
+            for (auto& old : p.reported)
+                if (std::find(eps.begin(), eps.end(), old) == eps.end()) p.eps[old.str()].reportedAt = -1;
+            p.reported = eps;
             listener_.onPeerEndpoints(p.rec.id, eps);
+            Slot& ls = p.lan;
+            if (ls.conn && ls.currentEp && !eps.empty() &&
+                std::find(eps.begin(), eps.end(), *ls.currentEp) == eps.end()) {
+                // Our LAN link uses an address the phone no longer reports (its IP changed):
+                // find out now instead of waiting for heartbeats.
+                probe(p, ls, "the phone's address changed");
+            }
+            if (!ls.conn && anyNew && ls.inFlight == 0) {
+                // A new address: no back-off, start from the best candidate (= the report).
+                log::info("link", "{} reports new LAN address(es); connecting now", p.rec.name);
+                ls.retry.cancel();
+                ls.failures = 0;
+                ls.endpointCursor = 0;
+                ls.cycle.clear();
+            }
             evaluate(p);
         }
         listener_.onEnvelope(p.rec.id, e, c.id()); // e.g. btAddress for LAN-paired phones

@@ -57,6 +57,33 @@ namespace mdui
         std::string error;   // e.g. "background_restricted" (Android blocks background volume changes)
     };
 
+    // A player's own button (phone apps: like / favourite, ...); iconPath: cached PNG, may be empty.
+    struct CustomAction
+    {
+        std::string id;
+        std::string title;
+        std::string iconPath;
+    };
+
+    struct QueueEntry
+    {
+        int64_t id{ 0 };
+        std::string title;
+        std::string subtitle;
+    };
+
+    // Play queue of a session (host message "queue"); items is a window starting at offset.
+    struct Queue
+    {
+        std::string key;
+        std::string title;
+        int64_t activeId{ -1 };
+        bool hasActive{ false };
+        int total{ 0 };
+        int offset{ 0 };
+        std::vector<QueueEntry> items;
+    };
+
     struct Session
     {
         Side side{ Side::Local };
@@ -85,6 +112,8 @@ namespace mdui
         int64_t lyricsDelayMs{ 0 };
         int64_t outputLatencyMs{ 0 };
         bool hasLyricsDelay{ false };    // the host reports lyricsDelayMs (and accepts lyrics.offset)
+        std::vector<CustomAction> customActions;
+        int queueCount{ 0 };             // > 0: the session has a play queue ("queue" message)
 
         bool Has(std::string_view action) const;
         bool IsPlaying() const { return status == "playing"; }
@@ -266,6 +295,8 @@ namespace mdui
         // Manual lyrics offset for an app (settings lyrics.offsets[appId], ms; app ids contain dots).
         int64_t LyricsOffset(std::string const& appId) const;
     };
+
+    Queue ParseQueue(json const& j);
 
     State ParseState(json const& j, uint64_t receivedTick);
 

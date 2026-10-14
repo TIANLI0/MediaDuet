@@ -14,7 +14,7 @@
 #>
 param(
     [ValidateSet('x64', 'ARM64')] [string]$Arch = 'x64',
-    [string]$Version = '1.3.1',
+    [string]$Version = '1.4.0',
     [switch]$SkipTests
 )
 $ErrorActionPreference = 'Stop'
@@ -57,12 +57,28 @@ New-Item -ItemType Directory -Force $dist | Out-Null
 # UI first (it brings the self-contained Windows App SDK runtime), then the host.
 Copy-Item (Join-Path $uiExe.DirectoryName '*') $dist -Recurse -Force
 Copy-Item (Join-Path $build 'MediaDuet.exe') $dist
-Copy-Item (Join-Path $build 'MediaDuetProbe.exe') $dist
 Copy-Item (Join-Path $win 'app\resources\app_512.png') (Join-Path $dist 'MediaDuet.png')
 Copy-Item (Join-Path $root 'LICENSE') $dist
 Copy-Item (Join-Path $root 'README.md') $dist
 Copy-Item (Join-Path $root 'docs\THIRD_PARTY_NOTICES.md') $dist -ErrorAction SilentlyContinue
 Get-ChildItem $dist -Include *.pdb, *.lib, *.exp, *.winmd -Recurse | Remove-Item -Force
+# Trim the self-contained Windows App SDK to what MediaDuet uses (checked with the off-screen
+# render test: main window, settings pages, mini player):
+#  * WinUI's own translations only for the languages the UI has (English, Chinese); others fall
+#    back to English,
+#  * WebView2 interop, push-notification and restart helpers, the design-time DLL and the map
+#    control's page: none of these features are used.
+#  Microsoft.UI.Xaml.Phone.dll stays: the settings controls need it.
+$keepLanguages = 'en-us', 'en-GB', 'zh-CN', 'zh-TW'
+Get-ChildItem $dist -Directory | Where-Object {
+    $_.Name -match '^[a-z]{2,3}(-[A-Za-z]{2,4})*(-[A-Za-z0-9]+)?$' -and $keepLanguages -notcontains $_.Name -and
+    (Test-Path (Join-Path $_.FullName 'Microsoft.ui.xaml.dll.mui'))
+} | Remove-Item -Recurse -Force
+foreach ($f in 'Microsoft.Web.WebView2.Core.dll', 'PushNotificationsLongRunningTask.ProxyStub.dll', 'RestartAgent.exe',
+                'Microsoft.UI.Designer.dll') {
+    Remove-Item (Join-Path $dist $f) -Force -ErrorAction SilentlyContinue
+}
+Remove-Item (Join-Path $dist 'Microsoft.UI.Xaml') -Recurse -Force -ErrorAction SilentlyContinue
 # Lyrics typeface (HarmonyOS Sans SC, Assets\Fonts via the UI output): shipped unmodified and only
 # together with its licence (the in-app notice is in Settings > About).
 foreach ($f in 'HarmonyOS_Sans_SC_Medium.ttf', 'HarmonyOS_Sans_SC_Bold.ttf', 'HarmonyOS_Sans_LICENSE.txt') {

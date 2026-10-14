@@ -2,6 +2,8 @@ package app.mediaduet.media
 
 import app.mediaduet.protocol.Action
 import app.mediaduet.protocol.ArtworkRef
+import app.mediaduet.protocol.CustomAction
+import app.mediaduet.protocol.QueueHint
 import app.mediaduet.protocol.MediaKind
 import app.mediaduet.protocol.MediaSessionInfo
 import app.mediaduet.protocol.MediaSnapshot
@@ -60,6 +62,10 @@ data class LocalSessionState(
     val artwork: ArtworkRef?,
     /** Monotonic time of the last metadata/state change (used to pick the active session). */
     val lastChangeMs: Long,
+    /** The player's own buttons (PlaybackState.CustomAction). */
+    val customActions: List<CustomAction> = emptyList(),
+    /** The player's queue, when it exposes one. */
+    val queue: QueueHint? = null,
 ) {
     val status: String
         get() = if (!hasPlaybackState) PlayStatus.UNKNOWN else when (state) {
@@ -128,6 +134,8 @@ data class LocalSessionState(
             artwork = artwork,
             kind = kind(),
             outputLatencyMs = outputLatencyMs,
+            customActions = customActions,
+            queue = queue,
         )
     }
 }

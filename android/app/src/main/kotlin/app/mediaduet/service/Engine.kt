@@ -39,6 +39,7 @@ import app.mediaduet.protocol.MediaCommand
 import app.mediaduet.protocol.MediaSnapshot
 import app.mediaduet.protocol.PolicyStatus
 import app.mediaduet.protocol.SinkState
+import app.mediaduet.protocol.MediaQueue
 import app.mediaduet.lyrics.LyricsRepository
 import app.mediaduet.media.TargetChoice
 import app.mediaduet.remote.MirrorSessionController
@@ -347,9 +348,15 @@ class Engine private constructor(private val app: Context) : LinkHost {
     override fun bluetoothName(): String? = transports.bluetoothName()
 
     /** Executes a user command on a phone session directly through its MediaController. */
-    suspend fun executeLocal(key: String?, action: String, positionMs: Long? = null): CommandResult {
+    suspend fun executeLocal(
+        key: String?,
+        action: String,
+        positionMs: Long? = null,
+        customAction: String? = null,
+        queueId: Long? = null,
+    ): CommandResult {
         val result = withContext(Dispatchers.Main) {
-            media.execute(MediaCommand(key, action, positionMs, MediaCommand.ORIGIN_USER, "android_ui"))
+            media.execute(MediaCommand(key, action, positionMs, MediaCommand.ORIGIN_USER, "android_ui", customAction, queueId))
         }
         requestSnapshot()
         return result
@@ -374,6 +381,7 @@ class Engine private constructor(private val app: Context) : LinkHost {
         lyrics.onPcNone(trackId, remote.sessionForTrack(trackId)?.let(LyricsRepository::songOf))
     override fun onPolicyStatus(peerId: String, status: PolicyStatus) = remote.onPolicyStatus(status)
     override fun onSinkState(peerId: String, state: SinkState) = remote.onSinkState(state)
+    override fun mediaQueue(key: String): MediaQueue? = media.queues.value[key]
 
     /**
      * "Play on the PC": asks the PC to receive this phone's Bluetooth audio (Windows A2DP sink).

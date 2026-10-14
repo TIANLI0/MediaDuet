@@ -212,6 +212,7 @@ lyrics view for such a change; the host re-keys the current lyrics to the new
 | `device.disconnect` | `id` | Disconnect and pause auto-reconnect until `device.connect`. |
 | `connect.manual` | `host`, `port` | Remember a manual LAN endpoint for the paired phone and connect. |
 | `discover` | `enable` (bool) | Start/stop discovery (BT paired phones with the MediaDuet SDP record + DNS-SD). |
+| `media.command` extras | `action:"custom"` + `customAction` (id), `action:"playQueueItem"` + `queueId` | The phone app's own buttons (`customActions` in a session: `{id, title, iconPath}`, the icon a cached PNG) and its play queue. Sessions with a queue carry `queue: {count, rev, activeId}`; the host fetches the list from the phone and pushes `{"type":"queue","side":"remote","key":…,"queue":{key, rev, title, activeId, total, offset, items:[{id,title,subtitle}]}}` (or `"queue": null` when it is gone), also right after `hello`. |
 | `audio.a2dpSink` | `enable` | Open/close Bluetooth audio receive (AudioPlaybackConnection). `state.audio.a2dpSink.errorCode` ∈ `no_device`, `ambiguous`, `timeout`, `denied`, `failed` (same codes the phone gets in `audio.sink.state`). The phone can switch it too (`audio.sink.set`), and the tray menu has a check item while a phone offers Bluetooth audio. |
 | `audio.lanSend` | `enable` | Start/stop experimental Windows → Android PCM streaming. |
 | `lyrics.overlay` | `visible` | Show/hide the desktop lyrics overlay (rendered by the host). |

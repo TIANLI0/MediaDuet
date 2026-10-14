@@ -34,8 +34,43 @@ class ArtworkProcessor(private val context: Context, private val scope: Coroutin
     private val perSession = HashMap<String, SessionArt>()
     private val jobs = HashMap<String, Job>()
 
-    /** Encoded JPEG for [hash], or null when unknown / evicted. */
-    fun bytes(hash: String): ByteArray? = cache.get(hash)
+    /** Encoded JPEG (artwork) or PNG (custom-action icon) for [hash], or null when unknown / evicted. */
+    fun bytes(hash: String): ByteArray? = cache.get(hash) ?: synchronized(icons) { iconBytes[hash] }
+
+    // Custom-action icons: rendered once per (package, resource), never evicted (a few KB each).
+    private val icons = HashMap<String, ArtworkRef?>()
+    private val iconBytes = HashMap<String, ByteArray>()
+
+    /**
+     * Icon [resId] of [pkg] (a `PlaybackState.CustomAction` icon) as a [ICON_EDGE] px PNG with
+     * alpha, addressed by SHA-256 and served by [bytes]; null when it cannot be loaded.
+     */
+    fun icon(pkg: String, resId: Int): ArtworkRef? {
+        if (resId == 0) return null
+        val key = "$pkg:$resId"
+        synchronized(icons) { if (key in icons) return icons[key] }
+        val ref = try {
+            val res = context.packageManager.getResourcesForApplication(pkg)
+            @Suppress("DEPRECATION")
+            val drawable = res.getDrawable(resId)
+            val bitmap = Bitmap.createBitmap(ICON_EDGE, ICON_EDGE, Bitmap.Config.ARGB_8888)
+            drawable.setBounds(0, 0, ICON_EDGE, ICON_EDGE)
+            drawable.draw(android.graphics.Canvas(bitmap))
+            val out = ByteArrayOutputStream(4 * 1024)
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+            val bytes = out.toByteArray()
+            val hash = Hex.encode(sha256(bytes))
+            synchronized(icons) {
+                if (iconBytes.size < MAX_ICONS) iconBytes[hash] = bytes
+            }
+            ArtworkRef(hash, "image/png", bytes.size)
+        } catch (e: Exception) {
+            MdLog.w(TAG, "custom action icon $key: $e")
+            null
+        }
+        synchronized(icons) { icons[key] = ref }
+        return ref
+    }
 
     @Synchronized
     fun refFor(sessionKey: String): ArtworkRef? = perSession[sessionKey]?.ref?.takeIf { cache.get(it.hash) != null }
@@ -164,5 +199,7 @@ class ArtworkProcessor(private val context: Context, private val scope: Coroutin
     companion object {
         private const val TAG = "MD/Artwork"
         const val MAX_EDGE = 512
+        const val ICON_EDGE = 72
+        private const val MAX_ICONS = 128
     }
 }

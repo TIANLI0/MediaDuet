@@ -320,7 +320,7 @@ class FakeHost:
                          "connected": True, "transport": "bt", "lastSeen": int(time.time() * 1000)}]
         self.connection_status = "connected"
         # App versions (DeviceInfo.app): this PC and the phone (--phone-version, e.g. 1.1.0 -> mismatch warning).
-        self.self_app = "1.3.1"
+        self.self_app = "1.4.0"
         for d in self.devices:
             d["app"] = args.phone_version
             d["versionMatch"] = version_match(self.self_app, args.phone_version)
@@ -343,7 +343,11 @@ class FakeHost:
                   "title": "测试曲目 · Test Track One", "artist": "Fake Host Ensemble", "album": "Test Album (fake data)",
                   "durationMs": 245000, "positionMs": 9000, "atTick": now, "rate": 1.0, "status": "playing",
                   "actions": ["play", "pause", "next", "previous", "seek"], "artworkPath": self.art_a,
-                  "kind": "music", "policyState": "playing", "source": "remote"}
+                  "kind": "music", "policyState": "playing", "source": "remote",
+                  # The phone app's own buttons and a play queue (media.queue, sent after hello).
+                  "customActions": [{"id": "like", "title": "喜欢 Like", "iconPath": None},
+                                    {"id": "mode", "title": "随机 Shuffle", "iconPath": None}],
+                  "queue": {"count": 24, "rev": "fake1", "activeId": 3}}
         local1 = {"_side": "local", "key": "Spotify.exe", "app": {"id": "Spotify.exe", "name": "Spotify"},
                   "title": "Second Test Song", "artist": "Example Artist", "album": "Example Album",
                   "durationMs": 198000, "positionMs": 61000, "atTick": now, "rate": 1.0, "status": "paused",
@@ -534,6 +538,10 @@ class FakeHost:
 
     def send_hello(self):
         self.send({"type": "hello", "version": "0.0.0-fakehost", "pid": os.getpid(), "language": self.resolved_language()})
+        items = [{"id": i, "title": f"测试曲目 {i + 1} · Queue Track {i + 1}", "subtitle": "Fake Host Ensemble"} for i in range(24)]
+        self.send({"type": "queue", "side": "remote", "key": "com.example.testplayer#1",
+                   "queue": {"key": "com.example.testplayer#1", "rev": "fake1", "title": "我喜欢的音乐 · Liked", "activeId": 3,
+                             "total": 24, "offset": 0, "items": items}})
 
     def push_state(self):
         self.send(self.state())
@@ -851,7 +859,7 @@ def main():
     p.add_argument("--theme", choices=["system", "light", "dark"])
     p.add_argument("--scenario", default="playing",
                    choices=["playing", "idle", "nopeer", "firstrun", "standalone", "pairing", "stale-pairing", "compat"])
-    p.add_argument("--phone-version", default="1.3.1", help="the phone's app version (e.g. 1.1.0: version warning)")
+    p.add_argument("--phone-version", default="1.4.0", help="the phone's app version (e.g. 1.1.0: version warning)")
     p.add_argument("--no-lyrics", action="store_true")
     p.add_argument("--lyrics-loading-ms", type=int, default=0,
                    help="answer 'loading' first and send the lyrics after this many ms (layout hold test)")

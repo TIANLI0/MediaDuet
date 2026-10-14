@@ -367,4 +367,11 @@
     <string name="lyrics_size_small">小</string>
     <string name="lyrics_size_standard">标准</string>
     <string name="lyrics_size_large">大</string>
+
+    <!-- 1.4.0: player buttons and play queue -->
+    <string name="queue_title">接下来播放</string>
+    <string name="queue_now_playing">正在播放</string>
+    <plurals name="queue_count">
+        <item quantity="other">%1$d 首</item>
+    </plurals>
 </resources>

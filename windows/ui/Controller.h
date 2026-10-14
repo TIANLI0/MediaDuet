@@ -78,6 +78,11 @@ namespace mdui
         // Commands (docs/ipc.md "UI -> Host") ------------------------------------------------
         int64_t Send(json message);
         void Media(Side side, std::string const& key, std::string const& action, std::optional<int64_t> positionMs = {});
+        // The player's own button / a queue entry of a phone session.
+        void PressCustomAction(Side side, std::string const& key, std::string const& id);
+        void PlayQueueItem(Side side, std::string const& key, int64_t queueId);
+        // Play queue of a session (remote sessions only), null when it has none.
+        Queue const* QueueFor(Side side, std::string const& key) const;
         void SetFocus(std::optional<Side> side, std::string const& key, bool automatic);
         void SetSetting(std::string_view path, json value);
         void SetSettings(json patch);
@@ -137,6 +142,7 @@ namespace mdui
         HostLink m_link{ HostLink::Connecting };
         uint64_t m_hostLaunchDeadline{ 0 };
         State m_state;
+        std::map<std::string, Queue> m_queues;   // remote session key -> queue
         Lyrics m_lyrics;
         json m_diagnostics = json::object();
         std::string m_hostVersion;

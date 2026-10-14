@@ -17,7 +17,9 @@ using namespace winrt::Windows::Networking;
 using namespace winrt::Windows::Networking::Sockets;
 
 namespace {
-constexpr std::chrono::seconds kConnectTimeout{6};
+// A LAN peer answers a TCP connect within milliseconds; a vanished address (the phone's IP
+// changed) should cost little, the next candidate races it anyway.
+constexpr std::chrono::seconds kConnectTimeout{3};
 }
 
 void connectTcp(IScheduler& sched, const link::LanEndpoint& ep, link::ITransportFactory::Done done) {

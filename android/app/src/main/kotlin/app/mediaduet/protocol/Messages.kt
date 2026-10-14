@@ -40,6 +40,8 @@ object MsgType {
     const val BYE = "bye"
     const val VOLUME_STATE = "volume.state"
     const val VOLUME_SET = "volume.set"
+    const val MEDIA_QUEUE_GET = "media.queue.get"
+    const val MEDIA_QUEUE = "media.queue"
 }
 
 object Caps {
@@ -137,6 +139,126 @@ object Action {
     const val SEEK = "seek"
     const val STOP = "stop"
     val ALL = listOf(PLAY, PAUSE, TOGGLE, NEXT, PREVIOUS, SEEK, STOP)
+
+    /** The app's own button ([MediaSessionInfo.customActions]); needs `customAction`. Never listed in `actions`. */
+    const val CUSTOM = "custom"
+    /** Play an entry of the session's queue (`media.queue`); needs `queueId`. Never listed in `actions`. */
+    const val PLAY_QUEUE_ITEM = "playQueueItem"
+}
+
+/**
+ * A player's own button (Android `PlaybackState.CustomAction`: like, favourite, shuffle, …).
+ * [icon] is a small PNG with alpha fetched like artwork (`artwork.get`); receivers tint it.
+ */
+data class CustomAction(val id: String, val title: String, val icon: ArtworkRef?) {
+    fun toJson(): JsonObject = buildJsonObject {
+        put("id", id.truncateCodePoints(MAX_ID))
+        put("title", title.truncateCodePoints(MAX_TITLE))
+        if (icon != null) put("icon", icon.toJson())
+    }
+
+    companion object {
+        const val MAX_ID = 128
+        const val MAX_TITLE = 64
+        const val MAX_COUNT = 8
+
+        /** Lenient: malformed entries are skipped (forward compatibility). */
+        fun parseList(e: kotlinx.serialization.json.JsonElement?): List<CustomAction> {
+            val array = e as? JsonArray ?: return emptyList()
+            return array.take(MAX_COUNT).mapNotNull { item ->
+                try {
+                    val o = item as? JsonObject ?: return@mapNotNull null
+                    val id = o.requireString("id", MAX_ID).takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+                    // A bad icon only loses the icon, not the button.
+                    val icon = try { o.optObject("icon")?.let { ArtworkRef.parse(it) } } catch (e: BadMessageException) { null }
+                    CustomAction(id, o.optString("title", MAX_TITLE) ?: "", icon)
+                } catch (e: BadMessageException) {
+                    null
+                }
+            }
+        }
+    }
+}
+
+/** The session has a play queue ([count] entries); fetch it with `media.queue.get` when [rev] changes. */
+data class QueueHint(val count: Int, val rev: String, val activeId: Long?) {
+    fun toJson(): JsonObject = buildJsonObject {
+        put("count", count)
+        put("rev", rev)
+        if (activeId != null) put("activeId", activeId)
+    }
+
+    companion object {
+        fun parseLenient(e: kotlinx.serialization.json.JsonElement?): QueueHint? = try {
+            (e as? JsonObject)?.let { o ->
+                val count = o.optLong("count")?.takeIf { it > 0 } ?: return@let null
+                QueueHint(count.coerceAtMost(100_000).toInt(), o.optString("rev", 64) ?: "", o.optLong("activeId"))
+            }
+        } catch (e: BadMessageException) {
+            null
+        }
+    }
+}
+
+data class QueueEntry(val id: Long, val title: String, val subtitle: String) {
+    fun toJson(): JsonObject = buildJsonObject {
+        put("id", id)
+        put("title", title.truncateCodePoints(StrLimit.TEXT))
+        put("subtitle", subtitle.truncateCodePoints(StrLimit.TEXT))
+    }
+}
+
+/**
+ * `media.queue` (answer to `media.queue.get`): up to [MAX_ITEMS] entries of a session's queue (a
+ * window around the current entry when longer; [offset] = index of the first one).
+ */
+data class MediaQueue(
+    val key: String,
+    val rev: String,
+    val title: String,
+    val activeId: Long?,
+    val total: Int,
+    val offset: Int,
+    val items: List<QueueEntry>,
+) {
+    fun toJson(): JsonObject = buildJsonObject {
+        put("key", key.truncateCodePoints(StrLimit.SESSION_KEY))
+        put("rev", rev)
+        put("title", title.truncateCodePoints(StrLimit.TEXT))
+        if (activeId != null) put("activeId", activeId)
+        put("total", total)
+        put("offset", offset)
+        put("items", JsonArray(items.take(MAX_ITEMS).map { it.toJson() }))
+    }
+
+    companion object {
+        const val MAX_ITEMS = 300
+
+        fun parse(o: JsonObject): MediaQueue {
+            val items = (o.optArray("items") ?: JsonArray(emptyList())).take(MAX_ITEMS).mapNotNull { e ->
+                val i = e as? JsonObject ?: return@mapNotNull null
+                val id = i.optLong("id") ?: return@mapNotNull null
+                QueueEntry(id, i.optString("title", StrLimit.TEXT) ?: "", i.optString("subtitle", StrLimit.TEXT) ?: "")
+            }
+            return MediaQueue(
+                key = o.requireString("key", StrLimit.SESSION_KEY),
+                rev = o.optString("rev", 64) ?: "",
+                title = o.optString("title", StrLimit.TEXT) ?: "",
+                activeId = o.optLong("activeId"),
+                total = (o.optLong("total") ?: items.size.toLong()).coerceIn(0, 100_000).toInt(),
+                offset = (o.optLong("offset") ?: 0).coerceIn(0, 100_000).toInt(),
+                items = items,
+            )
+        }
+
+        /** At most [MAX_ITEMS] entries: the whole queue, or a window that keeps the active entry. */
+        fun window(all: List<QueueEntry>, activeId: Long?): Pair<Int, List<QueueEntry>> {
+            if (all.size <= MAX_ITEMS) return 0 to all
+            val at = all.indexOfFirst { it.id == activeId }.coerceAtLeast(0)
+            val start = (at - 20).coerceIn(0, all.size - MAX_ITEMS)
+            return start to all.subList(start, start + MAX_ITEMS)
+        }
+    }
 }
 
 object MediaKind {
@@ -169,6 +291,10 @@ data class MediaSessionInfo(
      * being audible on the device that plays it (e.g. Bluetooth headphones). Optional; null = unknown.
      */
     val outputLatencyMs: Int? = null,
+    /** The player's own buttons (like / favourite, …); optional. */
+    val customActions: List<CustomAction> = emptyList(),
+    /** Present when the player exposes a play queue (`media.queue.get`). */
+    val queue: QueueHint? = null,
 ) {
     val isPlaying: Boolean get() = status == PlayStatus.PLAYING
 
@@ -192,6 +318,8 @@ data class MediaSessionInfo(
         put("kind", kind)
         if (volume != null) put("volume", volume.toJson())
         if (outputLatencyMs != null) put("outputLatencyMs", outputLatencyMs.coerceIn(0, MAX_OUTPUT_LATENCY_MS))
+        if (customActions.isNotEmpty()) put("customActions", JsonArray(customActions.take(CustomAction.MAX_COUNT).map { it.toJson() }))
+        if (queue != null) put("queue", queue.toJson())
     }
 
     companion object {
@@ -232,6 +360,8 @@ data class MediaSessionInfo(
                 kind = kind,
                 volume = AppVolume.parseLenient(o["volume"]),
                 outputLatencyMs = parseOutputLatency(o),
+                customActions = CustomAction.parseList(o["customActions"]),
+                queue = QueueHint.parseLenient(o["queue"]),
             )
         }
     }
@@ -268,11 +398,17 @@ data class MediaCommand(
     val positionMs: Long?,
     val origin: String,
     val reason: String?,
+    /** [Action.CUSTOM]: the [CustomAction.id]. */
+    val customAction: String? = null,
+    /** [Action.PLAY_QUEUE_ITEM]: the [QueueEntry.id]. */
+    val queueId: Long? = null,
 ) {
     fun toJson(): JsonObject = buildJsonObject {
         if (key != null) put("key", key) else put("key", JsonNull)
         put("action", action)
         if (positionMs != null) put("positionMs", positionMs)
+        if (customAction != null) put("customAction", customAction)
+        if (queueId != null) put("queueId", queueId)
         put("origin", origin)
         if (reason != null) put("reason", reason.truncateCodePoints(StrLimit.MISC))
     }
@@ -287,6 +423,10 @@ data class MediaCommand(
             if (action == Action.SEEK && (position == null || position < 0)) {
                 throw BadMessageException("seek requires positionMs")
             }
+            val custom = o.optString("customAction", CustomAction.MAX_ID)
+            if (action == Action.CUSTOM && custom.isNullOrEmpty()) throw BadMessageException("custom requires customAction")
+            val queueId = o.optLong("queueId")
+            if (action == Action.PLAY_QUEUE_ITEM && queueId == null) throw BadMessageException("playQueueItem requires queueId")
             val origin = o.optString("origin", 32) ?: ORIGIN_USER
             return MediaCommand(
                 key = o.optString("key", StrLimit.SESSION_KEY),
@@ -294,6 +434,8 @@ data class MediaCommand(
                 positionMs = position,
                 origin = if (origin == ORIGIN_POLICY) ORIGIN_POLICY else ORIGIN_USER,
                 reason = o.optString("reason", StrLimit.MISC),
+                customAction = custom,
+                queueId = queueId,
             )
         }
     }

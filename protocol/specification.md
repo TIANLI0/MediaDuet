@@ -331,6 +331,8 @@ HANDSHAKE frames; everything else in SECURE/CONTROL records.
 | `audio.stop` | both | `{streamId, reason}` |
 | `audio.sink.state` | C→S | `{available: bool, state: "off"\|"connecting"\|"on"\|"error", device?: string, error?: string}` — the client's Bluetooth audio receiver (Windows plays the phone's A2DP audio, cap `audio.a2dp_sink`); sent after `session.ready` and on every change. `available`: the phone is a bonded A2DP source of this PC. `error` codes: `no_device` (the phone is not paired with the PC over Bluetooth / offers no A2DP), `ambiguous`, `timeout` (the phone did not accept the audio connection), `denied`, `failed` |
 | `audio.sink.set` | S→C | `{enable: bool}` — asks the client to start / stop receiving the phone's Bluetooth audio (requires cap `audio.a2dp_sink`); answered with `audio.sink.state`. Receiving Bluetooth audio and PC→phone PCM streaming (§9) are mutually exclusive: enabling one stops the other |
+| `media.queue.get` | both | `{key}` — the play queue of one of the receiver's sessions (`queue` in the snapshot); answered with `media.queue` or `error {code:"not_found", re}` |
+| `media.queue` | both | `{key, rev, title, activeId?, total, offset, items:[{id, title, subtitle}]}` with `re` — at most 300 entries: the whole queue, or a window around the current one (`offset` = index of the first entry, `total` = queue length) |
 | `bye` | both | `{reason}` — orderly disconnect (user disconnect, app exit) |
 
 `error.code` values: `not_paired`, `auth_failed`, `version_unsupported`,
@@ -364,7 +366,9 @@ streamed: receivers extrapolate from `positionMs` using a monotonic clock.
       "artwork": {"hash": "<sha256 hex>", "mime": "image/jpeg", "size": 34512},
       "kind": "music",
       "volume": {"level": 0.8, "muted": false},
-      "outputLatencyMs": 180
+      "outputLatencyMs": 180,
+      "customActions": [{"id": "like", "title": "喜欢", "icon": {"hash": "<sha256 hex>", "mime": "image/png", "size": 812}}],
+      "queue": {"count": 37, "rev": "5f0c2a91", "activeId": 12}
     }
   ]
 }
@@ -389,6 +393,15 @@ streamed: receivers extrapolate from `positionMs` using a monotonic clock.
   missing, non-numeric or out-of-range value as unknown (0) and use it to delay
   lyrics for that session (display position = position − outputLatencyMs −
   the user's per-app offset); playback control is unaffected.
+* `customActions` (optional, ≤ 8): the player's own buttons (Android
+  `PlaybackState.CustomAction`: like / favourite, shuffle, repeat …) with `id`
+  (≤ 128), `title` (≤ 64) and an optional `icon`: a small PNG with alpha
+  addressed like artwork (`artwork.get`); receivers tint it. Pressed with
+  `media.command {action:"custom", customAction:id}`. Receivers skip malformed
+  entries.
+* `queue` (optional): the player exposes a play queue of `count` entries;
+  `activeId` is the current entry. Receivers fetch it with `media.queue.get
+  {key}` whenever `rev` changes (a change of `activeId` alone needs no fetch).
 * At most 16 sessions; senders exclude their *own* bridged mirror sessions
   (e.g. MediaDuet's SMTC bridge on Windows), which prevents echo loops.
 
@@ -400,6 +413,9 @@ streamed: receivers extrapolate from `positionMs` using a monotonic clock.
 ```
 
 * `key` `null` → the receiver's active session.
+* `action` ∈ the session's `actions`, plus `custom` (with `customAction`, an id
+  from `customActions`) and `playQueueItem` (with `queueId`, an entry `id` from
+  `media.queue`); those two are never listed in `actions`.
 * `origin` ∈ `user` (a person pressed a button), `policy` (the arbitration
   engine). Receivers record the origin so that state changes caused by policy
   are not mistaken for user actions (§10).

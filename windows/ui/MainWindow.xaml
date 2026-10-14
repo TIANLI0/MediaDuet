@@ -143,6 +143,32 @@
                     </Button>
                 </StackPanel>
 
+                <!-- The player's own buttons (phone apps: like / favourite, ...) and its play queue -->
+                <StackPanel x:Name="ExtrasRow" Margin="0,6,0,0" HorizontalAlignment="Center" Orientation="Horizontal"
+                            Spacing="2" Visibility="Collapsed">
+                    <StackPanel x:Name="CustomActionsPanel" Orientation="Horizontal" Spacing="2" />
+                    <Button x:Name="QueueButton" x:Uid="QueueButton" Style="{StaticResource IconButtonStyle}" Visibility="Collapsed">
+                        <FontIcon FontSize="16" Glyph="&#xE8FD;" />
+                        <Button.Flyout>
+                            <Flyout x:Name="QueueFlyout" Placement="Top">
+                                <Grid Width="360" RowSpacing="6">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <StackPanel>
+                                        <TextBlock x:Uid="QueueTitle" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                        <TextBlock x:Name="QueueSubtitle" Style="{StaticResource CaptionTextBlockStyle}" TextTrimming="CharacterEllipsis"
+                                                   TextWrapping="NoWrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    </StackPanel>
+                                    <ListView x:Name="QueueList" Grid.Row="1" MaxHeight="440" SelectionMode="None" IsItemClickEnabled="True"
+                                              Margin="-12,0,-12,-8" />
+                                </Grid>
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
+                </StackPanel>
+
                 <!-- Volume of the device that plays the focused session -->
                 <StackPanel x:Name="InlineVolume" Margin="0,8,0,0" HorizontalAlignment="Center" Orientation="Horizontal"
                             Spacing="6" Visibility="Collapsed">

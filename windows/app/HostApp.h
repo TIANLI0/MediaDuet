@@ -70,10 +70,16 @@ private:
     void sendLocalSnapshot();
     void executeRemoteCommand(const proto::Envelope& e, uint64_t connId);
     void sendUserCommand(Side side, std::optional<std::string> key, media::CommandAction action,
-                         std::optional<int64_t> pos, const std::string& reason);
+                         std::optional<int64_t> pos, const std::string& reason, std::string customAction = {},
+                         std::optional<int64_t> queueId = std::nullopt);
     void executeArbiterAction(const policy::Action& a);
     void serveArtwork(const proto::Envelope& e, uint64_t connId);
     void requestMissingArtwork();
+    // Play queues of the phone's sessions (media.queue), fetched when a session's queue rev changes.
+    void requestQueues();
+    void sendQueueToUi(const media::MediaQueue& q);
+    std::map<std::string, media::MediaQueue> queues_;
+    std::map<std::string, std::pair<std::string, int64_t>> queueRequested_; // key -> (rev, at)
     std::string artworkPath(const media::MediaSessionInfo& s) const;
 
     // focus, lyrics, overlay, SMTC

@@ -163,6 +163,7 @@ void HostApp::init() {
                                                                       .dump());
                                                        pushState();
                                                        sendLyricsToUi();
+                                                       for (auto& [k, q] : queues_) sendQueueToUi(q);
                                                        if (!pendingShow_.empty()) {
                                                            ipc_->send(json{{"type", "show"}, {"window", pendingShow_}}.dump());
                                                            pendingShow_.clear();
@@ -495,6 +496,8 @@ void HostApp::onLinkUp(const std::string& peerId, bool resumed) {
     if (!resumed) {
         remote_ = {};
         remoteValid_ = false;
+        queues_.clear();
+        queueRequested_.clear();
         lyricsPushed_.clear();
         lastPolicyJson_.clear();
     }
@@ -603,6 +606,18 @@ void HostApp::onEnvelope(const std::string& peerId, const proto::Envelope& e, ui
         if (text.size() <= proto::kMaxLyricsBytes)
             lyrics_->offerRemote(e.body.value("trackId", std::string()), text, "remote",
                                  e.body.value("translation", std::string()));
+        return;
+    }
+    if (t == proto::types::MediaQueue) {
+        std::string err;
+        auto q = media::queueFromWire(e.body, &err);
+        if (!q) {
+            log::warn("host", "invalid media.queue from phone: {}", err);
+            return;
+        }
+        log::debug("host", "queue of {}: {} of {} entries", q->key, q->items.size(), q->total);
+        queues_[q->key] = *q;
+        sendQueueToUi(*q);
         return;
     }
     if (t == proto::types::AudioSinkSet) {
@@ -812,6 +827,7 @@ void HostApp::onRemoteSnapshot(const proto::Envelope& e) {
     if (auto* r = remote_.activeSession()) anyPlaying |= r->isPlaying();
     cm_->setMediaActive(anyPlaying);
     requestMissingArtwork();
+    requestQueues();
     updateSmtc();
     updateFocus();
     markDirty();
@@ -819,14 +835,52 @@ void HostApp::onRemoteSnapshot(const proto::Envelope& e) {
 
 void HostApp::requestMissingArtwork() {
     int64_t now = sched_.nowMs();
+    auto want = [&](const std::string& hash) {
+        if (art_->has(hash)) return;
+        auto it = requestedArt_.find(hash);
+        if (it != requestedArt_.end() && now - it->second < 30'000) return;
+        requestedArt_[hash] = now;
+        cm_->send(proto::types::ArtworkGet, {{"hash", hash}});
+    };
     for (auto& s : remote_.sessions) {
-        if (!s.artwork || art_->has(s.artwork->hash)) continue;
-        auto it = requestedArt_.find(s.artwork->hash);
-        if (it != requestedArt_.end() && now - it->second < 30'000) continue;
-        requestedArt_[s.artwork->hash] = now;
-        cm_->send(proto::types::ArtworkGet, {{"hash", s.artwork->hash}});
+        if (s.artwork) want(s.artwork->hash);
+        for (auto& a : s.customActions) // the player's own buttons: small PNG icons
+            if (a.icon) want(a.icon->hash);
     }
     if (requestedArt_.size() > 64) requestedArt_.clear();
+}
+
+void HostApp::requestQueues() {
+    int64_t now = sched_.nowMs();
+    // Forget queues of sessions that are gone or no longer expose one.
+    for (auto it = queues_.begin(); it != queues_.end();) {
+        auto* s = remote_.find(it->first);
+        if (s && s->queue) {
+            ++it;
+            continue;
+        }
+        if (ipc_) ipc_->send(json{{"type", "queue"}, {"side", "remote"}, {"key", it->first}, {"queue", nullptr}}.dump());
+        it = queues_.erase(it);
+    }
+    for (auto& s : remote_.sessions) {
+        if (!s.queue) continue;
+        auto have = queues_.find(s.key);
+        if (have != queues_.end() && have->second.rev == s.queue->rev) {
+            if (have->second.activeId != s.queue->activeId) {
+                have->second.activeId = s.queue->activeId; // same list, another current entry
+                sendQueueToUi(have->second);
+            }
+            continue;
+        }
+        auto& req = queueRequested_[s.key];
+        if (req.first == s.queue->rev && now - req.second < 10'000) continue;
+        req = {s.queue->rev, now};
+        cm_->send(proto::types::MediaQueueGet, {{"key", s.key}});
+    }
+}
+
+void HostApp::sendQueueToUi(const media::MediaQueue& q) {
+    if (ipc_) ipc_->send(json{{"type", "queue"}, {"side", "remote"}, {"key", q.key}, {"queue", media::toJson(q)}}.dump());
 }
 
 void HostApp::onBlob(const std::string&, const proto::BlobChunk& c) {
@@ -891,11 +945,14 @@ void HostApp::executeRemoteCommand(const proto::Envelope& e, uint64_t connId) {
 }
 
 void HostApp::sendUserCommand(Side side, std::optional<std::string> key, CommandAction action,
-                              std::optional<int64_t> pos, const std::string& reason) {
+                              std::optional<int64_t> pos, const std::string& reason, std::string customAction,
+                              std::optional<int64_t> queueId) {
     media::MediaCommand cmd;
     cmd.key = key;
     cmd.action = action;
     cmd.positionMs = pos;
+    cmd.customAction = std::move(customAction);
+    cmd.queueId = queueId;
     cmd.origin = media::Origin::User;
     cmd.reason = reason;
     if (action == CommandAction::Seek) lyricsSeek_ = true; // lyrics clock snaps instead of slewing
@@ -1353,8 +1410,13 @@ void HostApp::handleIpc(const std::string& line) {
             if (m.contains("key") && m["key"].is_string()) key = m["key"].get<std::string>();
             std::optional<int64_t> pos;
             if (m.contains("positionMs") && m["positionMs"].is_number()) pos = m["positionMs"].get<int64_t>();
+            std::string custom = m.value("customAction", std::string());
+            std::optional<int64_t> queueId;
+            if (m.contains("queueId") && m["queueId"].is_number_integer()) queueId = m["queueId"].get<int64_t>();
+            if (*act == CommandAction::Custom && custom.empty()) return result(false, "customAction missing");
+            if (*act == CommandAction::PlayQueueItem && !queueId) return result(false, "queueId missing");
             if (side == Side::Remote && !cm_->isUp()) return result(false, "not connected");
-            sendUserCommand(side, key, *act, pos, "ui");
+            sendUserCommand(side, key, *act, pos, "ui", std::move(custom), queueId);
             return result(true);
         }
         if (type == "focus.set") {
@@ -1539,6 +1601,13 @@ json HostApp::sessionJson(const MediaSessionInfo& s, Side side) const {
     j["artworkPath"] = path.empty() ? json(nullptr) : json(path);
     j["policyState"] = policy::toString(ps);
     j.erase("artwork");
+    if (auto ca = j.find("customActions"); ca != j.end()) {
+        for (auto& a : *ca) {
+            std::string hash = a.contains("icon") ? a["icon"].value("hash", std::string()) : std::string();
+            a["iconPath"] = !hash.empty() && art_->has(hash) ? json(text::toUtf8(art_->pathFor(hash).wstring())) : json(nullptr);
+            a.erase("icon");
+        }
+    }
     j["source"] = side == Side::Remote ? "remote" : s.key == platform::NeteaseCompat::kKey ? "compat" : "smtc";
     j["positionEstimated"] = netease_->positionEstimated(s.key);
     // The UI shows lyrics at position − lyricsDelayMs (the host is the single source of truth).

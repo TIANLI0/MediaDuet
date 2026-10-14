@@ -14,7 +14,11 @@ import android.view.KeyEvent
 import app.mediaduet.protocol.Action
 import app.mediaduet.protocol.CommandResult
 import app.mediaduet.protocol.ErrorCode
+import app.mediaduet.protocol.CustomAction
 import app.mediaduet.protocol.MediaCommand
+import app.mediaduet.protocol.MediaQueue
+import app.mediaduet.protocol.QueueEntry
+import app.mediaduet.protocol.QueueHint
 import app.mediaduet.util.MdLog
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -44,6 +48,10 @@ class MediaSessionMonitor(
     /** Latest captured states (safe to read from any thread). */
     @Volatile var states: List<LocalSessionState> = emptyList()
         private set
+
+    private val _queues = MutableStateFlow<Map<String, MediaQueue>>(emptyMap())
+    /** Play queues by session key (only sessions that expose one), for `media.queue` and the UI. */
+    val queues: StateFlow<Map<String, MediaQueue>> = _queues
 
     data class LastCommand(val sessionKey: String, val action: String, val origin: String, val atWallMs: Long)
 
@@ -83,7 +91,40 @@ class MediaSessionMonitor(
             remove(controller.sessionToken)
         }
 
+        override fun onQueueChanged(queue: MutableList<MediaSession.QueueItem>?) = guard("queue") {
+            readQueue(queue)
+            publish()
+        }
+
+        override fun onQueueTitleChanged(title: CharSequence?) = guard("queue title") {
+            queueTitle = title?.toString().orEmpty()
+            queueRev = revision()
+            publish()
+        }
+
         var lastState: PlaybackState? = controller.playbackState
+        var queue: List<QueueEntry> = emptyList()
+        var queueTitle: String = runCatching { controller.queueTitle?.toString() }.getOrNull().orEmpty()
+        var queueRev: String = ""
+
+        fun readQueue(items: List<MediaSession.QueueItem>?) {
+            queue = items.orEmpty().map { q ->
+                val d = q.description
+                QueueEntry(q.queueId, d.title?.toString().orEmpty().trim(), d.subtitle?.toString().orEmpty().trim())
+            }
+            queueRev = revision()
+        }
+
+        /** Content revision of the queue: receivers re-fetch only when it changes. */
+        fun revision(): String {
+            var h = queueTitle.hashCode().toLong()
+            for (e in queue) h = h * 31 + e.id * 17 + e.title.hashCode() * 7 + e.subtitle.hashCode()
+            return java.lang.Long.toHexString(h xor queue.size.toLong())
+        }
+
+        init {
+            readQueue(runCatching { controller.queue }.getOrNull())
+        }
     }
 
     private fun isPlaying(state: PlaybackState?) = state?.state == PlaybackState.STATE_PLAYING
@@ -182,6 +223,12 @@ class MediaSessionMonitor(
             return ""
         }
         val duration = runCatching { md?.getLong(MediaMetadata.METADATA_KEY_DURATION) }.getOrNull()?.takeIf { it > 0 }
+        val customActions = ps?.customActions.orEmpty().take(CustomAction.MAX_COUNT).mapNotNull { a ->
+            val id = a.action ?: return@mapNotNull null
+            CustomAction(id, a.name?.toString().orEmpty().trim(), artwork.icon(c.packageName, a.icon))
+        }
+        val activeQueueId = ps?.activeQueueItemId?.takeIf { it != MediaSession.QueueItem.UNKNOWN_ID.toLong() }
+        val queueHint = if (t.queue.isEmpty()) null else QueueHint(t.queue.size, t.queueRev, activeQueueId)
         val contentType = runCatching { c.playbackInfo.audioAttributes.contentType }.getOrDefault(0)
         return LocalSessionState(
             key = t.key,
@@ -201,6 +248,8 @@ class MediaSessionMonitor(
             contentType = contentType,
             artwork = artwork.refFor(t.key),
             lastChangeMs = t.lastChangeMs,
+            customActions = customActions,
+            queue = queueHint,
         )
     }
 
@@ -214,6 +263,14 @@ class MediaSessionMonitor(
                 null
             }
         }
+        val queues = HashMap<String, MediaQueue>()
+        for (t in tracked.values) {
+            if (t.queue.isEmpty()) continue
+            val active = states.firstOrNull { it.key == t.key }?.queue?.activeId
+            val (offset, items) = MediaQueue.window(t.queue, active)
+            queues[t.key] = MediaQueue(t.key, t.queueRev, t.queueTitle, active, t.queue.size, offset, items)
+        }
+        if (queues != _queues.value) _queues.value = queues
         onChanged()
     }
 
@@ -227,8 +284,23 @@ class MediaSessionMonitor(
             current[command.key]
         } ?: return CommandResult.failure(ErrorCode.NOT_FOUND, "no such session")
         val state = capture(target)
-        if (command.action !in state.protocolActions()) return CommandResult.failure(ErrorCode.ACTION_UNSUPPORTED)
         val controls = target.controller.transportControls
+        when (command.action) {
+            Action.CUSTOM -> {
+                val ps = target.lastState ?: runCatching { target.controller.playbackState }.getOrNull()
+                val action = ps?.customActions?.firstOrNull { it.action == command.customAction }
+                    ?: return CommandResult.failure(ErrorCode.ACTION_UNSUPPORTED)
+                controls.sendCustomAction(action, action.extras)
+                return executed(target, command)
+            }
+            Action.PLAY_QUEUE_ITEM -> {
+                val id = command.queueId ?: return CommandResult.failure(ErrorCode.BAD_MESSAGE)
+                if (target.queue.none { it.id == id }) return CommandResult.failure(ErrorCode.NOT_FOUND, "no such queue item")
+                controls.skipToQueueItem(id)
+                return executed(target, command)
+            }
+        }
+        if (command.action !in state.protocolActions()) return CommandResult.failure(ErrorCode.ACTION_UNSUPPORTED)
         when (command.action) {
             Action.PLAY -> controls.play()
             Action.PAUSE -> controls.pause()
@@ -251,6 +323,10 @@ class MediaSessionMonitor(
             Action.STOP -> controls.stop()
             else -> return CommandResult.failure(ErrorCode.ACTION_UNSUPPORTED)
         }
+        return executed(target, command)
+    }
+
+    private fun executed(target: Tracked, command: MediaCommand): CommandResult {
         _lastCommand.value = LastCommand(target.key, command.action, command.origin, System.currentTimeMillis())
         MdLog.i(TAG, "executed ${command.action} on ${target.key} (origin ${command.origin})")
         return CommandResult.OK

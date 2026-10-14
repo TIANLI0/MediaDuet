@@ -421,6 +421,14 @@ namespace mdui
             m_lyrics = ParseLyrics(*message);
             Raise(Event::Lyrics);
         }
+        else if (type == "queue")
+        {
+            auto key = JStr(*message, "key");
+            auto q = message->find("queue");
+            if (q == message->end() || !q->is_object()) m_queues.erase(key);
+            else m_queues[key] = ParseQueue(*q);
+            Raise(Event::State);
+        }
         else if (type == "diagnostics")
         {
             m_diagnostics = *message;
@@ -581,6 +589,27 @@ namespace mdui
         msg["key"] = key.empty() ? json(nullptr) : json(key);
         if (positionMs) msg["positionMs"] = *positionMs;
         Send(std::move(msg));
+    }
+
+    void Controller::PressCustomAction(Side side, std::string const& key, std::string const& id)
+    {
+        json msg{ { "type", "media.command" }, { "side", SideName(side) }, { "action", "custom" }, { "customAction", id } };
+        msg["key"] = key.empty() ? json(nullptr) : json(key);
+        Send(std::move(msg));
+    }
+
+    void Controller::PlayQueueItem(Side side, std::string const& key, int64_t queueId)
+    {
+        json msg{ { "type", "media.command" }, { "side", SideName(side) }, { "action", "playQueueItem" }, { "queueId", queueId } };
+        msg["key"] = key.empty() ? json(nullptr) : json(key);
+        Send(std::move(msg));
+    }
+
+    Queue const* Controller::QueueFor(Side side, std::string const& key) const
+    {
+        if (side != Side::Remote) return nullptr;
+        auto it = m_queues.find(key);
+        return it == m_queues.end() ? nullptr : &it->second;
     }
 
     void Controller::SetFocus(std::optional<Side> side, std::string const& key, bool automatic)

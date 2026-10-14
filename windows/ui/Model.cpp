@@ -260,7 +260,29 @@ namespace mdui
         s.hasLyricsDelay = delay != j.end() && delay->is_number();
         s.lyricsDelayMs = std::clamp<int64_t>(JInt(j, "lyricsDelayMs", 0), -10000, 10000);
         s.outputLatencyMs = std::clamp<int64_t>(JInt(j, "outputLatencyMs", 0), 0, 10000);
+        for (auto const& a : JArr(j, "customActions"))
+        {
+            if (!a.is_object()) continue;
+            CustomAction ca{ JStr(a, "id"), JStr(a, "title"), JStr(a, "iconPath") };
+            if (!ca.id.empty()) s.customActions.push_back(std::move(ca));
+        }
+        s.queueCount = static_cast<int>(std::clamp<int64_t>(JInt(JObj(j, "queue"), "count", 0), 0, 100000));
         return s;
+    }
+
+    Queue ParseQueue(json const& j)
+    {
+        Queue q;
+        q.key = JStr(j, "key");
+        q.title = JStr(j, "title");
+        auto a = j.find("activeId");
+        q.hasActive = a != j.end() && a->is_number_integer();
+        q.activeId = q.hasActive ? a->get<int64_t>() : -1;
+        q.total = static_cast<int>(JInt(j, "total", 0));
+        q.offset = static_cast<int>(JInt(j, "offset", 0));
+        for (auto const& i : JArr(j, "items"))
+            if (i.is_object()) q.items.push_back({ JInt(i, "id", 0), JStr(i, "title"), JStr(i, "subtitle") });
+        return q;
     }
 
     static SideState ParseSide(json const& j, Side side, uint64_t receivedTick)

@@ -395,4 +395,12 @@
     <string name="lyrics_size_small">Small</string>
     <string name="lyrics_size_standard">Default</string>
     <string name="lyrics_size_large">Large</string>
+
+    <!-- 1.4.0: player buttons and play queue -->
+    <string name="queue_title">Up next</string>
+    <string name="queue_now_playing">Now playing</string>
+    <plurals name="queue_count">
+        <item quantity="one">%1$d song</item>
+        <item quantity="other">%1$d songs</item>
+    </plurals>
 </resources>

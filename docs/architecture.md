@@ -78,9 +78,16 @@ compiled into the product.
 * Reconnect back-off: BT 2 s → 60 s, LAN 1 s → 30 s, ±20 % jitter, reset by real
   events (adapter on, phone ACL connected, DNS-SD found or re-announced, network
   changed, user). A link that lived ≥ 30 s reconnects after ~1 s.
-* LAN candidates are ranked: the endpoint that last reached Up, DNS-SD results,
-  manual endpoints, then addresses the phone reported in `transport.info`
-  (dropped after 10 min unless DNS-SD or a successful link confirms them). Each
+* LAN candidates are ranked: the addresses the phone currently reports in
+  `transport.info` (its complete list; anything it no longer reports is dropped
+  at once), the endpoint that last reached Up, DNS-SD results, manual
+  endpoints, then reported addresses that worked recently. A report with a new
+  address connects at once (no back-off) — on networks without multicast that
+  is how a phone that changed its IP is found again, usually over the
+  Bluetooth standby link. A LAN link whose address the phone stopped reporting
+  is probed right away; any unanswered ping is followed up by a probe and the
+  link is closed after 2 × 5 s of silence (instead of three heartbeats). LAN
+  connects time out after 3 s. Each
   retry cycle starts from the best one. An endpoint whose handshake fails
   (accepts TCP but never authenticates: VPN / cellular / virtual interfaces of
   the phone) is demoted for 5 min. Handshakes race ("happy eyeballs": the next

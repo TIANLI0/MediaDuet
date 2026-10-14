@@ -140,6 +140,7 @@ private:
         int failures = 0;
         ScopedTimer retry;
         ScopedTimer heartbeat;
+        ScopedTimer pongCheck; // follow-up of an unanswered ping / probe
         // LAN only. A retry cycle walks the ranked candidates (fixed when the cycle
         // starts); transports still in their handshake race each other ("happy
         // eyeballs") and never block the next candidate or the next cycle. `conn`
@@ -210,6 +211,10 @@ private:
     void choosePrimary(Peer& p);
     void setPrimary(Peer& p, Connection* c);
     void armHeartbeat(Peer& p, Slot& s);
+    void armPongCheck(Peer& p, Slot& s);
+    // Pings [s] and closes it unless something arrives within kPongWaitMs.
+    void probe(Peer& p, Slot& s, const std::string& why);
+    static constexpr int64_t kPongWaitMs = 5'000;
     int64_t pingInterval(const Peer& p, const Slot& s) const;
     int64_t requiredLanStability(Peer& p);
     bool otherPeerActive(const Peer& p) const;

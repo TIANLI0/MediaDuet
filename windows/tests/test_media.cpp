@@ -129,3 +129,58 @@ TEST_CASE("outputLatencyMs is optional, round-trips and is range checked") {
     b.outputLatencyMs.reset();
     CHECK(a.equivalent(b)); // 0 == unknown
 }
+
+TEST_CASE("custom actions, queue hint and the new commands survive the wire") {
+    md::media::MediaSessionInfo s;
+    s.key = "com.netease.cloudmusic#1";
+    s.title = "t";
+    s.customActions.push_back({"like", "Like", md::media::ArtworkRef{std::string(64, 'a'), "image/png", 812}});
+    s.customActions.push_back({"mode", "Shuffle", std::nullopt});
+    s.queue = md::media::QueueHint{37, "5f0c2a91", 12};
+    auto j = md::media::toWire(s, 0);
+    auto back = md::media::sessionFromWire(j, 0, 0);
+    REQUIRE(back);
+    CHECK(back->customActions == s.customActions);
+    CHECK(back->queue == s.queue);
+    CHECK(back->actions == 0); // custom / playQueueItem are never in the action set
+    CHECK_FALSE(back->equivalent([&] { auto o = *back; o.queue->activeId = 13; return o; }()));
+
+    // Lenient: malformed entries are dropped, the session still parses.
+    j["customActions"] = {{{"id", ""}}, {{"title", "no id"}}, {{"id", "ok"}, {"icon", {{"hash", "zz"}}}}, 5};
+    j["queue"] = {{"count", 0}};
+    back = md::media::sessionFromWire(j, 0, 0);
+    REQUIRE(back);
+    REQUIRE(back->customActions.size() == 1);
+    CHECK(back->customActions[0].id == "ok");
+    CHECK_FALSE(back->customActions[0].icon);
+    CHECK_FALSE(back->queue);
+
+    md::media::MediaCommand c;
+    c.action = md::media::CommandAction::Custom;
+    c.customAction = "like";
+    auto cj = md::media::toWire(c);
+    CHECK(cj["action"] == "custom");
+    auto cb = md::media::commandFromWire(cj);
+    REQUIRE(cb);
+    CHECK(cb->customAction == "like");
+    CHECK_FALSE(md::media::commandFromWire(md::media::json{{"action", "custom"}}));
+    CHECK_FALSE(md::media::commandFromWire(md::media::json{{"action", "playQueueItem"}}));
+    auto q = md::media::commandFromWire(md::media::json{{"action", "playQueueItem"}, {"queueId", 7}});
+    REQUIRE(q);
+    CHECK(*q->queueId == 7);
+}
+
+TEST_CASE("media.queue parses a window and skips bad entries") {
+    md::media::json j = {{"key", "k"}, {"rev", "r1"}, {"title", "Liked"}, {"activeId", 3}, {"total", 500}, {"offset", 200},
+                         {"items", {{{"id", 3}, {"title", "a"}, {"subtitle", "b"}}, {{"title", "no id"}}, {{"id", 4}}}}};
+    auto q = md::media::queueFromWire(j);
+    REQUIRE(q);
+    CHECK(q->items.size() == 2);
+    CHECK(q->total == 500);
+    CHECK(q->offset == 200);
+    CHECK(*q->activeId == 3);
+    auto back = md::media::queueFromWire(md::media::toJson(*q));
+    REQUIRE(back);
+    CHECK(back->items.size() == 2);
+    CHECK_FALSE(md::media::queueFromWire(md::media::json{{"items", md::media::json::array()}}));
+}

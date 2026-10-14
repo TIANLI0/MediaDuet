@@ -54,6 +54,7 @@ ICONS = [
     ("Translate", "editor/translate_2_line", None),
     ("Timer", "device/stopwatch_line", "Stopwatch (lyrics timing)."),
     ("TextSize", "editor/font_size_line", "Lyrics text size."),
+    ("Playlist", "media/playlist_line", "Up next (play queue)."),
     ("Restore", "system/refresh_anticlockwise_1_line", "Reset."),
     ("VolumeUp", "media/volume_line", None),
     ("VolumeOff", "media/volume_off_line", None),

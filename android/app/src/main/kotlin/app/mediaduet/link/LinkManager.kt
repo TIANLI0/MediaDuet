@@ -24,6 +24,7 @@ import app.mediaduet.protocol.MediaSnapshot
 import app.mediaduet.protocol.MsgType
 import app.mediaduet.protocol.PolicyStatus
 import app.mediaduet.protocol.SinkState
+import app.mediaduet.protocol.MediaQueue
 import app.mediaduet.protocol.StrLimit
 import app.mediaduet.protocol.VolumeSet
 import app.mediaduet.protocol.VolumeState
@@ -74,6 +75,9 @@ interface LinkHost {
     fun onPolicyStatus(peerId: String, status: PolicyStatus)
     /** The PC's Bluetooth audio receiver changed (`audio.sink.state`). */
     fun onSinkState(peerId: String, state: SinkState) = Unit
+
+    /** The play queue of our session [key] for `media.queue.get`, or null (answered not_found). */
+    fun mediaQueue(key: String): MediaQueue? = null
     suspend fun onAudioOffer(peerId: String, offer: AudioOffer, baseKey: ByteArray): JsonObject
     fun onAudioStop(peerId: String, streamId: String, reason: String)
 
@@ -439,6 +443,11 @@ class LinkManager(
             MsgType.LYRICS_NONE -> host.onLyricsNone(peerId, env.body.requireString("trackId", 64))
             MsgType.POLICY_STATUS -> host.onPolicyStatus(peerId, PolicyStatus.parse(env.body))
             MsgType.AUDIO_SINK_STATE -> host.onSinkState(peerId, SinkState.parse(env.body))
+            MsgType.MEDIA_QUEUE_GET -> {
+                val queue = host.mediaQueue(env.body.requireString("key", StrLimit.SESSION_KEY))
+                if (queue == null) send(session, conn, MsgType.ERROR, ErrorInfo(ErrorCode.NOT_FOUND).toJson(), env.id)
+                else send(session, conn, MsgType.MEDIA_QUEUE, queue.toJson(), env.id)
+            }
             MsgType.AUDIO_OFFER -> {
                 val offer = AudioOffer.parse(env.body)
                 val base = conn.sessionKeys?.keyC2s ?: throw BadMessageException("no keys")

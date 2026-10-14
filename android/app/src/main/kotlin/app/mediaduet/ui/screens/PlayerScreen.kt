@@ -105,6 +105,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
@@ -181,6 +182,8 @@ private class PlayerParts(
     val lyricsSize: LyricsSize,
     val reduced: Boolean,
     val canSeek: Boolean,
+    /** Opens the "Up next" sheet (the session exposes a queue). */
+    val openQueue: () -> Unit,
 ) {
     val info: MediaSessionInfo get() = view.info
     val lyricsAvailable: Boolean get() = lyrics != null || searching
@@ -214,6 +217,7 @@ fun PlayerScreen(ui: UiContext) {
     val view = rememberPlayerView(engine)
     val bottomInset = LocalBottomInset.current
     val currentUi by rememberUpdatedState(ui)
+    var queueOpen by remember { mutableStateOf(false) }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val landscape = maxWidth > maxHeight * 1.15f
@@ -232,7 +236,7 @@ fun PlayerScreen(ui: UiContext) {
                 Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     EmptyState(AppIcons.Music, stringResource(R.string.empty_nothing_playing_phone))
                 }
-                ActionRow(ui, null, lyricsAvailable = false, morph = null)
+                ActionRow(ui, null, lyricsAvailable = false, morph = null, onQueue = null)
                 return@Column
             }
             val info = view.info
@@ -324,6 +328,7 @@ fun PlayerScreen(ui: UiContext) {
                 lyricsSize = lyricsSize,
                 reduced = reduced,
                 canSeek = view.canControl && Action.SEEK in info.actions && (info.durationMs ?: 0) > 0,
+                openQueue = { queueOpen = true },
             )
 
             SharedTransitionLayout(Modifier.weight(1f).fillMaxWidth()) {
@@ -346,6 +351,7 @@ fun PlayerScreen(ui: UiContext) {
             }
         }
         TargetSheet(ui)
+        QueueSheet(ui, view, queueOpen) { queueOpen = false }
     }
 }
 
@@ -362,7 +368,7 @@ private fun PortraitPlayer(p: PlayerParts, m: Morph) {
         Spacer(Modifier.height(18.dp))
         VolumeRow(p.ui, p.view)
         Spacer(Modifier.height(16.dp))
-        ActionRow(p.ui, p.view, p.lyricsAvailable, m)
+        ActionRow(p.ui, p.view, p.lyricsAvailable, m, onQueue = p.openQueue.takeIf { p.info.queue != null })
     }
 }
 
@@ -413,7 +419,11 @@ private fun LandscapePlayer(p: PlayerParts, m: Morph) {
             ) {
                 // Compact: progress with inline times and one row of lyrics · transport · source
                 // (like the lyrics dock); Settings sits at the end of the title row.
-                TitleRow(p, m, large = true) { SettingsButton(p.ui) }
+                TitleRow(p, m, large = true) {
+                    CustomActionButtons(p)
+                    if (p.info.queue != null) QueueButton(p.openQueue)
+                    SettingsButton(p.ui)
+                }
                 Spacer(Modifier.height(16.dp))
                 Progress(p, m, inlineTimes = true)
                 Spacer(Modifier.height(8.dp))
@@ -478,7 +488,7 @@ private fun ArtworkBlock(p: PlayerParts, m: Morph, modifier: Modifier) {
                 ArtworkImage(p, m, side)
             }
             Spacer(Modifier.height(24.dp))
-            TitleRow(p, m, large = true)
+            TitleRow(p, m, large = true, trailing = if (p.info.customActions.isNotEmpty()) ({ CustomActionButtons(p) }) else null)
         }
     }
 }
@@ -1123,7 +1133,7 @@ fun deviceLabel(view: PlayerView): String {
  * text with 48 dp targets.
  */
 @Composable
-private fun ActionRow(ui: UiContext, view: PlayerView?, lyricsAvailable: Boolean, morph: Morph?) {
+private fun ActionRow(ui: UiContext, view: PlayerView?, lyricsAvailable: Boolean, morph: Morph?, onQueue: (() -> Unit)?) {
     val haptics = LocalHapticFeedback.current
     val secondary = MaterialTheme.colorScheme.onSurfaceVariant
     Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1172,7 +1182,167 @@ private fun ActionRow(ui: UiContext, view: PlayerView?, lyricsAvailable: Boolean
             )
         }
         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
-            SettingsButton(ui)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (onQueue != null) QueueButton(onQueue)
+                SettingsButton(ui)
+            }
+        }
+    }
+}
+
+/** "Up next": opens the queue sheet. */
+@Composable
+private fun QueueButton(onClick: () -> Unit) {
+    val haptics = LocalHapticFeedback.current
+    Box(
+        Modifier
+            .size(48.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(role = Role.Button) {
+                haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+                onClick()
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(AppIcons.Playlist, stringResource(R.string.queue_title), Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/**
+ * The player's own buttons (Android custom actions: like / favourite, shuffle, …) next to the
+ * title, Apple-Music-style: the app's icon tinted like secondary text (its title when it has
+ * none), at most three; a press answers with a tick or, when refused, a toast.
+ */
+@Composable
+private fun CustomActionButtons(p: PlayerParts) {
+    val actions = p.info.customActions.take(3)
+    if (actions.isEmpty() || p.view.side != Side.PHONE) return
+    val haptics = LocalHapticFeedback.current
+    val scope = rememberCoroutineScope()
+    val failText = commandFailureText()
+    for (a in actions) {
+        val hash = a.icon?.hash
+        val icon = remember(hash) {
+            hash?.let { p.ui.engine.artwork.bytes(it) }?.let { android.graphics.BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() }
+        }
+        Box(
+            Modifier
+                .heightIn(min = 44.dp)
+                .widthIn(min = 44.dp)
+                .clip(RoundedCornerShape(50))
+                .clickable(enabled = p.view.canControl, role = Role.Button, onClickLabel = a.title.ifEmpty { null }) {
+                    haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+                    scope.launch {
+                        val r = p.ui.customAction(p.view, a.id)
+                        if (!r.ok) {
+                            haptics.performHapticFeedback(HapticFeedbackType.Reject)
+                            p.ui.toast(failText(r.error?.code))
+                        }
+                    }
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            if (icon != null) {
+                Icon(icon, a.title, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                Text(
+                    a.title,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = 72.dp).padding(horizontal = 8.dp),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * "Up next": the session's play queue (current entry highlighted and scrolled into view); tapping
+ * an entry plays it. A glass sheet like the source sheet.
+ */
+@Composable
+private fun QueueSheet(ui: UiContext, view: PlayerView?, open: Boolean, onClose: () -> Unit) {
+    val queues by ui.engine.media.queues.collectAsStateWithLifecycle()
+    val queue = view?.takeIf { it.side == Side.PHONE }?.let { queues[it.key] }
+    val reduced = rememberReducedMotion()
+    val glass = LocalGlass.current
+    val haptics = LocalHapticFeedback.current
+    val scope = rememberCoroutineScope()
+    val failText = commandFailureText()
+    val visible = open && queue != null
+    LaunchedEffect(open, queue == null) { if (open && queue == null) onClose() }
+    AnimatedVisibility(visible, enter = fadeIn(if (reduced) snap() else tween(200)), exit = fadeOut(if (reduced) snap() else tween(200))) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = if (glass.isDark) 0.4f else 0.18f))
+                .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onClose),
+        )
+    }
+    AnimatedVisibility(
+        visible,
+        enter = if (reduced) fadeIn(snap()) else slideInVertically(spring(dampingRatio = 0.85f, stiffness = 400f)) { it },
+        exit = if (reduced) fadeOut(snap()) else slideOutVertically(tween(220)) { it },
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        val q = queue ?: return@AnimatedVisibility
+        Box(
+            Modifier.fillMaxSize().padding(start = 16.dp, end = 16.dp, top = 72.dp, bottom = LocalBottomInset.current + 8.dp),
+            contentAlignment = Alignment.BottomCenter,
+        ) {
+            GlassCard(ui.backdrop, Modifier.widthIn(max = 560.dp).fillMaxWidth(), strong = true, cornerRadius = 28.dp,
+                contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 8.dp)) {
+                Text(stringResource(R.string.queue_title), style = MaterialTheme.typography.titleMedium)
+                val subtitle = listOf(q.title, pluralStringResource(R.plurals.queue_count, q.total, q.total))
+                    .filter { it.isNotEmpty() }.joinToString(stringResource(R.string.list_separator))
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Spacer(Modifier.height(8.dp))
+                val activeIndex = q.items.indexOfFirst { it.id == q.activeId }
+                val listState = androidx.compose.foundation.lazy.rememberLazyListState((activeIndex - 1).coerceAtLeast(0))
+                androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxWidth().heightIn(max = 480.dp), state = listState) {
+                    items(q.items.size, key = { q.items[it].id }) { i ->
+                        val e = q.items[i]
+                        val current = e.id == q.activeId
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (current) glass.fill else Color.Transparent)
+                                .clickable(enabled = view.canControl && !current, role = Role.Button) {
+                                    haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+                                    scope.launch {
+                                        val r = ui.playQueueItem(view, e.id)
+                                        if (r.ok) onClose() else {
+                                            haptics.performHapticFeedback(HapticFeedbackType.Reject)
+                                            ui.toast(failText(r.error?.code))
+                                        }
+                                    }
+                                }
+                                .heightIn(min = 56.dp)
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(Modifier.width(28.dp), contentAlignment = Alignment.CenterStart) {
+                                if (current) Icon(AppIcons.VolumeUp, stringResource(R.string.queue_now_playing), Modifier.size(18.dp), tint = glass.accent)
+                                else Text("${q.offset + i + 1}", style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    e.title.ifEmpty { stringResource(R.string.unknown_title) },
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = if (current) glass.accent else MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                )
+                                if (e.subtitle.isNotEmpty()) {
+                                    Text(e.subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

@@ -103,6 +103,24 @@ suspend fun UiContext.command(view: PlayerView, action: String, positionMs: Long
     }
 }
 
+/** Presses the player's own button [id] (like / favourite, …; phone sessions). */
+suspend fun UiContext.customAction(view: PlayerView, id: String): CommandResult {
+    engine.noteUserControl(view.side, view.key)
+    return when (view.side) {
+        Side.PHONE -> engine.executeLocal(view.key, app.mediaduet.protocol.Action.CUSTOM, customAction = id)
+        Side.PC -> CommandResult.failure(app.mediaduet.protocol.ErrorCode.ACTION_UNSUPPORTED)
+    }
+}
+
+/** Plays queue entry [id] of the view's session (phone sessions). */
+suspend fun UiContext.playQueueItem(view: PlayerView, id: Long): CommandResult {
+    engine.noteUserControl(view.side, view.key)
+    return when (view.side) {
+        Side.PHONE -> engine.executeLocal(view.key, app.mediaduet.protocol.Action.PLAY_QUEUE_ITEM, queueId = id)
+        Side.PC -> CommandResult.failure(app.mediaduet.protocol.ErrorCode.ACTION_UNSUPPORTED)
+    }
+}
+
 /** Volume of the view's device, null when it cannot be shown / changed. */
 class VolumeView(val level: Float, val muted: Boolean, val enabled: Boolean, val fixed: Boolean)
 

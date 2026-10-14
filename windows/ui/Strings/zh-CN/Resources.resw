@@ -500,4 +500,8 @@
   <data name="A2dpError_timeout" xml:space="preserve"><value>手机没有响应。请确认手机蓝牙已开启且在附近，然后重试。</value></data>
   <data name="A2dpError_denied" xml:space="preserve"><value>Windows 拒绝了蓝牙音频连接。</value></data>
   <data name="A2dpError_failed" xml:space="preserve"><value>蓝牙音频连接失败，请重试。</value></data>
+  <data name="QueueButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>接下来播放</value></data>
+  <data name="QueueButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>接下来播放</value></data>
+  <data name="QueueTitle.Text" xml:space="preserve"><value>接下来播放</value></data>
+  <data name="QueueCount" xml:space="preserve"><value>{0} 首</value></data>
 </root>

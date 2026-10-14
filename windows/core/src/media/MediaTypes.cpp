@@ -38,7 +38,8 @@ const char* toString(MediaKind k) {
 static constexpr std::pair<CommandAction, const char*> kActions[] = {
     {CommandAction::Play, "play"},         {CommandAction::Pause, "pause"}, {CommandAction::Toggle, "toggle"},
     {CommandAction::Next, "next"},         {CommandAction::Previous, "previous"},
-    {CommandAction::Seek, "seek"},         {CommandAction::Stop, "stop"}};
+    {CommandAction::Seek, "seek"},         {CommandAction::Stop, "stop"},
+    {CommandAction::Custom, "custom"},     {CommandAction::PlayQueueItem, "playQueueItem"}};
 
 const char* toString(CommandAction a) {
     for (auto& [k, n] : kActions)
@@ -61,6 +62,8 @@ uint32_t actionBit(CommandAction a) {
     case CommandAction::Previous: return action::Previous;
     case CommandAction::Seek: return action::Seek;
     case CommandAction::Stop: return action::Stop;
+    case CommandAction::Custom:
+    case CommandAction::PlayQueueItem: return 0; // never in a session's action set
     }
     return 0;
 }
@@ -84,7 +87,8 @@ bool MediaSessionInfo::equivalent(const MediaSessionInfo& o, int64_t tol) const 
         actions != o.actions || artwork != o.artwork || kind != o.kind || std::abs(rate - o.rate) > 1e-3 ||
         appVolume.has_value() != o.appVolume.has_value() || appMuted != o.appMuted ||
         (appVolume && std::abs(*appVolume - *o.appVolume) > 0.005f) ||
-        outputLatencyMs.value_or(0) != o.outputLatencyMs.value_or(0))
+        outputLatencyMs.value_or(0) != o.outputLatencyMs.value_or(0) || customActions != o.customActions ||
+        queue != o.queue)
         return false;
     if (positionMs.has_value() != o.positionMs.has_value()) return false;
     if (!positionMs) return true;
@@ -162,6 +166,61 @@ json toWire(const MediaSessionInfo& s, int64_t nowMs) {
         j["artwork"] = nullptr;
     if (s.appVolume) j["volume"] = {{"level", *s.appVolume}, {"muted", s.appMuted}};
     if (s.outputLatencyMs) j["outputLatencyMs"] = std::clamp(*s.outputLatencyMs, 0, 2000);
+    if (!s.customActions.empty()) {
+        json arr = json::array();
+        for (auto& a : s.customActions) {
+            json x = {{"id", a.id}, {"title", a.title}};
+            if (a.icon) x["icon"] = {{"hash", a.icon->hash}, {"mime", a.icon->mime}, {"size", a.icon->size}};
+            arr.push_back(std::move(x));
+        }
+        j["customActions"] = std::move(arr);
+    }
+    if (s.queue) {
+        j["queue"] = {{"count", s.queue->count}, {"rev", s.queue->rev}};
+        if (s.queue->activeId) j["queue"]["activeId"] = *s.queue->activeId;
+    }
+    return j;
+}
+
+namespace {
+bool err(std::string* e, const char* m);
+bool isSha256Hex(const std::string& h) {
+    return h.size() == 64 && std::all_of(h.begin(), h.end(), [](char c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); });
+}
+} // namespace
+
+std::optional<MediaQueue> queueFromWire(const json& j, std::string* e) {
+    if (!j.is_object() || !j.contains("key") || !j["key"].is_string()) {
+        err(e, "queue key");
+        return std::nullopt;
+    }
+    MediaQueue q;
+    q.key = text::truncate(j["key"].get<std::string>(), 300);
+    q.rev = text::truncate(j.value("rev", std::string()), 64);
+    q.title = text::truncate(j.value("title", std::string()), 512);
+    if (auto a = j.find("activeId"); a != j.end() && a->is_number_integer()) q.activeId = a->get<int64_t>();
+    if (auto it = j.find("items"); it != j.end() && it->is_array()) {
+        for (auto& x : *it) {
+            if (q.items.size() >= 300) break;
+            if (!x.is_object() || !x.contains("id") || !x["id"].is_number_integer()) continue;
+            q.items.push_back({x["id"].get<int64_t>(), text::truncate(x.value("title", std::string()), 512),
+                               text::truncate(x.value("subtitle", std::string()), 512)});
+        }
+    }
+    auto num = [&](const char* k, int def) {
+        auto it = j.find(k);
+        return it != j.end() && it->is_number_integer() ? static_cast<int>(std::clamp<int64_t>(it->get<int64_t>(), 0, 100000)) : def;
+    };
+    q.total = num("total", static_cast<int>(q.items.size()));
+    q.offset = num("offset", 0);
+    return q;
+}
+
+json toJson(const MediaQueue& q) {
+    json items = json::array();
+    for (auto& i : q.items) items.push_back({{"id", i.id}, {"title", i.title}, {"subtitle", i.subtitle}});
+    json j = {{"key", q.key}, {"rev", q.rev}, {"title", q.title}, {"total", q.total}, {"offset", q.offset}, {"items", items}};
+    j["activeId"] = q.activeId ? json(*q.activeId) : json(nullptr);
     return j;
 }
 
@@ -270,6 +329,35 @@ std::optional<MediaSessionInfo> sessionFromWire(const json& j, int64_t receivedA
         double v = l->get<double>();
         if (std::isfinite(v) && v >= 0 && v <= 2000) s.outputLatencyMs = static_cast<int>(std::llround(v));
     }
+    // Optional and lenient (forward compatible): malformed entries are skipped.
+    if (auto ca = j.find("customActions"); ca != j.end() && ca->is_array()) {
+        for (auto& x : *ca) {
+            if (s.customActions.size() >= kMaxCustomActions) break;
+            if (!x.is_object() || !x.contains("id") || !x["id"].is_string() || x["id"].get_ref<const std::string&>().empty())
+                continue;
+            CustomAction a;
+            a.id = text::truncate(x["id"].get<std::string>(), 128);
+            a.title = text::truncate(x.value("title", std::string()), 64);
+            if (auto ic = x.find("icon"); ic != x.end() && ic->is_object() && ic->contains("hash") && (*ic)["hash"].is_string()) {
+                ArtworkRef r;
+                r.hash = (*ic)["hash"].get<std::string>();
+                r.mime = ic->value("mime", std::string("image/png"));
+                if (auto sz = ic->find("size"); sz != ic->end() && sz->is_number_unsigned()) r.size = sz->get<uint32_t>();
+                if (isSha256Hex(r.hash) && r.size <= 1024 * 1024) a.icon = r;
+            }
+            s.customActions.push_back(std::move(a));
+        }
+    }
+    if (auto qh = j.find("queue"); qh != j.end() && qh->is_object()) {
+        auto c = qh->find("count");
+        if (c != qh->end() && c->is_number_integer() && c->get<int64_t>() > 0) {
+            QueueHint h;
+            h.count = static_cast<int>(std::min<int64_t>(c->get<int64_t>(), 100000));
+            h.rev = text::truncate(qh->value("rev", std::string()), 64);
+            if (auto a = qh->find("activeId"); a != qh->end() && a->is_number_integer()) h.activeId = a->get<int64_t>();
+            s.queue = h;
+        }
+    }
     sanitize(s);
     if (s.trackId.empty()) s.updateTrackId();
     if (s.positionMs && s.status == PlaybackStatus::Playing)
@@ -312,6 +400,8 @@ json toWire(const MediaCommand& c) {
               {"origin", toString(c.origin)},
               {"reason", c.reason}};
     if (c.positionMs) j["positionMs"] = *c.positionMs;
+    if (c.action == CommandAction::Custom) j["customAction"] = c.customAction;
+    if (c.queueId) j["queueId"] = *c.queueId;
     return j;
 }
 
@@ -342,6 +432,17 @@ std::optional<MediaCommand> commandFromWire(const json& j, std::string* e) {
     if (!getOptInt(j, "positionMs", c.positionMs, e)) return std::nullopt;
     if (c.action == CommandAction::Seek && !c.positionMs) {
         err(e, "seek without position");
+        return std::nullopt;
+    }
+    if (auto ca = j.find("customAction"); ca != j.end() && ca->is_string())
+        c.customAction = text::truncate(ca->get_ref<const std::string&>(), 128);
+    if (c.action == CommandAction::Custom && c.customAction.empty()) {
+        err(e, "custom without customAction");
+        return std::nullopt;
+    }
+    if (!getOptInt(j, "queueId", c.queueId, e)) return std::nullopt;
+    if (c.action == CommandAction::PlayQueueItem && !c.queueId) {
+        err(e, "playQueueItem without queueId");
         return std::nullopt;
     }
     if (auto o = j.find("origin"); o != j.end() && o->is_string())

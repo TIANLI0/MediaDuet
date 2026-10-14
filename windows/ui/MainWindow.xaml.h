@@ -52,6 +52,9 @@ namespace winrt::MediaDuetUI::implementation
         void ApplyVolume(VolumeUi& v, mdui::Volume const& vol);
         void UpdateVolume();
         void UpdateA2dpQuick();
+        void UpdateExtras();
+        void FillQueue();
+        std::string m_extrasSignature;   // custom-action buttons are rebuilt only when this changes
         void RefreshAll();
         void UpdateLink();
         void UpdateConnection();

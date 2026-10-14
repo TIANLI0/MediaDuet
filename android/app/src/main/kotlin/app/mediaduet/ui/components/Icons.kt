@@ -51,6 +51,8 @@ object AppIcons {
     val Timer: ImageVector @Composable get() = ImageVector.vectorResource(R.drawable.ic_mc_timer)
     /** Lyrics text size. */
     val TextSize: ImageVector @Composable get() = ImageVector.vectorResource(R.drawable.ic_mc_text_size)
+    /** Up next (play queue). */
+    val Playlist: ImageVector @Composable get() = ImageVector.vectorResource(R.drawable.ic_mc_playlist)
     /** Reset. */
     val Restore: ImageVector @Composable get() = ImageVector.vectorResource(R.drawable.ic_mc_restore)
     val VolumeUp: ImageVector @Composable get() = ImageVector.vectorResource(R.drawable.ic_mc_volume_up)
