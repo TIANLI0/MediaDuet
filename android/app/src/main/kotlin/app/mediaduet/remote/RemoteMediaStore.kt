@@ -38,8 +38,17 @@ data class RemoteState(
         snapshot.sessions.firstOrNull { it.key == key } ?: snapshot.activeSession
 }
 
-/** [lyrics] = synced lines; [plain] = unsynced text lines; both empty when the peer found nothing. */
-data class LyricsState(val trackId: String, val lyrics: Lyrics?, val plain: List<String>, val source: String) {
+/**
+ * [lyrics] = synced lines; [plain] = unsynced text lines; both empty when nothing was found.
+ * [song] = the title / artist / duration the lyrics were found for (same-song matching).
+ */
+data class LyricsState(
+    val trackId: String,
+    val lyrics: Lyrics?,
+    val plain: List<String>,
+    val source: String,
+    val song: app.mediaduet.lyrics.SongMatch.Candidate? = null,
+) {
     val synced: Boolean get() = lyrics != null && !lyrics.isEmpty
     val available: Boolean get() = synced || plain.isNotEmpty()
 }
@@ -63,9 +72,6 @@ class RemoteMediaStore(
 
     private val _artwork = MutableStateFlow<Map<String, Bitmap>>(emptyMap())
     val artwork: StateFlow<Map<String, Bitmap>> = _artwork
-
-    private val _lyrics = MutableStateFlow<Map<String, LyricsState>>(emptyMap())
-    val lyrics: StateFlow<Map<String, LyricsState>> = _lyrics
 
     private val _policy = MutableStateFlow<PolicyStatus?>(null)
     val policy: StateFlow<PolicyStatus?> = _policy
@@ -215,20 +221,17 @@ class RemoteMediaStore(
         }
     }
 
-    fun onLyrics(push: LyricsPush) {
+    /** Parses a `lyrics.push` (stored by the engine's lyrics repository). */
+    fun parseLyrics(push: LyricsPush): LyricsState {
         val parsed = if (push.format == "lrc") {
             LrcParser.parse(push.text).let { l -> push.translation?.let { TranslationMerge.merge(l, it) } ?: l }
         } else null
         val plain = if (parsed == null || parsed.isEmpty) LrcParser.plainLines(push.text) else emptyList()
-        _lyrics.update { m -> trim(m + (push.trackId to LyricsState(push.trackId, parsed?.takeIf { !it.isEmpty }, plain, push.source))) }
+        return LyricsState(push.trackId, parsed?.takeIf { !it.isEmpty }, plain, push.source)
     }
 
-    fun onLyricsNone(trackId: String) {
-        _lyrics.update { m -> trim(m + (trackId to LyricsState(trackId, null, emptyList(), ""))) }
-    }
-
-    private fun trim(m: Map<String, LyricsState>): Map<String, LyricsState> =
-        if (m.size <= 8) m else m.entries.toList().takeLast(8).associate { it.key to it.value }
+    /** The PC session currently reporting [trackId], if any. */
+    fun sessionForTrack(trackId: String): MediaSessionInfo? = _state.value?.snapshot?.sessions?.firstOrNull { it.trackId == trackId }
 
     fun onPolicyStatus(status: PolicyStatus) {
         _policy.value = status

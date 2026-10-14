@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace md::overlay {
 
@@ -35,27 +36,52 @@ struct Rect {
     bool operator==(const Rect&) const = default;
 };
 
-// What the UI Automation / window probes found out about the taskbar.
+// What the UI Automation / window probes found out about the taskbar, in
+// physical screen pixels. Every item is something the widget must never cover.
+//
+// Layout model (horizontal taskbars, top or bottom docked): the occupied
+// x-intervals along the bar are Start, the task group (search box / task view /
+// pinned and running app buttons), widgets, the system tray (from its left edge
+// to the end of the bar) and anything else found. The "task group" anchor is
+// Start + `group`, grown by every item overlapping or touching it. The free gaps
+// between occupied intervals are the candidate areas:
+//   "left"  = the gap immediately left of the anchor (x = gapEnd - pad - w - offset,
+//             hugging the icons),
+//   "right" = the gap immediately right of the anchor up to the next item
+//             (x = gapStart + pad + offset).
+// The preferred side's nearest gap is used if it holds the minimum width
+// (140 DIP + 8 DIP padding on each side), else the other side's nearest gap,
+// else any farther gap (preferred side first); the width shrinks to the gap
+// (never below the minimum); offset is clamped to the gap. Nothing fits →
+// "no_space".
+//
+//   Windows 11, centred:      [widgets]   gap L   [Start search tasks…]   gap R   [tray]
+//   Windows 11, left aligned: [Start search tasks…]   gap R   [widgets][tray]  (L too small → R)
+//   Windows 10:               [Start][search][task view][buttons… |band end]   gap R   [tray]
 struct TaskbarGeometry {
-    Rect tray;                 // Shell_TrayWnd
-    Rect notify;               // TrayNotifyWnd (empty if unknown)
+    Rect tray;                   // Shell_TrayWnd
+    float scale = 1.f;           // DPI / 96
     bool autoHide = false;
-    bool xaml = false;         // Windows 11 XAML taskbar
-    std::optional<Rect> start; // StartButton (XAML)
-    std::optional<Rect> widgets;
-    long tasksRight = 0;       // right edge of the last task / search / task view button (XAML)
-    Rect rebar;                // ReBarWindow32 (Windows 10 taskbar)
-    float scale = 1.f;         // DPI / 96
+    bool xaml = false;           // Windows 11 XAML taskbar (no Start → still starting)
+    std::optional<Rect> start;   // Start button
+    std::vector<Rect> group;     // search box, task view, pinned / running app buttons (with Start)
+    std::optional<Rect> widgets; // Widgets / weather (Windows 11)
+    std::optional<Rect> notify;  // system tray: its left edge bounds everything (else the bar's end)
+    std::vector<Rect> occupied;  // anything else: toolbars, unknown buttons, an unmeasured task band
 };
 
 struct TaskbarPlacement {
     bool ok = false;
     Rect rect;
-    std::string reason; // when !ok: autohide, vertical_taskbar, taskbar_not_ready, no_space
+    std::string reason; // when !ok: no_taskbar, autohide, vertical_taskbar, taskbar_not_ready, no_space
+    bool fellBack = false; // placed on the other side than requested (diagnostics)
 };
 
-// position = "left" (left of the centred icons, hugging them) | "right" (between
-// the task buttons and the tray); offset in physical pixels; width in DIPs.
+inline constexpr float kTaskbarWidgetMinDip = 140.f;
+inline constexpr float kTaskbarWidgetPadDip = 8.f;
+
+// position = "left" | "right" (see above); offset in physical pixels; width in DIPs.
+// Vertical (left/right docked) taskbars are not supported → "vertical_taskbar".
 TaskbarPlacement placeTaskbarWidget(const TaskbarGeometry& g, const std::string& position, int offset,
                                     float widthDip);
 

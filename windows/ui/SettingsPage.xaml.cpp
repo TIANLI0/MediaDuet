@@ -11,6 +11,7 @@
 
 #include <dwrite.h>
 #include <psapi.h>
+#include <shellapi.h>
 #include <shobjidl.h>
 
 #include <winrt/Microsoft.UI.Text.h>
@@ -179,6 +180,18 @@ namespace winrt::MediaDuetUI::implementation
 
         BitmapImage icon(winrt::Windows::Foundation::Uri(L"ms-appx:///Assets/MediaDuet.png"));
         AboutIcon().Source(icon);
+        BitmapImage avatar;
+        avatar.DecodePixelWidth(192);   // the source size: crisp up to 340 % scale at 56 epx
+        avatar.UriSource(winrt::Windows::Foundation::Uri(L"ms-appx:///Assets/Developer.png"));
+        DeveloperAvatar().ImageSource(avatar);
+        // The bundled lyrics font's licence (shipped next to the font files, opened in the default editor).
+        HarmonyLicenseLink().Click([](auto&&, auto&&) {
+            wchar_t buf[MAX_PATH * 2];
+            DWORD n = GetModuleFileNameW(nullptr, buf, static_cast<DWORD>(std::size(buf)));
+            std::wstring path(buf, n);
+            path = path.substr(0, path.find_last_of(L"\\/") + 1) + L"Assets\\Fonts\\HarmonyOS_Sans_LICENSE.txt";
+            ShellExecuteW(nullptr, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        });
 
         // ---- Navigation
         Nav().SelectionChanged([this](auto&&, NavigationViewSelectionChangedEventArgs const& e) {
@@ -196,6 +209,8 @@ namespace winrt::MediaDuetUI::implementation
         Bind(CompactOnTopToggle(), "ui.compact.alwaysOnTop", true);
         Bind(CompactSnapToggle(), "ui.compact.snap", true);
         Bind(AutostartToggle(), "autostart", true);
+        Bind(WorkModeRadios(), "mode", "linked");   // the host also marks the choice as made (modeChosen)
+        Bind(ArtworkOnlineToggle(), "artwork.online", true);
         Bind(ConnModeRadios(), "connection.mode", "auto");
         Bind(SwitchBackBox(), "connection.switchBackDelaySec", 10);
         Bind(PolicyModeRadios(), "policy.mode", "windows_first");
@@ -234,7 +249,7 @@ namespace winrt::MediaDuetUI::implementation
                  OverlayLockToggle(), OverlayClickThroughToggle(), OverlayAutoHideToggle(), OverlayKaraokeToggle(),
                  OverlayTwoLinesToggle(), SmtcToggle(), A2dpToggle(), LanSendToggle(), DiagnosticsToggle(),
                  HeadsetAssistToggle(), TaskbarEnabledToggle(), NeteaseDesktopToggle(), TranslationToggle(), OverlayTopmostToggle(),
-                 OverlayHideFullscreenToggle(), LatencyAutoToggle() })
+                 OverlayHideFullscreenToggle(), LatencyAutoToggle(), ArtworkOnlineToggle() })
         {
             toggle.OnContent(box_value(Str(L"On")));
             toggle.OffContent(box_value(Str(L"Off")));
@@ -597,7 +612,8 @@ namespace winrt::MediaDuetUI::implementation
 
     void SettingsPage::SyncDiscovery()
     {
-        bool want = m_page == L"devices" && m_active && Controller::Get().Link() == HostLink::Connected;
+        bool want = m_page == L"devices" && m_active && Controller::Get().Link() == HostLink::Connected &&
+            !Controller::Get().Model().standalone;
         bool started = want && !m_discoveryHeld;
         if (started) Controller::Get().AcquireDiscovery();
         if (!want && m_discoveryHeld) Controller::Get().ReleaseDiscovery();
@@ -671,6 +687,7 @@ namespace winrt::MediaDuetUI::implementation
         }
         m_dirty = false;
         UpdateHostBar();
+        UpdateWorkMode();
         ApplySettings();
         UpdatePairingDialog();
         if (m_page == L"devices") { UpdateDevices(); UpdateDiscovered(); }
@@ -725,7 +742,8 @@ namespace winrt::MediaDuetUI::implementation
         std::string sig;
         for (auto const& d : st.devices)
             sig += d.id + "|" + d.name + "|" + d.platform + "|" + d.btAddress + "|" + d.lanHost + "|" +
-                (d.connected ? "1" : "0") + d.transport + "|" + std::to_string(d.lastSeen) + "\n";
+                (d.connected ? "1" : "0") + d.transport + "|" + std::to_string(d.lastSeen) + "|" + d.app + "|" + d.versionMatch + "\n";
+        UpdateDevicesVersionBar();
         if (sig == m_devicesSignature) return;
         m_devicesSignature = sig;
 
@@ -763,6 +781,11 @@ namespace winrt::MediaDuetUI::implementation
             if (!d.connected && d.lastSeen > 0) s += L"  \x00B7  " + StrF(L"DeviceLastSeen", { FormatLocalTime(d.lastSeen) });
             status.Text(s);
             text.Children().Append(status);
+            // "MediaDuet Android 1.2.1" (last version the phone reported) and how it compares with this PC.
+            TextBlock ver;
+            ver.Style(descStyle);
+            ver.Text(DeviceVersionText(d.platform, d.app, d.versionMatch));   // the warning itself is the InfoBar above
+            text.Children().Append(ver);
             std::wstring addr;
             if (!d.btAddress.empty()) addr += StrF(L"DeviceBt", { Widen(d.btAddress) });
             if (!d.lanHost.empty()) addr += (addr.empty() ? L"" : L"  \x00B7  ") + StrF(L"DeviceLan", { Widen(d.lanHost) });
@@ -805,6 +828,49 @@ namespace winrt::MediaDuetUI::implementation
             card.Child(grid);
             PairedList().Children().Append(card);
         }
+    }
+
+    std::wstring SettingsPage::DeviceVersionText(std::string const& platform, std::string const& app, std::string const& match)
+    {
+        if (app.empty()) return std::wstring(Str(L"DeviceVersionUnknown"));
+        std::wstring os = platform == "android" ? L"Android" : platform == "windows" ? L"Windows" : Widen(platform);
+        std::wstring t = StrF(L"DeviceVersion", { os, Widen(app) });
+        if (match == "patch") t += L"  \x00B7  " + std::wstring(Str(L"VersionPatchNote"));
+        else if (match == "mismatch") t += L"  \x00B7  " + std::wstring(Str(L"VersionMismatchShort"));
+        return t;
+    }
+
+    void SettingsPage::UpdateDevicesVersionBar()
+    {
+        // A warning when a paired phone (the connected one first) runs another major/minor version.
+        auto& c = Controller::Get();
+        auto const& st = c.Model();
+        mdui::Device const* bad = nullptr;
+        for (auto const& d : st.devices)
+            if (d.versionMatch == "mismatch" && (!bad || d.connected)) bad = &d;
+        if (!bad)
+        {
+            DevicesVersionBar().IsOpen(false);
+            return;
+        }
+        std::string pc = st.self.app.empty() ? c.HostVersion() : st.self.app;
+        DevicesVersionBar().Severity(InfoBarSeverity::Warning);
+        DevicesVersionBar().Title(Str(L"VersionMismatchTitle"));
+        DevicesVersionBar().Message(StrF(L"VersionMismatchMessage", { Widen(bad->app), Widen(pc) }));
+        DevicesVersionBar().IsOpen(true);
+    }
+
+    void SettingsPage::UpdateWorkMode()
+    {
+        // This PC only: pages and cards that need a phone are hidden (General > Work mode switches back).
+        bool standalone = Controller::Get().Model().standalone;
+        auto vis = standalone ? Visibility::Collapsed : Visibility::Visible;
+        for (auto const& item : { NavDevicesItem(), NavConnectionItem(), NavArbitrationItem(), NavAudioItem() })
+            item.Visibility(vis);
+        SmtcCard().Visibility(vis);
+        SmtcNoteText().Visibility(vis);
+        if (standalone && (m_page == L"devices" || m_page == L"connection" || m_page == L"arbitration" || m_page == L"audio"))
+            Nav().SelectedItem(Nav().MenuItems().GetAt(0));
     }
 
     void SettingsPage::UpdateDiscovered()
@@ -1358,6 +1424,20 @@ namespace winrt::MediaDuetUI::implementation
         auto& c = Controller::Get();
         auto const& v = c.HostVersion();
         HostVersionValue().Text(c.Link() == HostLink::Connected && !v.empty() ? Widen(v) : std::wstring(Str(L"NotConnected")));
+        // The phone: this session's version, else the last one a paired phone reported.
+        auto const& st = c.Model();
+        std::wstring phone;
+        if (c.Link() != HostLink::Connected || !st.valid) phone = Str(L"NotConnected");
+        else if (st.standalone) phone = Str(L"WorkModeStandaloneShort");
+        else if (st.connection.status == "connected")
+            phone = DeviceVersionText(st.connection.peer.platform, st.connection.peer.app, st.connection.peer.versionMatch);
+        else
+        {
+            for (auto const& d : st.devices)
+                if (!d.app.empty()) phone = StrF(L"PhoneVersionLastSeen", { Widen(d.app) });
+            if (phone.empty()) phone = st.devices.empty() ? std::wstring(Str(L"NoPhonePaired")) : std::wstring(Str(L"DeviceVersionUnknown"));
+        }
+        PhoneVersionValue().Text(phone);
     }
 
     // ---- Pairing -----------------------------------------------------------------------------

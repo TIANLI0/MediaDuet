@@ -35,12 +35,25 @@ import kotlin.math.sin
  */
 class PlayerService : Service() {
 
-    private data class Track(val title: String, val artist: String, val album: String, val hz: Double, val durationMs: Long, val color: Int)
+    /** [scene]: a text-free dusk cover (screenshots for the website / README). */
+    private data class Track(
+        val title: String,
+        val artist: String,
+        val album: String,
+        val hz: Double,
+        val durationMs: Long,
+        val color: Int,
+        val scene: Boolean = false,
+    )
 
     private val tracks = listOf(
         Track("Test Tone A4", "MediaDuet Fixture", "Sine Collection", 440.0, 180_000, 0xFF5A7DFF.toInt()),
         Track("Test Tone C5", "MediaDuet Fixture", "Sine Collection", 523.25, 150_000, 0xFFE0559B.toInt()),
         Track("测试音 E5", "MediaDuet 测试", "正弦合集", 659.25, 200_000, 0xFF2DBE8C.toInt()),
+        // A real recording's metadata, for the phone's own online lyrics lookup (the tone is still a tone).
+        Track("晴天", "周杰伦", "叶惠美", 392.0, 269_000, 0xFF3B6FB6.toInt()),
+        // An invented song (original lyrics, see windows/ui/tools/fake_host.py --showcase) for screenshots.
+        Track("晚风来信", "林岸", "夜车", 349.23, 212_000, 0xFF3A2C78.toInt(), scene = true),
     )
 
     private lateinit var session: MediaSession
@@ -215,6 +228,23 @@ class PlayerService : Service() {
         val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val c = Canvas(bmp)
         val p = Paint(Paint.ANTI_ALIAS_FLAG)
+        if (t.scene) {
+            val s = size.toFloat()
+            p.shader = LinearGradient(0f, 0f, 0f, s, 0xFF3A2C78.toInt(), 0xFFEC8C78.toInt(), Shader.TileMode.CLAMP)
+            c.drawRect(0f, 0f, s, s, p)
+            p.shader = null
+            p.color = 0xCCFFD6AA.toInt()
+            c.drawCircle(s * 0.38f, s * 0.53f, s * 0.195f, p)
+            p.color = 0xAAFFF0DC.toInt()
+            c.drawCircle(s * 0.61f, s * 0.49f, s * 0.195f, p)
+            p.color = 0xFF2C2254.toInt()
+            val hills = android.graphics.Path().apply {
+                moveTo(0f, s * 0.78f); lineTo(s * 0.27f, s * 0.66f); lineTo(s * 0.59f, s * 0.76f)
+                lineTo(s * 0.82f, s * 0.68f); lineTo(s, s * 0.74f); lineTo(s, s); lineTo(0f, s); close()
+            }
+            c.drawPath(hills, p)
+            return bmp
+        }
         p.shader = LinearGradient(0f, 0f, size.toFloat(), size.toFloat(), t.color, 0xFF101421.toInt(), Shader.TileMode.CLAMP)
         c.drawRect(0f, 0f, size.toFloat(), size.toFloat(), p)
         p.shader = null

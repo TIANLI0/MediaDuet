@@ -70,6 +70,33 @@ namespace mdui::lyrics
         return p ? *p - static_cast<double>(delayMs) : -1.0;
     }
 
+    // ---- Song identity --------------------------------------------------------------------------
+
+    // One player session's song as the UI sees it (a session of the state, or the song a lyrics
+    // message names). durationMs < 0 = unknown.
+    struct SongRef
+    {
+        std::string trackId;
+        int side{ 0 };
+        std::string key;
+        std::string title;
+        std::string artist;
+        int64_t durationMs{ -1 };
+    };
+
+    // Same song of the same player session: equal trackIds, or (players such as QQ Music re-report
+    // the duration / album, which changes the trackId of the song that is playing) the same title and
+    // artist with durations within 3 s (md::lyrics::sameSong, the host's rule). The state and the
+    // lyrics message that carry a new trackId arrive in either order, so the views use this instead
+    // of comparing trackIds to keep lyrics (and the clock, holds, scroll) across such a change.
+    inline bool SameSong(SongRef const& a, SongRef const& b)
+    {
+        if (a.side != b.side || a.key != b.key) return false;
+        if (!a.trackId.empty() && a.trackId == b.trackId) return true;
+        auto dur = [](int64_t d) { return d > 0 ? std::optional<int64_t>(d) : std::nullopt; };
+        return md::lyrics::sameSong({ a.title, a.artist, {}, dur(a.durationMs) }, { b.title, b.artist, {}, dur(b.durationMs) });
+    }
+
     // ---- Display rows -----------------------------------------------------------------------------
 
     enum class RowKind

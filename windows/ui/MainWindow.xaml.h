@@ -58,6 +58,8 @@ namespace winrt::MediaDuetUI::implementation
         void UpdatePlayState();
         void UpdatePolicy();
         void UpdateLyrics();
+        void UpdateWelcome();
+        void UpdateVersionBar();
         void UpdateLyricsOffset();
         void UpdateProgress(uint64_t now);
         void UpdateLyricsPosition(double nowQpcMs, bool force);
@@ -104,6 +106,8 @@ namespace winrt::MediaDuetUI::implementation
 
         // Timing: smoothed lyric clock, optimistic seek / play-pause, keyboard seek coalescing.
         md::lyrics::LyricsClock m_clock;
+        std::string m_clockTrack;
+        std::string m_versionPair;   // "pc|phone" of the version warning shown (dismissal key)   // clock track key: per song (SameSong), not per trackId
         mdui::SeekHold m_seekHold;
         mdui::OptimisticFlag m_playHold;
         Microsoft::UI::Dispatching::DispatcherQueueTimer m_playHoldTimer{ nullptr };

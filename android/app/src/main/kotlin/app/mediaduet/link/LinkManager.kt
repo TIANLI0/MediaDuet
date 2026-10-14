@@ -229,7 +229,7 @@ class LinkManager(
         session.lastActiveMs = now
         session.attachedAtMs = now
         if (session.primary?.isClosed != false) session.setPrimary(conn)
-        trust.updateSeen(hs.peer.id, hs.peer.name, wallClock())
+        trust.updateSeen(hs.peer.id, hs.peer.name, wallClock(), hs.peer.app)
         MdLog.i(TAG, "session ${hs.sid.take(8)} ${if (hs.resumed) "resumed" else "new"} with ${hs.peer.name} via $conn")
         publishStatus()
         host.onSessionStarted(hs.peer, hs.resumed, hs.peerCaps)
@@ -378,7 +378,7 @@ class LinkManager(
                 val info = DeviceInfo.parse(env.body)
                 if (info.id != peerId) throw BadMessageException("device.info id mismatch")
                 session.peer = info
-                trust.updateSeen(peerId, info.name, wallClock())
+                trust.updateSeen(peerId, info.name, wallClock(), info.app)
                 publishStatus()
             }
             MsgType.MEDIA_SNAPSHOT -> {

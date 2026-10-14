@@ -20,9 +20,14 @@ android {
         applicationId = "app.mediaduet"
         minSdk = 29
         targetSdk = 37
-        versionCode = 4
-        versionName = "1.2.1"
+        versionCode = 5
+        versionName = "1.3.0"
         androidResources.localeFilters += listOf("en", "zh-rCN")
+        // Ships for 64-bit ARM phones only. -Pmediaduet.emulatorAbi adds x86_64 for local emulator runs.
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+            if (project.hasProperty("mediaduet.emulatorAbi")) abiFilters += "x86_64"
+        }
     }
 
     signingConfigs {
@@ -92,7 +97,6 @@ dependencies {
     implementation(libs.compose.ui.graphics)
     implementation(libs.compose.foundation)
     implementation(libs.compose.material3)
-    implementation(libs.compose.material.icons)
     implementation(libs.compose.ui.tooling.preview)
     debugImplementation(libs.compose.ui.tooling)
     implementation(libs.kotlinx.coroutines.android)

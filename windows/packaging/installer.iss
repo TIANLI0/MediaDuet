@@ -1,12 +1,12 @@
 ; Inno Setup 6 script for MediaDuet (per-user install, no admin rights).
 ; Build the staged folder first:  windows\packaging\package.ps1 -Arch x64
-; Then:  iscc /DArch=x64 /DVersion=1.2.1 windows\packaging\installer.iss
+; Then:  iscc /DArch=x64 /DVersion=1.3.0 windows\packaging\installer.iss
 
 #ifndef Arch
   #define Arch "x64"
 #endif
 #ifndef Version
-  #define Version "1.2.1"
+  #define Version "1.3.0"
 #endif
 #define Staged "..\..\dist\MediaDuet-" + Version + "-win-" + Arch
 
@@ -14,7 +14,7 @@
 AppId={{7B0E6E52-6E5F-4C61-9D0E-3B2B8B7A6D21}
 AppName=MediaDuet
 AppVersion={#Version}
-AppPublisher=MediaDuet contributors
+AppPublisher=tianli
 DefaultDirName={localappdata}\Programs\MediaDuet
 DefaultGroupName=MediaDuet
 PrivilegesRequired=lowest

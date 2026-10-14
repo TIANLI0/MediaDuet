@@ -2,6 +2,8 @@
 #include "RenderTest.h"
 
 #include "Controller.h"
+#include "Karaoke.h"
+#include "MainWindow.xaml.h"
 #include "WindowUtil.h"
 
 #include <winrt/Microsoft.UI.Windowing.h>
@@ -73,9 +75,27 @@ namespace mdui::render
             return MonitorFromRect(&r, MONITOR_DEFAULTTONULL) != nullptr;
         }
 
+        // The invariant: this process never takes the foreground (the user may be in a full-screen game).
+        // The user switching between other apps meanwhile is fine: follow it instead of aborting.
+        void ForegroundGuard(std::wstring const& where)
+        {
+            HWND fg = GetForegroundWindow();
+            if (fg == g_foreground) return;
+            DWORD pid = 0;
+            GetWindowThreadProcessId(fg, &pid);
+            if (pid == GetCurrentProcessId())
+            {
+                wchar_t cls[128] = {};
+                GetClassNameW(fg, cls, 128);
+                Abort(L"this process took the foreground at " + where + L" (class " + cls + L")");
+            }
+            Log(L"foreground changed by the user at " + where + L"; continuing");
+            g_foreground = fg;
+        }
+
         void CheckForeground(wchar_t const* where)
         {
-            if (GetForegroundWindow() != g_foreground) Abort(std::wstring(L"foreground window changed at ") + where);
+            ForegroundGuard(where);
             for (HWND h : g_windows)
             {
                 RECT r{};
@@ -192,6 +212,29 @@ namespace mdui::render
             if (!(c.Link() == HostLink::Connected && c.Model().valid)) Abort(L"fake host not reachable on the test pipe");
             g_foreground = GetForegroundWindow();
             Log(L"connected; lyrics " + std::wstring(c.CurrentLyrics().status.begin(), c.CurrentLyrics().status.end()));
+            {
+                // Lyrics typeface check: the bundled HarmonyOS Sans SC must actually be used (an
+                // unresolvable family silently falls back, measuring like any unknown family).
+                auto width = [](LyricWeight w, wchar_t const* family) {
+                    Controls::TextBlock tb;
+                    tb.FontSize(30);
+                    if (family) {
+                        tb.FontFamily(Media::FontFamily(family));
+                        tb.FontWeight(winrt::Windows::UI::Text::FontWeight{ 700 });
+                    } else {
+                        ApplyLyricFont(tb, w);
+                    }
+                    tb.Text(L"Hello, world \x6674\x5929 \x4E03\x91CC\x9999 0123456789");
+                    tb.Measure({ 1e6f, 1e6f });
+                    return tb.DesiredSize().Width;
+                };
+                float fallback = width(LyricWeight::Bold, L"No Such Font MediaDuet");
+                float bold = width(LyricWeight::Bold, nullptr), medium = width(LyricWeight::Medium, nullptr);
+                Log(L"lyric font: files " + std::wstring(LyricFontAvailable() ? L"found" : L"MISSING") + L"; width bold " +
+                    std::to_wstring(bold) + L" medium " + std::to_wstring(medium) +
+                    L" unknown-family " + std::to_wstring(fallback) +
+                    (std::abs(bold - fallback) > 0.5f ? L" -> HarmonyOS Sans SC in use" : L" -> NOT APPLIED (fallback font)"));
+            }
 
             struct Size { int w, h; wchar_t const* name; };
             Size sizes[] = { { 1040, 760, L"1040x760" }, { 760, 560, L"760x560-min" }, { 1366, 768, L"1366x768" },
@@ -303,6 +346,30 @@ namespace mdui::render
             co_await Capture(main, L"46-hold-new-lyrics", true);
             }
 
+            // Settings pages (About: developer card + notices; Devices: versions; General: work mode).
+            if (Section(L"settings")) {
+            PrepareOffscreen(GetHwnd(main), 1040, 900);
+            co_await Delay(500ms);
+            auto impl = winrt::get_self<winrt::MediaDuetUI::implementation::MainWindow>(main.as<winrt::MediaDuetUI::MainWindow>());
+            co_await Capture(main, L"59-main-before-settings", true);   // first-run choice / version warning
+            impl->ShowSettings(L"about", false);
+            co_await Delay(1200ms);   // avatar decode
+            co_await Capture(main, L"60-settings-about-dark", true);
+            impl->ShowSettings(L"devices", false);
+            co_await Delay(700ms);
+            co_await Capture(main, L"61-settings-devices-dark", true);
+            impl->ShowSettings(L"general", false);
+            co_await Delay(700ms);
+            co_await Capture(main, L"62-settings-general-dark", true);
+            c.SetSetting("theme", "light");
+            impl->ShowSettings(L"about", false);
+            co_await Delay(900ms);
+            co_await Capture(main, L"63-settings-about-light", false);
+            c.SetSetting("theme", "dark");
+            impl->ShowPlayer(false);
+            co_await Delay(500ms);
+            }
+
             // Compact window.
             Window compact{ nullptr };
             if (Section(L"compact")) {
@@ -402,7 +469,7 @@ namespace mdui::render
             GetWindowRect(hwnd, &r);
             if (IntersectsMonitor(r)) Abort(L"window rectangle intersects a monitor after showing");
         }
-        if (g_foreground && GetForegroundWindow() != g_foreground) Abort(L"foreground window changed while preparing");
+        if (g_foreground) ForegroundGuard(L"preparing");
     }
 
     void Run()

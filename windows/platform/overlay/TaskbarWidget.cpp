@@ -93,15 +93,41 @@ uint64_t taskWindowSignature() {
 struct ProbeResult {
     bool ok = false;
     bool timedOut = false;
+    // ok, but the Windows 10 task buttons could not be measured: the whole task band
+    // is reported as occupied (never overlap) and the probe is retried with back-off.
+    bool partial = false;
     std::string error;
     HWND tray = nullptr;
     ov::Rect trayRect;
     bool autoHide = false;
     bool xaml = false;
-    std::optional<ov::Rect> start, widgets;
-    long tasksRight = 0;
+    // See ov::TaskbarGeometry. notify: XAML system tray measured with UIA (Windows 11)
+    // or TrayNotifyWnd (classic; the host re-reads it live).
+    std::optional<ov::Rect> start, widgets, notify;
+    std::vector<ov::Rect> group, occupied;
     int64_t tookMs = 0;
 };
+
+std::optional<ov::Rect> visibleWindowRect(HWND h) {
+    RECT rc{};
+    if (!h || !IsWindowVisible(h) || !GetWindowRect(h, &rc) || rc.right <= rc.left || rc.bottom <= rc.top)
+        return std::nullopt;
+    return toRect(rc);
+}
+
+std::wstring windowClass(HWND h) {
+    wchar_t buf[128]{};
+    int n = GetClassNameW(h, buf, static_cast<int>(std::size(buf)));
+    return std::wstring(buf, n > 0 ? static_cast<size_t>(n) : 0);
+}
+
+ov::Rect unite(const std::optional<ov::Rect>& a, const ov::Rect& b) {
+    if (!a) return b;
+    return {std::min(a->left, b.left), std::min(a->top, b.top), std::max(a->right, b.right),
+            std::max(a->bottom, b.bottom)};
+}
+
+constexpr HRESULT kUiaTimeout = static_cast<HRESULT>(0x80131505); // UIA_E_TIMEOUT
 
 class TaskbarProbe {
 public:
@@ -168,7 +194,9 @@ private:
         winrt::uninit_apartment();
     }
 
-    static com_ptr<IUIAutomationCondition> idOr(IUIAutomation* uia) {
+    // Windows 11 items of interest: every button (task / tray / unknown) plus the
+    // known ids in case one of them is not exposed as a button.
+    static com_ptr<IUIAutomationCondition> xamlCondition(IUIAutomation* uia) {
         std::vector<com_ptr<IUIAutomationCondition>> parts;
         auto prop = [&](PROPERTYID id, const wchar_t* value) {
             VARIANT v;
@@ -179,14 +207,35 @@ private:
             VariantClear(&v);
         };
         for (const wchar_t* id : {L"StartButton", L"WidgetsButton", L"SearchButton", L"TaskViewButton",
-                                  L"ComposerControlTaskbarUx"})
+                                  L"ComposerControlTaskbarUx", L"SystemTrayIcon", L"NotifyItemIcon"})
             prop(UIA_AutomationIdPropertyId, id);
         prop(UIA_ClassNamePropertyId, L"Taskbar.TaskListButtonAutomationPeer");
+        {
+            VARIANT v;
+            v.vt = VT_I4;
+            v.lVal = UIA_ButtonControlTypeId;
+            com_ptr<IUIAutomationCondition> c;
+            if (SUCCEEDED(uia->CreatePropertyCondition(UIA_ControlTypePropertyId, v, c.put()))) parts.push_back(c);
+        }
         std::vector<IUIAutomationCondition*> raw;
         for (auto& p : parts) raw.push_back(p.get());
         com_ptr<IUIAutomationCondition> out;
         uia->CreateOrConditionFromNativeArray(raw.data(), static_cast<int>(raw.size()), out.put());
         return out;
+    }
+
+    static bool ensureUia(com_ptr<IUIAutomation>& uia) {
+        if (uia) return true;
+        com_ptr<IUIAutomation> u;
+        if (FAILED(CoCreateInstance(CLSID_CUIAutomation8, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(u.put()))) &&
+            FAILED(CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(u.put()))))
+            return false;
+        if (auto u2 = u.try_as<IUIAutomation2>()) {
+            u2->put_ConnectionTimeout(1000);
+            u2->put_TransactionTimeout(1500);
+        }
+        uia = u;
+        return true;
     }
 
     static ProbeResult probe(com_ptr<IUIAutomation>& uia, HWND tray) {
@@ -205,31 +254,28 @@ private:
         HWND bridge = FindWindowExW(tray, nullptr, L"Windows.UI.Composition.DesktopWindowContentBridge", nullptr);
         HWND classicStart = FindWindowExW(tray, nullptr, L"Start", nullptr);
         // Windows 11 XAML taskbar (also while it is still starting and has no bridge
-        // yet); a visible classic Start button means a Windows 10 style taskbar.
+        // yet); a visible classic Start button means a Windows 10 style taskbar
+        // (Windows 10, or a classic taskbar restored on Windows 11).
         r.xaml = bridge || (osBuild() >= 22000 && !(classicStart && IsWindowVisible(classicStart)));
-        if (!r.xaml) {
-            r.ok = true;
-            r.tookMs = static_cast<int64_t>(GetTickCount64() - t0);
-            return r;
-        }
-        if (!uia) {
-            com_ptr<IUIAutomation> u;
-            if (FAILED(CoCreateInstance(CLSID_CUIAutomation8, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(u.put()))) &&
-                FAILED(CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(u.put())))) {
-                r.error = "uia_unavailable";
-                return r;
-            }
-            if (auto u2 = u.try_as<IUIAutomation2>()) {
-                u2->put_ConnectionTimeout(1000);
-                u2->put_TransactionTimeout(1500);
-            }
-            uia = u;
+        if (!r.xaml) probeClassic(uia, tray, r);
+        else probeXaml(uia, tray, r);
+        r.tookMs = static_cast<int64_t>(GetTickCount64() - t0);
+        return r;
+    }
+
+    // Windows 11: one cached FindAll over the taskbar. Measured on build 26340:
+    //   StartButton / WidgetsButton (ToggleButton), ComposerControlTaskbarUx (search),
+    //   TaskViewButton, Taskbar.TaskListButtonAutomationPeer (apps); tray buttons have
+    //   ids SystemTrayIcon / NotifyItemIcon and classes SystemTray.NormalButton,
+    //   .AccentButton, .OmniButton, .OmniButtonCenter, .ShowDesktopButton.
+    static void probeXaml(com_ptr<IUIAutomation>& uia, HWND tray, ProbeResult& r) {
+        if (!ensureUia(uia)) {
+            r.error = "uia_unavailable";
+            return;
         }
         auto fail = [&](HRESULT hr, const char* what) {
-            r.timedOut = hr == static_cast<HRESULT>(0x80131505); // UIA_E_TIMEOUT
+            r.timedOut = hr == kUiaTimeout;
             r.error = r.timedOut ? "uia_timeout" : what;
-            r.tookMs = static_cast<int64_t>(GetTickCount64() - t0);
-            return r;
         };
         com_ptr<IUIAutomationElement> root;
         HRESULT hr = uia->ElementFromHandle(tray, root.put());
@@ -239,14 +285,15 @@ private:
         cache->AddProperty(UIA_BoundingRectanglePropertyId);
         cache->AddProperty(UIA_AutomationIdPropertyId);
         cache->AddProperty(UIA_ClassNamePropertyId);
+        cache->AddProperty(UIA_IsOffscreenPropertyId);
         cache->put_AutomationElementMode(AutomationElementMode_None); // cached values only
-        auto cond = idOr(uia.get());
+        auto cond = xamlCondition(uia.get());
         com_ptr<IUIAutomationElementArray> arr;
         hr = root->FindAllBuildCache(TreeScope_Descendants, cond.get(), cache.get(), arr.put());
         if (FAILED(hr) || !arr) return fail(hr, "uia_query");
         int n = 0;
         arr->get_Length(&n);
-        long tasks = 0;
+        const ov::Rect& tb = r.trayRect;
         for (int i = 0; i < n; ++i) {
             com_ptr<IUIAutomationElement> e;
             if (FAILED(arr->GetElement(i, e.put())) || !e) continue;
@@ -255,18 +302,101 @@ private:
             BSTR id = nullptr, cls = nullptr;
             e->get_CachedAutomationId(&id);
             e->get_CachedClassName(&cls);
+            BOOL offscreen = FALSE;
+            e->get_CachedIsOffscreen(&offscreen);
             std::wstring sid = id ? id : L"", scls = cls ? cls : L"";
             SysFreeString(id);
             SysFreeString(cls);
-            if (rc.right <= rc.left) continue; // hidden button
-            if (sid == L"StartButton") r.start = toRect(rc);
-            else if (sid == L"WidgetsButton") r.widgets = toRect(rc);
-            else tasks = std::max<long>(tasks, rc.right);
+            if (rc.right <= rc.left || rc.bottom <= rc.top) continue; // hidden button
+            ov::Rect rr = toRect(rc);
+            if (sid == L"StartButton") r.start = rr;
+            else if (sid == L"WidgetsButton") r.widgets = rr;
+            else if (sid == L"SystemTrayIcon" || sid == L"NotifyItemIcon" || scls.starts_with(L"SystemTray."))
+                r.notify = unite(r.notify, rr);
+            else if (scls == L"Taskbar.TaskListButtonAutomationPeer" || sid == L"SearchButton" ||
+                     sid == L"TaskViewButton" || sid == L"ComposerControlTaskbarUx")
+                r.group.push_back(rr);
+            else if (!offscreen && rr.width() <= tb.width() / 3)
+                r.occupied.push_back(rr); // unknown button (Copilot, overflow, …): never cover it
         }
-        if (r.start) r.tasksRight = std::max(tasks, r.start->right);
         r.ok = true;
-        r.tookMs = static_cast<int64_t>(GetTickCount64() - t0);
-        return r;
+    }
+
+    // Classic (Windows 10 style) taskbar: Win32 children of Shell_TrayWnd; the task
+    // buttons' real extent comes from UIA on MSTaskListWClass (its children are the
+    // buttons). If that fails, the whole task band counts as occupied.
+    static void probeClassic(com_ptr<IUIAutomation>& uia, HWND tray, ProbeResult& r) {
+        const ov::Rect& tb = r.trayRect;
+        r.ok = true;
+        if (tb.height() > tb.width()) return; // vertical: not supported, nothing to measure
+        HWND taskSw = nullptr;
+        std::optional<ov::Rect> band;
+        std::vector<ov::Rect> loose; // search box, task view, Cortana, People, news…
+        for (HWND c = FindWindowExW(tray, nullptr, nullptr, nullptr); c; c = FindWindowExW(tray, c, nullptr, nullptr)) {
+            auto rc = visibleWindowRect(c);
+            if (!rc) continue;
+            std::wstring cls = windowClass(c);
+            if (cls == L"Start") r.start = *rc;
+            else if (cls == L"TrayNotifyWnd") r.notify = *rc;
+            else if (cls == L"ReBarWindow32") {
+                for (HWND b = FindWindowExW(c, nullptr, nullptr, nullptr); b; b = FindWindowExW(c, b, nullptr, nullptr)) {
+                    auto br = visibleWindowRect(b);
+                    if (!br) continue;
+                    if (windowClass(b) == L"MSTaskSwWClass") {
+                        taskSw = b;
+                        band = *br;
+                    } else {
+                        r.occupied.push_back(*br); // toolbars (Quick Launch, Address, …)
+                    }
+                }
+            } else if (rc->width() <= tb.width() / 2) {
+                loose.push_back(*rc);
+            }
+        }
+        // Items before the task band belong to the task group; the rest (People,
+        // news and interests, …) are just occupied.
+        for (const auto& rc : loose) {
+            if (band && rc.right <= band->left + 2) r.group.push_back(rc);
+            else r.occupied.push_back(rc);
+        }
+        if (!band) return;
+        HWND list = FindWindowExW(taskSw, nullptr, L"MSTaskListWClass", nullptr);
+        HRESULT hr = E_FAIL;
+        bool measured = false;
+        std::optional<ov::Rect> extent;
+        if (list && ensureUia(uia)) {
+            com_ptr<IUIAutomationElement> el;
+            com_ptr<IUIAutomationCacheRequest> cache;
+            com_ptr<IUIAutomationCondition> all;
+            com_ptr<IUIAutomationElementArray> arr;
+            hr = uia->ElementFromHandle(list, el.put());
+            if (SUCCEEDED(hr) && el && SUCCEEDED(hr = uia->CreateCacheRequest(cache.put())) &&
+                SUCCEEDED(hr = uia->CreateTrueCondition(all.put()))) {
+                cache->AddProperty(UIA_BoundingRectanglePropertyId);
+                cache->put_AutomationElementMode(AutomationElementMode_None);
+                hr = el->FindAllBuildCache(TreeScope_Children, all.get(), cache.get(), arr.put());
+                if (SUCCEEDED(hr) && arr) {
+                    measured = true;
+                    int n = 0;
+                    arr->get_Length(&n);
+                    for (int i = 0; i < n; ++i) {
+                        com_ptr<IUIAutomationElement> e;
+                        if (FAILED(arr->GetElement(i, e.put())) || !e) continue;
+                        RECT rc{};
+                        e->get_CachedBoundingRectangle(&rc);
+                        if (rc.right > rc.left && rc.bottom > rc.top) extent = unite(extent, toRect(rc));
+                    }
+                }
+            }
+        }
+        if (measured) {
+            if (extent) r.group.push_back(*extent); // no buttons at all: the whole band is free
+            return;
+        }
+        r.partial = true;
+        r.occupied.push_back(*band);
+        r.timedOut = hr == kUiaTimeout;
+        r.error = r.timedOut ? "uia_timeout" : !list ? "no_task_list" : "uia_task_list";
     }
 
     std::shared_ptr<State> st_;
@@ -423,7 +553,19 @@ struct TaskbarWidget::Impl {
         probeStuckLogged = false;
         lastProbeAt = t;
         bool notReady = r.ok && r.xaml && !r.start;
-        if (r.ok && !notReady) {
+        if (r.ok && r.partial) {
+            // Usable but conservative (Windows 10 task band treated as occupied): keep
+            // it and retry the measurement with back-off.
+            geo = r;
+            geoError.clear();
+            ++probeFailures;
+            nextProbeAt = t + ov::probeBackoffMs(probeFailures, 1000, 60'000);
+            if (timeoutLogs < 3 || probeFailures % 10 == 0) {
+                ++timeoutLogs;
+                log::info("taskbar", "task buttons not measured after {} ms ({}); avoiding the whole task band, retry in {} s",
+                          r.tookMs, r.error, (nextProbeAt - t) / 1000);
+            }
+        } else if (r.ok && !notReady) {
             if (probeFailures > 0) log::info("taskbar", "taskbar measured again after {} failed attempt(s)", probeFailures);
             geo = r;
             geoError.clear();
@@ -465,16 +607,11 @@ struct TaskbarWidget::Impl {
         RECT tb{};
         GetWindowRect(tray, &tb);
         g.tray = toRect(tb);
-        if (HWND tn = FindWindowExW(tray, nullptr, L"TrayNotifyWnd", nullptr)) {
-            RECT r{};
-            GetWindowRect(tn, &r);
-            g.notify = toRect(r);
-        }
-        if (HWND rb = FindWindowExW(tray, nullptr, L"ReBarWindow32", nullptr)) {
-            RECT r{};
-            GetWindowRect(rb, &r);
-            g.rebar = toRect(r);
-        }
+        // Right boundary: the measured XAML tray (Windows 11), else the live
+        // TrayNotifyWnd (classic taskbar; also older Windows 11 builds with a Win32
+        // tray), else the end of the bar.
+        if (geo->xaml && geo->notify) g.notify = geo->notify;
+        else if (auto tn = visibleWindowRect(FindWindowExW(tray, nullptr, L"TrayNotifyWnd", nullptr))) g.notify = tn;
         dpi = GetDpiForWindow(tray);
         if (!dpi) dpi = 96;
         g.scale = scale();
@@ -482,7 +619,8 @@ struct TaskbarWidget::Impl {
         g.xaml = geo->xaml;
         g.start = geo->start;
         g.widgets = geo->widgets;
-        g.tasksRight = geo->tasksRight;
+        g.group = geo->group;
+        g.occupied = geo->occupied;
         return ov::placeTaskbarWidget(g, position, offset, widthDip);
     }
 
@@ -591,7 +729,11 @@ struct TaskbarWidget::Impl {
         if (!fullscreen) {
             Key k = currentKey();
             bool changed = !(k == probedKey);
-            if (changed || !geo || (shownFlag && t - lastProbeAt >= kProbeRefreshMs)) requestProbe(false);
+            // Periodic re-measure also while hidden for lack of space (pinned icons,
+            // tray icons, search box / task view settings change without a key change);
+            // a partial (conservative) measurement is retried on its back-off.
+            bool periodic = (shownFlag || reason == "no_space") && t - lastProbeAt >= kProbeRefreshMs;
+            if (changed || !geo || geo->partial || periodic) requestProbe(false);
         }
         // Watchdog: should be visible (or failing for a non-legitimate reason) but is not.
         bool want = !fullscreen && (shownFlag || !ov::isExpectedHideReason(reason));

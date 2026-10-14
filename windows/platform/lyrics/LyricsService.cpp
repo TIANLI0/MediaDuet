@@ -14,6 +14,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <cctype>
 #include <fstream>
 #include <sstream>
 
@@ -379,6 +380,28 @@ void LyricsService::deliver(Result r) {
     if (onResult_) onResult_(cur_);
 }
 
+bool LyricsService::rekey(const std::string& trackId) {
+    if (cur_.trackId.empty() || trackId.empty()) return false;
+    if (cur_.status != "found" && cur_.status != "loading") return false;
+    if (trackId == cur_.trackId) return true;
+    cur_.trackId = trackId;
+    cacheCopy(cur_);
+    return true;
+}
+
+void LyricsService::cacheCopy(const Result& r) {
+    // Found lyrics, cached under the (new) trackId too unless that entry exists already.
+    if (r.status != "found" || r.lrc.empty() || r.trackId.size() > 64) return;
+    for (char c : r.trackId)
+        if (!std::isalnum(static_cast<unsigned char>(c)) && c != '-' && c != '_') return; // ids are file names
+    auto stem = cacheDir_ / text::toWide(r.trackId);
+    std::error_code ec;
+    auto lrc = fs::path(stem).replace_extension(L".lrc");
+    if (!fs::exists(lrc, ec) && !fs::exists(fs::path(stem).replace_extension(L".yrc"), ec)) writeText(lrc, r.lrc);
+    auto tr = fs::path(stem).replace_extension(L".tlrc");
+    if (!r.translation.empty() && !fs::exists(tr, ec)) writeText(tr, r.translation);
+}
+
 void LyricsService::offerRemote(const std::string& trackId, const std::string& lrc, const std::string& source,
                                 const std::string& translation) {
     if (trackId.size() > 64 || lrc.size() > 256 * 1024 || translation.size() > 256 * 1024) return;
@@ -473,6 +496,11 @@ void LyricsService::request(const media::MediaSessionInfo& t, int64_t neteaseId)
         if (r.status == "found" && r.lyrics.empty()) r.status = "notfound";
         self->sched_.post([self, alive, gen, r = std::move(r)]() mutable {
             if (alive.expired() || gen != self->gen_) return;
+            // rekey() relabelled the track while this lookup ran (same song, new trackId).
+            if (r.trackId != self->cur_.trackId) {
+                r.trackId = self->cur_.trackId;
+                self->cacheCopy(r);
+            }
             self->deliver(std::move(r));
         });
     }(this, alive, t, gen, online_, local_, cacheDir_, providers_, neteaseId);

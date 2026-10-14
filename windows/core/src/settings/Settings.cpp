@@ -16,6 +16,8 @@ json defaults() {
   "language": "auto",
   "theme": "system",
   "autostart": true,
+  "mode": "linked",
+  "modeChosen": false,
   "connection": {"mode": "auto", "switchBackDelaySec": 10},
   "policy": {
     "mode": "windows_first",
@@ -32,6 +34,7 @@ json defaults() {
   },
   "smtcBridge": true,
   "compat": {"neteaseDesktop": true},
+  "artwork": {"online": true},
   "taskbar": {"enabled": true, "content": "auto", "position": "left", "offset": 0, "width": 360, "fontSize": 13},
   "lyrics": {
     "online": true,
@@ -135,6 +138,8 @@ json normalize(json s) {
     conform(s, def);
     oneOf(s, "language", {"auto", "zh-CN", "en-US"}, "auto");
     oneOf(s, "theme", {"system", "light", "dark"}, "system");
+    // Work mode: "linked" (with a paired phone) or "standalone" (this PC only: no transports).
+    oneOf(s, "mode", {"linked", "standalone"}, "linked");
     oneOf(s["connection"], "mode", {"auto", "bt_only", "lan_only"}, "auto");
     clampNum(s["connection"], "switchBackDelaySec", 0, 600);
     auto& p = s["policy"];

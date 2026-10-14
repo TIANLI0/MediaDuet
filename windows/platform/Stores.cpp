@@ -132,6 +132,8 @@ void DeviceStore::load() {
         if (auto a = parseBtAddress(d.value("btAddress", std::string()))) r.btAddress = *a;
         r.pairedAt = d.value("pairedAt", int64_t(0));
         r.lastSeen = d.value("lastSeen", int64_t(0));
+        if (auto a = d.find("app"); a != d.end() && a->is_string() && a->get_ref<const std::string&>().size() <= 32)
+            r.app = a->get<std::string>();
         if (d.contains("manual") && d["manual"].is_array())
             for (auto& e : d["manual"])
                 if (e.is_object())
@@ -166,6 +168,7 @@ bool DeviceStore::save() const {
                        {"manual", manual},
                        {"pairedAt", r.pairedAt},
                        {"lastSeen", r.lastSeen},
+                       {"app", r.app},
                        {"key", base64Encode(*blob)}});
     }
     return writeJson(appDataDir() / L"devices.json", {{"version", 1}, {"devices", arr}});

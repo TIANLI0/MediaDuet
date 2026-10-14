@@ -18,7 +18,6 @@ namespace fs = std::filesystem;
 using winrt::com_ptr;
 
 namespace {
-constexpr UINT kMaxSide = 512;
 constexpr size_t kMaxInput = 8 * 1024 * 1024;
 
 struct ComInit {
@@ -29,24 +28,76 @@ struct ComInit {
     }
 };
 
-std::optional<Bytes> transcode(ByteView raw) {
-    ComInit com;
+com_ptr<IWICImagingFactory> wicFactory() {
     com_ptr<IWICImagingFactory> f;
     if (FAILED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(f.put()))))
-        return std::nullopt;
+        return nullptr;
+    return f;
+}
+
+com_ptr<IWICBitmapFrameDecode> decodeFrame(IWICImagingFactory* f, ByteView raw, UINT& w, UINT& h) {
     com_ptr<IStream> in;
     in.attach(SHCreateMemStream(raw.data(), static_cast<UINT>(raw.size())));
-    if (!in) return std::nullopt;
+    if (!in) return nullptr;
     com_ptr<IWICBitmapDecoder> dec;
     if (FAILED(f->CreateDecoderFromStream(in.get(), nullptr, WICDecodeMetadataCacheOnDemand, dec.put())))
-        return std::nullopt;
+        return nullptr;
     com_ptr<IWICBitmapFrameDecode> frame;
-    if (FAILED(dec->GetFrame(0, frame.put()))) return std::nullopt;
+    if (FAILED(dec->GetFrame(0, frame.put()))) return nullptr;
+    w = h = 0;
+    if (FAILED(frame->GetSize(&w, &h)) || w == 0 || h == 0 || w > 20000 || h > 20000) return nullptr;
+    return frame;
+}
+
+std::optional<Bytes> encodeJpeg(IWICImagingFactory* f, IWICBitmapSource* src, UINT w, UINT h, float quality) {
+    com_ptr<IStream> out;
+    out.attach(SHCreateMemStream(nullptr, 0));
+    if (!out) return std::nullopt;
+    com_ptr<IWICBitmapEncoder> enc;
+    if (FAILED(f->CreateEncoder(GUID_ContainerFormatJpeg, nullptr, enc.put())) ||
+        FAILED(enc->Initialize(out.get(), WICBitmapEncoderNoCache)))
+        return std::nullopt;
+    com_ptr<IWICBitmapFrameEncode> fe;
+    com_ptr<IPropertyBag2> bag;
+    if (FAILED(enc->CreateNewFrame(fe.put(), bag.put()))) return std::nullopt;
+    PROPBAG2 opt{};
+    opt.pstrName = const_cast<LPOLESTR>(L"ImageQuality");
+    VARIANT v;
+    VariantInit(&v);
+    v.vt = VT_R4;
+    v.fltVal = quality;
+    bag->Write(1, &opt, &v);
+    WICPixelFormatGUID fmt = GUID_WICPixelFormat24bppBGR;
+    if (FAILED(fe->Initialize(bag.get())) || FAILED(fe->SetSize(w, h)) || FAILED(fe->SetPixelFormat(&fmt)) ||
+        FAILED(fe->WriteSource(src, nullptr)) || FAILED(fe->Commit()) || FAILED(enc->Commit()))
+        return std::nullopt;
+    STATSTG st{};
+    if (FAILED(out->Stat(&st, STATFLAG_NONAME))) return std::nullopt;
+    Bytes data(static_cast<size_t>(st.cbSize.QuadPart));
+    LARGE_INTEGER zero{};
+    out->Seek(zero, STREAM_SEEK_SET, nullptr);
+    ULONG read = 0;
+    out->Read(data.data(), static_cast<ULONG>(data.size()), &read);
+    data.resize(read);
+    return data;
+}
+
+struct Transcoded {
+    Bytes jpeg;
+    media::ImageSize source, stored;
+};
+
+// Decodes, scales the longer side to at most maxSide and encodes as JPEG within the
+// protocol's artwork size limit (stepping the quality down if needed).
+std::optional<Transcoded> transcode(ByteView raw, uint32_t maxSide) {
+    ComInit com;
+    auto f = wicFactory();
+    if (!f) return std::nullopt;
     UINT w = 0, h = 0;
-    frame->GetSize(&w, &h);
-    if (w == 0 || h == 0 || w > 20000 || h > 20000) return std::nullopt;
+    auto frame = decodeFrame(f.get(), raw, w, h);
+    if (!frame) return std::nullopt;
     com_ptr<IWICBitmapSource> src = frame;
-    double scale = std::min(1.0, static_cast<double>(kMaxSide) / std::max(w, h));
+    double scale = std::min(1.0, static_cast<double>(std::max<uint32_t>(maxSide, 1)) / std::max(w, h));
     UINT tw = std::max(1u, static_cast<UINT>(w * scale)), th = std::max(1u, static_cast<UINT>(h * scale));
     if (scale < 1.0) {
         com_ptr<IWICBitmapScaler> sc;
@@ -60,35 +111,16 @@ std::optional<Bytes> transcode(ByteView raw) {
         FAILED(conv->Initialize(src.get(), GUID_WICPixelFormat24bppBGR, WICBitmapDitherTypeNone, nullptr, 0,
                                 WICBitmapPaletteTypeCustom)))
         return std::nullopt;
-    com_ptr<IStream> out;
-    out.attach(SHCreateMemStream(nullptr, 0));
-    com_ptr<IWICBitmapEncoder> enc;
-    if (FAILED(f->CreateEncoder(GUID_ContainerFormatJpeg, nullptr, enc.put())) ||
-        FAILED(enc->Initialize(out.get(), WICBitmapEncoderNoCache)))
-        return std::nullopt;
-    com_ptr<IWICBitmapFrameEncode> fe;
-    com_ptr<IPropertyBag2> bag;
-    if (FAILED(enc->CreateNewFrame(fe.put(), bag.put()))) return std::nullopt;
-    PROPBAG2 opt{};
-    opt.pstrName = const_cast<LPOLESTR>(L"ImageQuality");
-    VARIANT v;
-    VariantInit(&v);
-    v.vt = VT_R4;
-    v.fltVal = 0.86f;
-    bag->Write(1, &opt, &v);
-    WICPixelFormatGUID fmt = GUID_WICPixelFormat24bppBGR;
-    if (FAILED(fe->Initialize(bag.get())) || FAILED(fe->SetSize(tw, th)) || FAILED(fe->SetPixelFormat(&fmt)) ||
-        FAILED(fe->WriteSource(conv.get(), nullptr)) || FAILED(fe->Commit()) || FAILED(enc->Commit()))
-        return std::nullopt;
-    STATSTG st{};
-    out->Stat(&st, STATFLAG_NONAME);
-    Bytes data(static_cast<size_t>(st.cbSize.QuadPart));
-    LARGE_INTEGER zero{};
-    out->Seek(zero, STREAM_SEEK_SET, nullptr);
-    ULONG read = 0;
-    out->Read(data.data(), static_cast<ULONG>(data.size()), &read);
-    data.resize(read);
-    return data;
+    // Materialise once so a quality retry does not decode and scale again.
+    com_ptr<IWICBitmap> pixels;
+    if (FAILED(f->CreateBitmapFromSource(conv.get(), WICBitmapCacheOnLoad, pixels.put()))) return std::nullopt;
+    for (float q : {0.86f, 0.75f, 0.6f, 0.45f}) {
+        auto data = encodeJpeg(f.get(), pixels.get(), tw, th, q);
+        if (!data || data->empty()) return std::nullopt;
+        if (data->size() <= media::artwork::kMaxBytes)
+            return Transcoded{std::move(*data), {w, h}, {tw, th}};
+    }
+    return std::nullopt;
 }
 
 bool writeFile(const fs::path& p, ByteView data) {
@@ -126,24 +158,48 @@ std::optional<Bytes> ArtworkCache::read(const std::string& hash) const {
 }
 
 std::optional<media::ArtworkRef> ArtworkCache::ingest(ByteView raw) {
+    auto r = ingestImage(raw);
+    if (!r) return std::nullopt;
+    return r->ref;
+}
+
+std::optional<ArtworkCache::Ingested> ArtworkCache::ingestImage(ByteView raw, uint32_t maxSide) {
     if (raw.empty() || raw.size() > kMaxInput) return std::nullopt;
-    std::string rawHash = hexEncode(crypto::sha256(raw));
+    std::string rawKey = hexEncode(crypto::sha256(raw)) + ":" + std::to_string(maxSide);
     {
         std::lock_guard lock(m_);
-        if (auto it = rawToRef_.find(rawHash); it != rawToRef_.end() && has(it->second.hash)) return it->second;
+        if (auto it = rawToRef_.find(rawKey); it != rawToRef_.end() && has(it->second.ref.hash)) return it->second;
     }
-    auto jpeg = transcode(raw);
-    if (!jpeg || jpeg->empty() || jpeg->size() > 1024 * 1024) return std::nullopt;
-    media::ArtworkRef ref{hexEncode(crypto::sha256(*jpeg)), "image/jpeg", static_cast<uint32_t>(jpeg->size())};
-    if (!has(ref.hash) && !writeFile(pathFor(ref.hash), *jpeg)) return std::nullopt;
+    auto t = transcode(raw, maxSide);
+    if (!t || t->jpeg.empty() || t->jpeg.size() > media::artwork::kMaxBytes) return std::nullopt;
+    Ingested out{{hexEncode(crypto::sha256(t->jpeg)), "image/jpeg", static_cast<uint32_t>(t->jpeg.size())},
+                 t->source,
+                 t->stored};
+    if (!has(out.ref.hash) && !writeFile(pathFor(out.ref.hash), t->jpeg)) return std::nullopt;
     std::lock_guard lock(m_);
     if (rawToRef_.size() > 256) rawToRef_.clear();
-    rawToRef_[rawHash] = ref;
-    return ref;
+    rawToRef_[rawKey] = out;
+    return out;
+}
+
+std::optional<media::ImageSize> ArtworkCache::probe(ByteView raw) {
+    if (raw.empty() || raw.size() > kMaxInput) return std::nullopt;
+    ComInit com;
+    auto f = wicFactory();
+    if (!f) return std::nullopt;
+    UINT w = 0, h = 0;
+    if (!decodeFrame(f.get(), raw, w, h)) return std::nullopt;
+    return media::ImageSize{w, h};
+}
+
+void ArtworkCache::touch(const std::string& hash) {
+    if (hash.size() != 64) return;
+    std::error_code ec;
+    fs::last_write_time(pathFor(hash), fs::file_time_type::clock::now(), ec);
 }
 
 bool ArtworkCache::store(const std::string& hash, ByteView data) {
-    if (hash.size() != 64 || data.size() > 1024 * 1024) return false;
+    if (hash.size() != 64 || data.size() > media::artwork::kMaxBytes) return false;
     if (hexEncode(crypto::sha256(data)) != hash) {
         log::warn("art", "received artwork failed hash verification");
         return false;

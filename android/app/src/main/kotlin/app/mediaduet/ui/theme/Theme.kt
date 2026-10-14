@@ -11,6 +11,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
@@ -36,6 +37,9 @@ data class GlassColors(
     val warn: Color,
     val bad: Color,
     val scrim: Color,
+    /** Liquid-glass controls: a nearly clear tint so the refracted backdrop shows through. */
+    val control: Color,
+    val controlActive: Color,
     val isDark: Boolean,
 )
 
@@ -55,6 +59,8 @@ private val lightGlass = run {
         warn = Color(0xFFB25000),
         bad = Color(0xFFD70015),
         scrim = Color(0xFFF5F5F7).copy(alpha = 0.55f),
+        control = Color.White.copy(alpha = if (fx) 0.26f else 0.88f),
+        controlActive = Color.White.copy(alpha = if (fx) 0.62f else 0.96f),
         isDark = false,
     )
 }
@@ -75,9 +81,14 @@ private val darkGlass = run {
         warn = Color(0xFFFF9F0A),
         bad = Color(0xFFFF453A),
         scrim = Color.Black.copy(alpha = 0.5f),
+        control = Color.White.copy(alpha = if (fx) 0.06f else 0.14f).compositeOverIf(!fx, Color(0xFF1C1C1E)),
+        controlActive = Color.White.copy(alpha = if (fx) 0.18f else 0.24f).compositeOverIf(!fx, Color(0xFF1C1C1E)),
         isDark = true,
     )
 }
+
+private fun Color.compositeOverIf(condition: Boolean, background: Color): Color =
+    if (condition) compositeOver(background) else this
 
 val LocalGlass = staticCompositionLocalOf { lightGlass }
 

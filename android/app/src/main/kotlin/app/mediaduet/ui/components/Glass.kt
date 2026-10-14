@@ -1,11 +1,31 @@
 package app.mediaduet.ui.components
 
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.isSpecified
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.isSpecified
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import com.kyant.backdrop.highlight.Highlight
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
+import kotlin.math.abs
+import kotlin.math.tanh
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -84,6 +104,110 @@ fun GlassCard(
 }
 
 /**
+ * Press state of a liquid-glass control (iOS 26 style): the glass swells a little while pressed,
+ * stretches elastically toward a dragging finger and glows under it; everything springs back on
+ * release. It only observes the pointer (nothing is consumed), so clicks work as usual.
+ */
+@Stable
+class LiquidPress(private val scope: CoroutineScope) {
+    private val pressAnim = Animatable(0f)
+    private val dragAnim = Animatable(Offset.Zero, Offset.VectorConverter)
+
+    /** 0 (released) … 1 (pressed). */
+    val progress: Float get() = pressAnim.value
+    val drag: Offset get() = dragAnim.value
+    var position by mutableStateOf(Offset.Unspecified)
+        private set
+
+    val modifier: Modifier = Modifier.pointerInput(Unit) {
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            position = down.position
+            scope.launch { pressAnim.animateTo(1f, spring(dampingRatio = 0.62f, stiffness = 520f)) }
+            while (true) {
+                val change = awaitPointerEvent(PointerEventPass.Initial).changes.firstOrNull { it.id == down.id } ?: break
+                if (!change.pressed) break
+                position = change.position
+                val d = change.position - down.position
+                scope.launch { dragAnim.snapTo(d) }
+            }
+            scope.launch { pressAnim.animateTo(0f, spring(dampingRatio = 0.5f, stiffness = 260f)) }
+            scope.launch { dragAnim.animateTo(Offset.Zero, spring(dampingRatio = 0.45f, stiffness = 320f)) }
+        }
+    }
+}
+
+@Composable
+fun rememberLiquidPress(): LiquidPress {
+    val scope = rememberCoroutineScope()
+    return remember(scope) { LiquidPress(scope) }
+}
+
+/**
+ * The liquid-glass material for controls: a nearly clear [tint] over the backdrop, refracted by a
+ * deep lens with chromatic aberration at the rim, a specular highlight, a soft shadow, and the
+ * [press] response (swell, elastic stretch, glow under the finger).
+ */
+fun Modifier.liquidGlass(
+    backdrop: Backdrop,
+    press: LiquidPress?,
+    tint: Color,
+    isDark: Boolean,
+    overlay: Color = Color.Unspecified,
+): Modifier = drawBackdrop(
+    backdrop = backdrop,
+    shape = { Capsule() },
+    effects = {
+        val m = size.minDimension
+        vibrancy()
+        blur(2.dp.toPx())
+        lens(m * 0.22f, m * 0.5f, depthEffect = true, chromaticAberration = true)
+    },
+    highlight = { Highlight.Default.copy(alpha = if (isDark) 0.85f else 1f) },
+    shadow = { Shadow(radius = 14.dp, color = Color.Black.copy(alpha = if (isDark) 0.28f else 0.10f)) },
+    layerBlock = if (press == null) null else {
+        {
+            val p = press.progress
+            val grow = 1f + p * (6.dp.toPx() / size.height).coerceAtMost(0.14f)
+            val d = press.drag
+            val reach = size.minDimension * 0.18f
+            translationX = reach * tanh(d.x / (reach * 5f))
+            translationY = reach * tanh(d.y / (reach * 5f))
+            val dist = d.getDistance()
+            val stretch = (dist / size.maxDimension).coerceAtMost(1f) * 0.1f
+            val cx = if (dist > 0f) abs(d.x) / dist else 0f
+            val cy = if (dist > 0f) abs(d.y) / dist else 0f
+            scaleX = grow + stretch * (cx - 0.5f * cy)
+            scaleY = grow + stretch * (cy - 0.5f * cx)
+        }
+    },
+    onDrawSurface = {
+        drawRect(tint)
+        if (overlay.isSpecified) drawRect(overlay)
+    },
+    onDrawFront = if (press == null) null else {
+        {
+            val p = press.progress
+            val at = press.position
+            if (p > 0.01f && at.isSpecified) {
+                val r = size.height / 2
+                clipPath(Path().apply { addRoundRect(RoundRect(0f, 0f, size.width, size.height, r, r)) }) {
+                    drawRect(
+                        Brush.radialGradient(
+                            0f to Color.White.copy(alpha = (if (isDark) 0.22f else 0.38f) * p),
+                            1f to Color.Transparent,
+                            center = at,
+                            radius = size.maxDimension * 0.8f,
+                        ),
+                        blendMode = BlendMode.Plus,
+                    )
+                }
+            }
+        }
+    },
+)
+
+/**
  * Capsule liquid-glass button. Neutral by default; [prominent] uses the single accent colour and
  * is reserved for the primary action of a view.
  */
@@ -99,9 +223,7 @@ fun GlassButton(
     height: Dp = 48.dp,
     content: @Composable RowScope.() -> Unit,
 ) {
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (pressed) 1.05f else 1f, spring(dampingRatio = 0.5f, stiffness = 600f), label = "press")
+    val press = rememberLiquidPress()
     val glass = LocalGlass.current
     val contentColor = when {
         prominent -> Color.White
@@ -112,30 +234,19 @@ fun GlassButton(
     Row(
         modifier
             .alpha(if (enabled) 1f else 0.4f)
-            .drawBackdrop(
-                backdrop = backdrop,
-                shape = { Capsule() },
-                effects = {
-                    vibrancy()
-                    blur(4.dp.toPx())
-                    lens(10.dp.toPx(), 20.dp.toPx())
+            .liquidGlass(
+                backdrop,
+                press.takeIf { enabled },
+                tint = when {
+                    prominent -> glass.accent.copy(alpha = 0.88f)
+                    selected -> glass.controlActive
+                    else -> glass.control
                 },
-                layerBlock = {
-                    scaleX = scale
-                    scaleY = scale
-                },
-                onDrawSurface = {
-                    when {
-                        prominent -> drawRect(glass.accent.copy(alpha = 0.9f))
-                        selected -> {
-                            drawRect(glass.surfaceStrong)
-                            drawRect(glass.accent.copy(alpha = 0.12f))
-                        }
-                        else -> drawRect(glass.surface)
-                    }
-                },
+                isDark = glass.isDark,
+                overlay = if (selected && !prominent) glass.accent.copy(alpha = 0.12f) else Color.Unspecified,
             )
-            .clickable(interactionSource = interaction, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
+            .then(press.modifier)
+            .clickable(interactionSource = null, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
             .defaultMinSize(minHeight = height)
             .padding(horizontal = 20.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
@@ -145,7 +256,7 @@ fun GlassButton(
     }
 }
 
-/** Circular liquid-glass icon button (transport controls). */
+/** Circular liquid-glass icon button (transport controls, small toolbar buttons). */
 @Composable
 fun GlassIconButton(
     icon: ImageVector,
@@ -158,31 +269,15 @@ fun GlassIconButton(
     enabled: Boolean = true,
     active: Boolean = false,
 ) {
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (pressed) 1.12f else 1f, spring(dampingRatio = 0.45f, stiffness = 700f), label = "press")
+    val press = rememberLiquidPress()
     val glass = LocalGlass.current
     Box(
         modifier
             .size(size)
             .alpha(if (enabled) 1f else 0.35f)
-            .drawBackdrop(
-                backdrop = backdrop,
-                shape = { Capsule() },
-                effects = {
-                    vibrancy()
-                    blur(4.dp.toPx())
-                    lens(size.toPx() / 5f, size.toPx() / 2.5f)
-                },
-                layerBlock = {
-                    scaleX = scale
-                    scaleY = scale
-                },
-                onDrawSurface = {
-                    drawRect(if (active) glass.surfaceStrong else glass.surface)
-                },
-            )
-            .clickable(interactionSource = interaction, indication = null, enabled = enabled, role = Role.Button, onClick = onClick),
+            .liquidGlass(backdrop, press.takeIf { enabled }, if (active) glass.controlActive else glass.control, glass.isDark)
+            .then(press.modifier)
+            .clickable(interactionSource = null, indication = null, enabled = enabled, role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(icon, contentDescription, Modifier.size(iconSize), tint = if (active) glass.accent else MaterialTheme.colorScheme.onSurface)

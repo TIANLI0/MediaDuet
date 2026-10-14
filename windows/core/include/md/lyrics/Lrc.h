@@ -69,4 +69,11 @@ struct Candidate {
 // Score in [0,1]; 0 means "do not use". Duration differences > 5 s are rejected.
 double matchScore(const Candidate& want, const Candidate& have);
 
+// True if two reports describe the same song of one player: equal non-empty titles and
+// equal artists after normalize() (or literally equal), and durations within
+// durationToleranceMs (or either unknown). The album is ignored. Used to keep lyrics
+// when a player's trackId churns for one song (a late or jittery duration, an album
+// filled in later) instead of reloading them.
+bool sameSong(const Candidate& a, const Candidate& b, int64_t durationToleranceMs = 3000);
+
 } // namespace md::lyrics

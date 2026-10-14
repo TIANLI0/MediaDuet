@@ -37,14 +37,14 @@ namespace mdui
         return l;
     }
 
-    md::lyrics::LyricsClock::Report SessionReport(Session const& s)
+    md::lyrics::LyricsClock::Report SessionReport(Session const& s, std::string const& trackKey)
     {
         md::lyrics::LyricsClock::Report r;
         if (s.positionMs >= 0) r.positionMs = s.positionMs;
         r.atMs = s.anchorQpcMs;
         r.rate = s.rate;
         r.playing = s.IsPlaying();
-        r.trackId = s.key + "|" + s.trackId;
+        r.trackId = trackKey.empty() ? s.key + "|" + s.trackId : trackKey;
         return r;
     }
 
@@ -55,17 +55,60 @@ namespace mdui
 
     namespace
     {
-        // Width of one space for a font size / weight: a whitespace-only TextBlock measures 0 wide
-        // (trailing whitespace), so it is measured as "a a" minus "aa".
-        double SpaceWidth(double fontSize, bool semiBold)
+        struct LyricFontFile
         {
-            static std::map<std::pair<int, bool>, double> cache;
-            auto key = std::make_pair(static_cast<int>(std::lround(fontSize * 10)), semiBold);
+            wchar_t const* file;
+            uint16_t weight;
+        };
+        constexpr LyricFontFile kLyricFonts[] = {
+            { L"HarmonyOS_Sans_SC_Medium.ttf", 500 },
+            { L"HarmonyOS_Sans_SC_Bold.ttf", 700 },
+        };
+        constexpr wchar_t kLyricFamily[] = L"HarmonyOS Sans SC";
+
+        std::wstring ExeDir()
+        {
+            wchar_t buf[MAX_PATH * 2];
+            DWORD n = GetModuleFileNameW(nullptr, buf, static_cast<DWORD>(std::size(buf)));
+            std::wstring path(buf, n);
+            auto slash = path.find_last_of(L"\\/");
+            return slash == std::wstring::npos ? std::wstring{} : path.substr(0, slash);
+        }
+
+        // nullptr when the file is missing (checked once per weight).
+        FontFamily LyricFamily(LyricWeight w)
+        {
+            static FontFamily families[2]{ nullptr, nullptr };
+            static bool checked[2]{};
+            int i = static_cast<int>(w);
+            if (!checked[i])
+            {
+                checked[i] = true;
+                std::wstring path = ExeDir() + L"\\Assets\\Fonts\\" + kLyricFonts[i].file;
+                DWORD attr = GetFileAttributesW(path.c_str());
+                if (attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY))
+                    families[i] = FontFamily(std::wstring(L"ms-appx:///Assets/Fonts/") + kLyricFonts[i].file + L"#" + kLyricFamily);
+            }
+            return families[i];
+        }
+
+        winrt::Windows::UI::Text::FontWeight LyricFontWeight(LyricWeight w, bool translation)
+        {
+            if (LyricFamily(w)) return { kLyricFonts[static_cast<int>(w)].weight };
+            return translation ? winrt::Microsoft::UI::Text::FontWeights::Normal() : winrt::Microsoft::UI::Text::FontWeights::SemiBold();
+        }
+
+        // Width of one space for a font size / weight: a whitespace-only TextBlock measures 0 wide
+        // (trailing whitespace), so it is measured as "a a" minus "aa" - in the segments' own font.
+        double SpaceWidth(double fontSize, LyricWeight weight)
+        {
+            static std::map<std::pair<int, int>, double> cache;
+            auto key = std::make_pair(static_cast<int>(std::lround(fontSize * 10)), static_cast<int>(weight));
             if (auto it = cache.find(key); it != cache.end()) return it->second;
             auto measure = [&](wchar_t const* s) {
                 TextBlock tb;
                 tb.FontSize(fontSize);
-                if (semiBold) tb.FontWeight(winrt::Microsoft::UI::Text::FontWeights::SemiBold());
+                ApplyLyricFont(tb, weight);
                 tb.Text(s);
                 tb.Measure({ 1e6f, 1e6f });
                 return static_cast<double>(tb.DesiredSize().Width);
@@ -76,18 +119,29 @@ namespace mdui
             return w;
         }
 
-        double WhitespaceWidth(std::wstring_view s, double fontSize, bool semiBold)
+        double WhitespaceWidth(std::wstring_view s, double fontSize, LyricWeight weight)
         {
             double w = 0;
             for (wchar_t c : s)
             {
                 if (c == 0x3000) w += fontSize;                    // ideographic space
                 else if (c == 0x200B || c == 0xFEFF) w += 0;       // zero width
-                else if (c == L'\t') w += 4 * SpaceWidth(fontSize, semiBold);
-                else w += SpaceWidth(fontSize, semiBold);
+                else if (c == L'\t') w += 4 * SpaceWidth(fontSize, weight);
+                else w += SpaceWidth(fontSize, weight);
             }
             return w;
         }
+    }
+
+    void ApplyLyricFont(TextBlock const& tb, LyricWeight weight, bool translation)
+    {
+        if (auto family = LyricFamily(weight)) tb.FontFamily(family);
+        tb.FontWeight(LyricFontWeight(weight, translation));
+    }
+
+    bool LyricFontAvailable()
+    {
+        return LyricFamily(LyricWeight::Medium) && LyricFamily(LyricWeight::Bold);
     }
 
     KaraokeLine::KaraokeLine(Style const& style) : m_style(style)
@@ -104,11 +158,12 @@ namespace mdui
         m_panel.HorizontalAlignment(HorizontalAlignment::Left);
         m_panel.IsHitTestVisible(false);
 
-        // Translation row: static, smaller, regular weight, below the original text.
+        // Translation row: static, smaller, Medium weight (lighter than the Bold line), below the original text.
         m_tr.FontSize(std::round(m_style.fontSize * m_style.translationScale * 2.0) / 2.0);
         m_tr.TextWrapping(m_style.wrap ? TextWrapping::Wrap : TextWrapping::NoWrap);
         m_tr.TextTrimming(m_style.wrap ? TextTrimming::None : TextTrimming::CharacterEllipsis);
         m_tr.Margin(Thickness{ 0, std::max(1.0, m_style.fontSize * 0.12), 0, 0 });
+        ApplyLyricFont(m_tr, LyricWeight::Medium, true);
         m_tr.Foreground(m_trBrush);
         m_tr.Opacity(0.6);
         m_tr.IsHitTestVisible(false);
@@ -218,7 +273,7 @@ namespace mdui
             Seg seg;
             TextBlock tb;
             tb.FontSize(m_style.fontSize);
-            if (m_style.semiBold) tb.FontWeight(winrt::Microsoft::UI::Text::FontWeights::SemiBold());
+            ApplyLyricFont(tb, m_style.weight);
             tb.LineHeight(m_style.lineHeight);
             tb.LineStackingStrategy(LineStackingStrategy::BlockLineHeight);
             tb.TextWrapping(TextWrapping::NoWrap);
@@ -227,7 +282,7 @@ namespace mdui
             if (s.space)
             {
                 // Whitespace measures as 0 wide in a TextBlock: give it its real advance instead.
-                tb.Width(WhitespaceWidth(part, m_style.fontSize, m_style.semiBold));
+                tb.Width(WhitespaceWidth(part, m_style.fontSize, m_style.weight));
             }
             else
             {

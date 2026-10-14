@@ -12,6 +12,7 @@ struct TrayMenuState {
     bool lyricsOn = false;
     std::string policyMode;
     bool canControl = false;
+    bool standalone = false; // "This PC only": no phone, so no auto-pause modes
 };
 
 // Notification-area icon and its context menu. Owns a hidden top-level window

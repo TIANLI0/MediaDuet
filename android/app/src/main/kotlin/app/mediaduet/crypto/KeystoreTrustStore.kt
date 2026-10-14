@@ -91,9 +91,10 @@ class KeystoreTrustStore(context: Context) : TrustStore {
     }
 
     @Synchronized
-    override fun updateSeen(peerId: String, name: String, seenAtMs: Long) {
+    override fun updateSeen(peerId: String, name: String, seenAtMs: Long, appVersion: String) {
         val e = entries[peerId] ?: return
-        entries[peerId] = Entry(e.peer.copy(name = name, lastSeenMs = seenAtMs), e.iv, e.wrapped)
+        val version = appVersion.ifEmpty { e.peer.appVersion }
+        entries[peerId] = Entry(e.peer.copy(name = name, lastSeenMs = seenAtMs, appVersion = version), e.iv, e.wrapped)
         persist()
     }
 
@@ -109,6 +110,7 @@ class KeystoreTrustStore(context: Context) : TrustStore {
                     platform = o["platform"]?.jsonPrimitive?.content ?: "",
                     pairedAtMs = o["pairedAt"]?.jsonPrimitive?.long ?: 0,
                     lastSeenMs = o["lastSeen"]?.jsonPrimitive?.long ?: 0,
+                    appVersion = o["app"]?.jsonPrimitive?.content ?: "",
                 )
                 entries[peer.id] = Entry(peer, B64.decode(o["iv"]!!.jsonPrimitive.content), B64.decode(o["key"]!!.jsonPrimitive.content))
             }
@@ -129,6 +131,7 @@ class KeystoreTrustStore(context: Context) : TrustStore {
                     put("platform", e.peer.platform)
                     put("pairedAt", e.peer.pairedAtMs)
                     put("lastSeen", e.peer.lastSeenMs)
+                    put("app", e.peer.appVersion)
                     put("iv", B64.encode(e.iv))
                     put("key", B64.encode(e.wrapped))
                 }

@@ -368,3 +368,18 @@ TEST_CASE("LAN: unconfirmed peer-reported addresses expire") {
     CHECK(badLater >= bad);
     CHECK(w.fac.attemptsTo(kGood) > 1);         // the address that worked is kept
 }
+
+TEST_CASE("the peer's app version is reported; no peers means no link (standalone)") {
+    World w(link::ConnMode::Auto, true, false);
+    w.srv.info.app = "1.1.0-beta";
+    w.start();
+    w.s.advance(1000);
+    REQUIRE(w.rec.ups == 1);
+    CHECK(w.cm->status().peerApp == "1.1.0-beta");
+    // "This PC only": the host clears the peer list; the link goes down and nothing reconnects.
+    w.cm->setPeers({});
+    w.s.advance(120000);
+    CHECK(w.cm->status().state == link::LinkStatus::State::NoPeer);
+    CHECK_FALSE(w.cm->isUp());
+    CHECK(w.rec.ups == 1);
+}

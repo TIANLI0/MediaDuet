@@ -109,3 +109,23 @@ TEST_CASE("normalisation and matching") {
     CHECK(matchScore(want, {"稻香", "周杰伦", "", 269000}) == 0);
     CHECK(matchScore(want, {"晴天", "Someone Else", "", 269000}) < matchScore(want, {"晴天", "周杰伦", "", 269000}));
 }
+
+TEST_CASE("sameSong tolerates trackId churn of one song") {
+    Candidate a{"晴天", "周杰伦", "叶惠美", 269000};
+    // Duration jitter / late duration / album filled in later: same song.
+    CHECK(sameSong(a, {"晴天", "周杰伦", "叶惠美", 269600}));
+    CHECK(sameSong(a, {"晴天", "周杰伦", "", 271900}));
+    CHECK(sameSong(a, {"晴天", "周杰伦", "叶惠美", std::nullopt}));
+    CHECK(sameSong({"晴天", "周杰伦", "", std::nullopt}, a));
+    CHECK(sameSong(a, {"晴天 (Live)", "周杰伦", "", 269000})); // normalize() strips the suffix
+    CHECK(sameSong({"Hello", "Adele", "", 295000}, {"hello", "ADELE", "25", 295400}));
+    CHECK(sameSong({"!!!", "", "", 1000}, {"!!!", "", "", 1000})); // literal match when normalize is empty
+    // Different songs.
+    CHECK_FALSE(sameSong(a, {"晴天", "周杰伦", "叶惠美", 275000}));   // > 3 s apart
+    CHECK_FALSE(sameSong(a, {"七里香", "周杰伦", "七里香", 269000}));
+    CHECK_FALSE(sameSong(a, {"晴天", "其他歌手", "", 269000}));
+    CHECK_FALSE(sameSong(a, {"", "周杰伦", "叶惠美", 269000}));        // a blank report is not the song
+    CHECK_FALSE(sameSong({"", "", "", std::nullopt}, {"", "", "", std::nullopt}));
+    CHECK_FALSE(sameSong({"!!!", "", "", 1000}, {"???", "", "", 1000}));
+    CHECK(sameSong(a, {"晴天", "周杰伦", "叶惠美", 274000}, 6000)); // custom tolerance
+}

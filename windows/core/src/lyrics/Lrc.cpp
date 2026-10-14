@@ -514,4 +514,18 @@ double matchScore(const Candidate& want, const Candidate& have) {
     return std::clamp(score, 0.0, 1.0);
 }
 
+bool sameSong(const Candidate& a, const Candidate& b, int64_t durationToleranceMs) {
+    if (a.durationMs && b.durationMs && *a.durationMs > 0 && *b.durationMs > 0 &&
+        std::llabs(*a.durationMs - *b.durationMs) > durationToleranceMs)
+        return false;
+    auto same = [](const std::string& x, const std::string& y) {
+        std::string tx = text::trim(x), ty = text::trim(y);
+        if (tx == ty) return true;
+        std::string nx = normalize(tx), ny = normalize(ty);
+        return !nx.empty() && nx == ny;
+    };
+    if (text::trim(a.title).empty() || text::trim(b.title).empty()) return false;
+    return same(a.title, b.title) && same(a.artist, b.artist);
+}
+
 } // namespace md::lyrics

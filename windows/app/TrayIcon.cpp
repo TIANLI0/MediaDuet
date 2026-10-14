@@ -108,12 +108,14 @@ void TrayIcon::showMenu() {
     AppendMenuW(m, ctl, IdNext, tr("next"));
     AppendMenuW(m, ctl, IdPrev, tr("previous"));
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
-    HMENU modes = CreatePopupMenu();
-    for (UINT i = 0; i < std::size(kModes); ++i) {
-        std::string key = std::string("mode.") + kModes[i];
-        AppendMenuW(modes, MF_STRING | (st.policyMode == kModes[i] ? MF_CHECKED : 0), IdModeBase + i, tr(key));
+    if (!st.standalone) {
+        HMENU modes = CreatePopupMenu();
+        for (UINT i = 0; i < std::size(kModes); ++i) {
+            std::string key = std::string("mode.") + kModes[i];
+            AppendMenuW(modes, MF_STRING | (st.policyMode == kModes[i] ? MF_CHECKED : 0), IdModeBase + i, tr(key));
+        }
+        AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(modes), tr("arbitration"));
     }
-    AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(modes), tr("arbitration"));
     AppendMenuW(m, MF_STRING, IdSettings, tr("settings"));
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING, IdExit, tr("exit"));

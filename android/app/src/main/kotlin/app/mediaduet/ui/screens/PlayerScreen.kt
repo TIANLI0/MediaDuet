@@ -3,6 +3,25 @@ package app.mediaduet.ui.screens
 import android.graphics.Bitmap
 import android.os.SystemClock
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.layout.onSizeChanged
+import app.mediaduet.ui.components.InfoRow
+import app.mediaduet.ui.components.liquid.LiquidToggle
+import app.mediaduet.util.VersionCompat
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.Crossfade
@@ -134,27 +153,55 @@ private val ArtistLarge = TextStyle(fontSize = 19.sp, lineHeight = 25.sp)
 private val TitleSmall = TextStyle(fontSize = 17.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold)
 private val ArtistSmall = TextStyle(fontSize = 15.sp, lineHeight = 20.sp)
 
-/** Lyrics mode stays on across a track change while the next lyrics are loading, up to this long. */
-private const val LYRICS_WAIT_MS = 4_000L
+/**
+ * After a track change in lyrics mode, lyrics mode stays on this long while nobody is looking for
+ * the next track's lyrics any more (the phone's own lookup keeps it on while it runs).
+ */
+private const val LYRICS_WAIT_MS = 6_000L
+
+/** Everything the player layouts need, resolved once per composition of [PlayerScreen]. */
+private class PlayerParts(
+    val ui: UiContext,
+    val view: PlayerView,
+    val playing: Boolean,
+    val position: State<Long>,
+    val lyricsPosition: State<Long>,
+    val controls: PlayerControls,
+    val timing: LyricsTiming,
+    /** Lyrics of the current track (null while searching / none). */
+    val lyrics: LyricsState?,
+    /** The phone is still looking for lyrics for this track. */
+    val searching: Boolean,
+    val translations: Boolean,
+    val reduced: Boolean,
+    val canSeek: Boolean,
+) {
+    val info: MediaSessionInfo get() = view.info
+    val lyricsAvailable: Boolean get() = lyrics != null || searching
+}
+
+/** The shared-element scopes of one layout (artwork, title, progress and buttons morph between modes). */
+@OptIn(ExperimentalSharedTransitionApi::class)
+private class Morph(val shared: SharedTransitionScope, val visibility: AnimatedVisibilityScope, val reduced: Boolean)
 
 /**
  * Apple-Music-style full-screen player for the chosen control target (this phone or the PC); the
- * app's home screen, laid out like Apple Music: artwork, title / artist, progress, transport,
- * volume and an action row (Lyrics · playback source · Settings). Lyrics mode morphs the artwork
- * into a compact header (shared elements) with synced lyrics in the middle; progress, transport
- * and the action row stay in place, the volume folds away to give the lyrics room. Swipe the
- * artwork for next / previous.
+ * app's home screen. Portrait: artwork, title / artist, progress, transport, volume and an action
+ * row (Lyrics · playback source · Settings). Lyrics mode morphs the artwork into a slim header and
+ * gives the lyrics the whole height: they scroll under a compact liquid-glass dock (progress +
+ * Lyrics · ◀◀ · ▶ · ▶▶ · Source) that refracts them. Landscape puts the artwork (player) or the
+ * artwork + controls (lyrics) on the left and the controls / lyrics on the right.
  */
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun PlayerScreen(ui: UiContext) {
     val engine = ui.engine
-    val lyricsMap by engine.remote.lyrics.collectAsStateWithLifecycle()
+    val lyricsMap by engine.lyrics.entries.collectAsStateWithLifecycle()
+    val pending by engine.lyrics.pending.collectAsStateWithLifecycle()
     val translations by engine.settings.showTranslations.collectAsStateWithLifecycle()
     val autoLatency by engine.settings.lyricsAutoLatency.collectAsStateWithLifecycle()
     val offsets by engine.settings.lyricOffsets.collectAsStateWithLifecycle()
     val reduced = rememberReducedMotion()
-    val density = LocalDensity.current
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     val view = rememberPlayerView(engine)
@@ -168,29 +215,34 @@ fun PlayerScreen(ui: UiContext) {
             Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
+                .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
                 .padding(start = side, end = side, bottom = bottomInset + 4.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Spacer(Modifier.height(12.dp))
-            StatusPill(ui, view?.fallback == true)
+            Spacer(Modifier.height(if (landscape) 4.dp else 12.dp))
+            StatusPill(ui, view)
             if (view == null) {
                 Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     EmptyState(AppIcons.Music, stringResource(R.string.empty_nothing_playing_phone))
                 }
-                ActionRow(ui, null, lyricsAvailable = false)
+                ActionRow(ui, null, lyricsAvailable = false, morph = null)
                 return@Column
             }
             val info = view.info
             AutoSwitchHaptic(view)
-            val lyrics = lyricsMap[info.trackId]?.takeIf { it.available }
-            val lyricsMode = ui.nav.lyricsMode && lyrics != null
-            // Lyrics mode follows a track change; it ends only if the new track has no lyrics.
-            LaunchedEffect(info.trackId, lyrics == null) {
-                if (lyrics == null && currentUi.nav.lyricsMode) {
+            val lyrics = engine.lyrics.resolve(info, lyricsMap)
+            val searching = lyrics == null && info.trackId in pending
+            // Lyrics mode follows a track change: it waits for the next lyrics and ends only when
+            // the new track has none.
+            var waitOver by remember(info.trackId) { mutableStateOf(false) }
+            LaunchedEffect(info.trackId, lyrics == null, searching) {
+                if (lyrics == null && !searching) {
                     delay(LYRICS_WAIT_MS)
-                    currentUi.setNav(currentUi.nav.copy(lyricsMode = false))
+                    waitOver = true
+                    if (currentUi.nav.lyricsMode) currentUi.setNav(currentUi.nav.copy(lyricsMode = false))
                 }
             }
+            val lyricsMode = ui.nav.lyricsMode && (lyrics != null || searching || !waitOver)
 
             // ---- optimistic state (reconciled with every device update) -----------------
             var optimistic by remember(view.side, view.key) { mutableStateOf(OptimisticPlayback()) }
@@ -247,84 +299,811 @@ fun PlayerScreen(ui: UiContext) {
                     scope.launch { handle(OptimisticPlayback.Kind.SEEK, ui.command(view, Action.SEEK, ms)) }
                 },
             )
-            val canSeek = view.canControl && Action.SEEK in info.actions && (info.durationMs ?: 0) > 0
-            val timing = LyricsTiming(
-                offsetMs = offsetMs,
-                outputLatencyMs = if (autoLatency) view.outputLatencyMs else 0,
-                set = { ms -> engine.settings.setLyricOffset(info.appId, ms) },
+            val parts = PlayerParts(
+                ui = ui,
+                view = view,
+                playing = playing,
+                position = position,
+                lyricsPosition = lyricsPosition,
+                controls = controls,
+                timing = LyricsTiming(
+                    offsetMs = offsetMs,
+                    outputLatencyMs = if (autoLatency) view.outputLatencyMs else 0,
+                    set = { ms -> engine.settings.setLyricOffset(info.appId, ms) },
+                ),
+                lyrics = lyrics,
+                searching = searching,
+                translations = translations,
+                reduced = reduced,
+                canSeek = view.canControl && Action.SEEK in info.actions && (info.durationMs ?: 0) > 0,
             )
 
-            @Composable
-            fun Top(modifier: Modifier) {
-                SharedTransitionLayout(modifier) {
-                    // The lyrics travel with the target state: the outgoing lyrics view keeps the
-                    // lyrics it was showing while it fades out (a track change clears them first).
-                    AnimatedContent(
-                        targetState = if (lyricsMode) lyrics else null,
-                        // Player <-> lyrics, and lyrics of one track <-> the next (crossfade).
-                        contentKey = { it?.trackId },
-                        transitionSpec = {
-                            if (reduced) fadeIn(snap()) togetherWith fadeOut(snap())
-                            else fadeIn(tween(320, delayMillis = 60)) togetherWith fadeOut(tween(180))
-                        },
-                        label = "playerMode",
-                    ) { shownLyrics ->
-                        if (shownLyrics == null) {
-                            ArtworkMode(this@SharedTransitionLayout, this, view, playing, reduced, controls) {
-                                if (lyrics != null) ui.setNav(ui.nav.copy(lyricsMode = true))
-                            }
-                        } else {
-                            LyricsMode(
-                                this@SharedTransitionLayout, this, ui, info, view.art, shownLyrics, lyricsPosition, translations, reduced, timing,
-                                onHeaderClick = { ui.setNav(ui.nav.copy(lyricsMode = false)) },
-                                onSeek = if (canSeek) controls.seek else null,
-                            )
-                        }
+            SharedTransitionLayout(Modifier.weight(1f).fillMaxWidth()) {
+                AnimatedContent(
+                    targetState = lyricsMode,
+                    transitionSpec = {
+                        if (reduced) fadeIn(snap()) togetherWith fadeOut(snap())
+                        else fadeIn(tween(320, delayMillis = 60)) togetherWith fadeOut(tween(180))
+                    },
+                    label = "playerMode",
+                ) { showLyrics ->
+                    val morph = Morph(this@SharedTransitionLayout, this, reduced)
+                    when {
+                        landscape && showLyrics -> LandscapeLyrics(parts, morph)
+                        landscape -> LandscapePlayer(parts, morph)
+                        showLyrics -> PortraitLyrics(parts, morph)
+                        else -> PortraitPlayer(parts, morph)
                     }
                 }
-            }
-
-            // Apple Music order: progress, transport, volume, then the action row (Lyrics · Source ·
-            // Settings), which stays put in both modes.
-            @Composable
-            fun ColumnScope.Bottom(compactVolume: Boolean) {
-                Controls(ui, info, position, playing, view.canControl, controls, compact = landscape)
-                if (landscape) {
-                    Spacer(Modifier.height(8.dp))
-                    VolumeRow(ui, view)
-                    Spacer(Modifier.height(8.dp))
-                    ActionRow(ui, view, lyricsAvailable = lyrics != null)
-                    return
-                }
-                // The volume folds away in lyrics mode (portrait) - animated, so nothing jumps.
-                AnimatedVisibility(
-                    visible = !compactVolume,
-                    enter = if (reduced) fadeIn(snap()) else expandVertically(spring(dampingRatio = 1f, stiffness = 1_400f)) + fadeIn(tween(200, 60)),
-                    exit = if (reduced) fadeOut(snap()) else shrinkVertically(spring(dampingRatio = 0.9f, stiffness = 380f)) + fadeOut(tween(120)),
-                ) {
-                    Column {
-                        Spacer(Modifier.height(18.dp))
-                        VolumeRow(ui, view)
-                    }
-                }
-                Spacer(Modifier.height(16.dp))
-                ActionRow(ui, view, lyricsAvailable = lyrics != null)
-            }
-
-            if (landscape) {
-                Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(40.dp)) {
-                    Top(Modifier.weight(1f).fillMaxHeight())
-                    Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.Center) {
-                        Bottom(compactVolume = false)
-                    }
-                }
-            } else {
-                Top(Modifier.weight(1f).fillMaxWidth())
-                Spacer(Modifier.height(24.dp))
-                Bottom(compactVolume = lyricsMode)
             }
         }
         TargetSheet(ui)
+    }
+}
+
+// ============================================================================ layouts
+
+@Composable
+private fun PortraitPlayer(p: PlayerParts, m: Morph) {
+    Column(Modifier.fillMaxSize()) {
+        ArtworkBlock(p, m, Modifier.weight(1f).fillMaxWidth())
+        Spacer(Modifier.height(24.dp))
+        Progress(p, m, inlineTimes = false)
+        Spacer(Modifier.height(18.dp))
+        Transport(p, m, p.ui.backdrop, small = 64.dp, big = 80.dp, spacing = 32.dp)
+        Spacer(Modifier.height(18.dp))
+        VolumeRow(p.ui, p.view)
+        Spacer(Modifier.height(16.dp))
+        ActionRow(p.ui, p.view, p.lyricsAvailable, m)
+    }
+}
+
+/**
+ * Lyrics mode (portrait): slim header (artwork · title · options), lyrics over the full height,
+ * and the compact glass dock floating over the lyrics' faded tail.
+ */
+@Composable
+private fun PortraitLyrics(p: PlayerParts, m: Morph) {
+    val density = LocalDensity.current
+    val lyricsLayer = rememberLayerBackdrop()
+    val dockBackdrop = rememberCombinedBackdrop(p.ui.backdrop, lyricsLayer)
+    var dockHeight by remember { mutableStateOf(140.dp) }
+    var optionsOpen by remember { mutableStateOf(false) }
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
+            LyricsHeader(p, m, optionsOpen) { optionsOpen = !optionsOpen }
+            Box(Modifier.weight(1f).fillMaxWidth().layerBackdrop(lyricsLayer)) {
+                LyricsBody(p, Modifier.fillMaxSize(), bottomFade = dockHeight + 48.dp, bottomObscured = dockHeight)
+            }
+        }
+        Column(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .onSizeChanged { dockHeight = with(density) { it.height.toDp() } }
+                .padding(top = 8.dp),
+        ) {
+            Progress(p, m, inlineTimes = true)
+            Spacer(Modifier.height(6.dp))
+            DockRow(p, m, dockBackdrop)
+        }
+        LyricsOptions(p, optionsOpen, Modifier.align(Alignment.TopEnd).padding(top = 64.dp)) { optionsOpen = false }
+    }
+}
+
+@Composable
+private fun LandscapePlayer(p: PlayerParts, m: Morph) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val art = minOf(maxHeight, maxWidth * 0.46f)
+        Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(36.dp)) {
+            Box(Modifier.width(art).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                ArtworkImage(p, m, art)
+            }
+            Column(
+                Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()).padding(vertical = 12.dp),
+                verticalArrangement = Arrangement.Center,
+            ) {
+                // Compact: progress with inline times and one row of lyrics · transport · source
+                // (like the lyrics dock); Settings sits at the end of the title row.
+                TitleRow(p, m, large = true) { SettingsButton(p.ui) }
+                Spacer(Modifier.height(16.dp))
+                Progress(p, m, inlineTimes = true)
+                Spacer(Modifier.height(8.dp))
+                DockRow(p, m, p.ui.backdrop)
+                Spacer(Modifier.height(6.dp))
+                VolumeRow(p.ui, p.view)
+            }
+        }
+    }
+}
+
+/** Lyrics mode (landscape): artwork, title and the dock on the left; lyrics over the full height on the right. */
+@Composable
+private fun LandscapeLyrics(p: PlayerParts, m: Morph) {
+    val lyricsLayer = rememberLayerBackdrop()
+    val dockBackdrop = rememberCombinedBackdrop(p.ui.backdrop, lyricsLayer)
+    var optionsOpen by remember { mutableStateOf(false) }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val leftWidth = (maxWidth * 0.4f).coerceIn(288.dp, 400.dp)
+        val art = minOf(leftWidth * 0.46f, maxHeight * 0.34f)
+        Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+            Column(
+                // Vertical padding inside the scroll keeps the glass buttons' rims and shadows unclipped.
+                Modifier.width(leftWidth).fillMaxHeight().verticalScroll(rememberScrollState()).padding(vertical = 12.dp),
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    ArtworkImage(p, m, art)
+                }
+                Spacer(Modifier.height(14.dp))
+                TitleRow(p, m, large = false)
+                Spacer(Modifier.height(14.dp))
+                Progress(p, m, inlineTimes = true)
+                Spacer(Modifier.height(6.dp))
+                DockRow(p, m, dockBackdrop)
+            }
+            Box(Modifier.weight(1f).fillMaxHeight()) {
+                Box(Modifier.fillMaxSize().layerBackdrop(lyricsLayer)) {
+                    LyricsBody(p, Modifier.fillMaxSize(), bottomFade = 72.dp, bottomObscured = 0.dp)
+                }
+                if (hasLyricsOptions(p)) {
+                    OptionsButton(p, optionsOpen, Modifier.align(Alignment.TopEnd).padding(top = 8.dp)) { optionsOpen = !optionsOpen }
+                }
+                LyricsOptions(p, optionsOpen, Modifier.align(Alignment.TopEnd).padding(top = 60.dp)) { optionsOpen = false }
+            }
+        }
+    }
+}
+
+// ============================================================================ pieces
+
+/** Artwork (swipe for next / previous, tap for lyrics) with the title row under it. */
+@Composable
+private fun ArtworkBlock(p: PlayerParts, m: Morph, modifier: Modifier) {
+    val density = LocalDensity.current
+    BoxWithConstraints(modifier) {
+        // Title block (two text lines at the current font scale) + its spacing below the artwork.
+        val titleBlock = with(density) { TitleLarge.lineHeight.toDp() + ArtistLarge.lineHeight.toDp() } + 24.dp
+        val side = minOf(maxWidth, maxHeight - titleBlock).coerceAtLeast(96.dp)
+        Column(Modifier.fillMaxSize()) {
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                ArtworkImage(p, m, side)
+            }
+            Spacer(Modifier.height(24.dp))
+            TitleRow(p, m, large = true)
+        }
+    }
+}
+
+@Composable
+private fun TitleRow(p: PlayerParts, m: Morph, large: Boolean, trailing: (@Composable () -> Unit)? = null) {
+    val glass = LocalGlass.current
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        TitleBlock(p.info, Modifier.weight(1f).sharedText(m, "title"), large = large)
+        if (!p.view.connected) {
+            Spacer(Modifier.width(8.dp))
+            StatusChip(stringResource(R.string.stale), dot = glass.warn)
+        }
+        if (trailing != null) {
+            Spacer(Modifier.width(8.dp))
+            trailing()
+        }
+    }
+}
+
+/** The big artwork: shrinks while paused, swipes for next / previous, tap opens lyrics. */
+@Composable
+private fun ArtworkImage(p: PlayerParts, m: Morph, side: androidx.compose.ui.unit.Dp) {
+    val haptics = LocalHapticFeedback.current
+    val scope = rememberCoroutineScope()
+    val view = p.view
+    val info = view.info
+    // Horizontal artwork offset: set synchronously while dragging; only the release animates.
+    var swipe by remember { mutableFloatStateOf(0f) }
+    var swipeJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    val artScale by animateFloatAsState(
+        if (p.playing || p.reduced) 1f else 0.86f,
+        if (p.reduced) snap() else spring(dampingRatio = 0.72f, stiffness = 220f),
+        label = "artScale",
+    )
+    val unavailable = stringResource(R.string.lyrics_unavailable)
+    Artwork(
+        view.art,
+        Modifier
+            .shared(m, "artwork")
+            .size(side)
+            .graphicsLayer {
+                scaleX = artScale
+                scaleY = artScale
+                translationX = swipe
+                alpha = 1f - (abs(swipe) / size.width.coerceAtLeast(1f)).coerceIn(0f, 0.6f)
+            }
+            // Horizontal swipe: next (left) / previous (right), when supported.
+            .pointerInput(view.key, info.actions, view.canControl) {
+                val threshold = 72.dp.toPx()
+                val widthPx = size.width.toFloat()
+                var crossed = false
+                fun settle(block: suspend () -> Unit) {
+                    swipeJob?.cancel()
+                    swipeJob = scope.launch { block() }
+                }
+                suspend fun animateSwipe(to: Float, spec: androidx.compose.animation.core.AnimationSpec<Float>) =
+                    animate(swipe, to, animationSpec = spec) { v, _ -> swipe = v }
+                detectHorizontalDragGestures(
+                    onDragStart = {
+                        crossed = false
+                        swipeJob?.cancel()
+                    },
+                    onHorizontalDrag = { change, dx ->
+                        change.consume()
+                        swipe += dx * 0.6f
+                        if (!crossed && abs(swipe) > threshold) {
+                            crossed = true
+                            haptics.performHapticFeedback(HapticFeedbackType.GestureThresholdActivate)
+                        }
+                    },
+                    onDragEnd = {
+                        val next = swipe < 0
+                        val action = if (next) Action.NEXT else Action.PREVIOUS
+                        val allowed = view.canControl && action in info.actions
+                        val past = abs(swipe) > threshold
+                        if (past && allowed) p.controls.skip(next)
+                        if (past && !allowed) haptics.performHapticFeedback(HapticFeedbackType.Reject)
+                        settle {
+                            if (past && allowed && !p.reduced) {
+                                // Slide out, re-enter from the other side.
+                                animateSwipe(if (next) -widthPx else widthPx, tween(160))
+                                swipe = if (next) widthPx * 0.4f else -widthPx * 0.4f
+                            }
+                            animateSwipe(0f, if (p.reduced) snap() else spring(dampingRatio = 0.75f, stiffness = 300f))
+                        }
+                    },
+                    onDragCancel = { settle { animateSwipe(0f, spring()) } },
+                )
+            }
+            .clickable(remember { MutableInteractionSource() }, indication = null) {
+                if (p.lyricsAvailable) p.ui.setNav(p.ui.nav.copy(lyricsMode = true)) else p.ui.toast(unavailable)
+            },
+    )
+}
+
+/** Lyrics mode header: small artwork + title (tap: back to the artwork) and the options button. */
+@Composable
+private fun LyricsHeader(p: PlayerParts, m: Morph, optionsOpen: Boolean, onOptions: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(
+            Modifier
+                .weight(1f)
+                .clickable(remember { MutableInteractionSource() }, indication = null) { p.ui.setNav(p.ui.nav.copy(lyricsMode = false)) },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Artwork(p.view.art, Modifier.shared(m, "artwork").size(52.dp))
+            Spacer(Modifier.width(12.dp))
+            TitleBlock(p.info, Modifier.weight(1f).sharedText(m, "title"), large = false)
+        }
+        if (hasLyricsOptions(p)) {
+            Spacer(Modifier.width(8.dp))
+            OptionsButton(p, optionsOpen, Modifier, onOptions)
+        }
+    }
+}
+
+private fun hasLyricsOptions(p: PlayerParts): Boolean =
+    p.lyrics?.lyrics?.hasTranslations == true || p.lyrics?.synced == true
+
+/** One small glass button for the lyrics options (translation, timing) instead of a row of buttons. */
+@Composable
+private fun OptionsButton(p: PlayerParts, open: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    val haptics = LocalHapticFeedback.current
+    GlassIconButton(
+        AppIcons.More,
+        stringResource(R.string.lyrics_options),
+        {
+            haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+            onClick()
+        },
+        p.ui.backdrop,
+        modifier,
+        size = 40.dp,
+        iconSize = 20.dp,
+        active = open || p.timing.offsetMs != 0,
+    )
+}
+
+/** The lyrics themselves: synced (karaoke) or plain, a quiet "looking for lyrics" while searching. */
+@Composable
+private fun LyricsBody(p: PlayerParts, modifier: Modifier, bottomFade: androidx.compose.ui.unit.Dp, bottomObscured: androidx.compose.ui.unit.Dp) {
+    Crossfade(targetState = p.lyrics, animationSpec = tween(if (p.reduced) 0 else 360), modifier = modifier, label = "lyricsBody") { shown ->
+        val synced = shown?.lyrics
+        when {
+            shown == null -> LyricsSearching(Modifier.fillMaxSize().padding(bottom = bottomObscured), p.reduced)
+            synced != null && !synced.isEmpty -> SyncedLyrics(
+                synced, p.lyricsPosition, if (p.canSeek) p.controls.seek else null, p.ui.backdrop, Modifier.fillMaxSize(),
+                showTranslations = p.translations, bottomFade = bottomFade, bottomObscured = bottomObscured,
+            )
+            else -> PlainLyrics(
+                shown.plain,
+                Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top = 16.dp, bottom = bottomObscured + 16.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun LyricsSearching(modifier: Modifier, reduced: Boolean) {
+    val color = MaterialTheme.colorScheme.onSurfaceVariant
+    val t = if (reduced) null else rememberInfiniteTransition(label = "searching")
+    val phase = t?.animateFloat(0f, 1f, infiniteRepeatable(tween(1_400, easing = LinearEasing)), label = "phase")
+    Column(modifier, verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.Start) {
+        Row(Modifier.height(16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            for (i in 0 until 3) {
+                Box(
+                    Modifier
+                        .size(8.dp)
+                        .graphicsLayer {
+                            val v = phase?.value ?: 0f
+                            val local = ((v * 3f - i) % 3f + 3f) % 3f
+                            alpha = 0.3f + 0.7f * (1f - (local / 1.5f).coerceAtMost(1f))
+                        }
+                        .background(color, RoundedCornerShape(50)),
+                )
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        Text(stringResource(R.string.lyrics_searching), style = MaterialTheme.typography.titleMedium, color = color)
+    }
+}
+
+/**
+ * Lyrics options popover: translation on / off (when the lyrics have translations) and the
+ * per-app timing offset (−/+ 0.1 s, reset; the automatic output delay is noted). Closes on an
+ * outside tap or 5 s after the last touch.
+ */
+@Composable
+private fun LyricsOptions(p: PlayerParts, open: Boolean, modifier: Modifier, onDismiss: () -> Unit) {
+    var touch by remember { mutableIntStateOf(0) }
+    LaunchedEffect(open, touch) {
+        if (open) {
+            delay(5_000)
+            onDismiss()
+        }
+    }
+    if (open) {
+        Box(Modifier.fillMaxSize().clickable(remember { MutableInteractionSource() }, indication = null, onClick = onDismiss))
+    }
+    AnimatedVisibility(
+        visible = open,
+        enter = if (p.reduced) fadeIn(snap()) else fadeIn(tween(160)) + scaleIn(spring(dampingRatio = 0.7f, stiffness = 500f), initialScale = 0.85f, transformOrigin = TransformOrigin(1f, 0f)),
+        exit = if (p.reduced) fadeOut(snap()) else fadeOut(tween(140)) + scaleOut(targetScale = 0.9f, transformOrigin = TransformOrigin(1f, 0f)),
+        modifier = modifier,
+    ) {
+        GlassCard(p.ui.backdrop, Modifier.width(296.dp), strong = true, cornerRadius = 26.dp, contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp)) {
+            val settings = p.ui.engine.settings
+            if (p.lyrics?.lyrics?.hasTranslations == true) {
+                InfoRow(
+                    stringResource(R.string.settings_translations),
+                    leading = { Icon(AppIcons.Translate, null, Modifier.size(20.dp)) },
+                    trailing = {
+                        LiquidToggle({ p.translations }, {
+                            touch++
+                            settings.setShowTranslations(it)
+                        }, p.ui.backdrop, contentDescription = stringResource(R.string.settings_translations))
+                    },
+                    onClick = {
+                        touch++
+                        settings.setShowTranslations(!p.translations)
+                    },
+                    role = Role.Switch,
+                )
+            }
+            if (p.lyrics?.synced == true) {
+                if (p.lyrics.lyrics?.hasTranslations == true) {
+                    HorizontalDivider(Modifier.padding(start = 36.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
+                }
+                OffsetStepper(p.timing) { touch++ }
+            }
+        }
+    }
+}
+
+/** Lyrics timing: −0.1 s / value / +0.1 s / reset, with haptics. Positive = lyrics later. */
+@Composable
+private fun OffsetStepper(timing: LyricsTiming, onTouch: () -> Unit) {
+    val glass = LocalGlass.current
+    val haptics = LocalHapticFeedback.current
+    fun step(steps: Int) {
+        onTouch()
+        val next = LyricsDelay.step(timing.offsetMs, steps)
+        if (next == timing.offsetMs) {
+            haptics.performHapticFeedback(HapticFeedbackType.Reject)
+        } else {
+            haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
+            timing.set(next)
+        }
+    }
+    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(AppIcons.Timer, null, Modifier.size(20.dp))
+        Spacer(Modifier.width(16.dp))
+        Column(Modifier.weight(1f)) {
+            Text(stringResource(R.string.lyrics_timing), style = MaterialTheme.typography.bodyLarge)
+            Text(
+                if (timing.outputLatencyMs > 0) stringResource(R.string.lyrics_offset_auto, timing.outputLatencyMs)
+                else stringResource(R.string.lyrics_offset_hint),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+            )
+        }
+    }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(bottom = 6.dp)
+            .clip(RoundedCornerShape(50))
+            .background(glass.fill),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        OffsetButton(AppIcons.Minus, stringResource(R.string.lyrics_offset_earlier)) { step(-1) }
+        Text(
+            stringResource(R.string.lyrics_offset_value, LyricsDelay.signedSeconds(timing.offsetMs)),
+            style = MaterialTheme.typography.titleMedium,
+            color = if (timing.offsetMs != 0) glass.accent else MaterialTheme.colorScheme.onSurface,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.weight(1f),
+        )
+        OffsetButton(AppIcons.Plus, stringResource(R.string.lyrics_offset_later)) { step(1) }
+        OffsetButton(AppIcons.Restore, stringResource(R.string.lyrics_offset_reset), enabled = timing.offsetMs != 0) {
+            onTouch()
+            haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+            timing.set(0)
+        }
+    }
+}
+
+@Composable
+private fun OffsetButton(icon: ImageVector, description: String, enabled: Boolean = true, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .size(44.dp)
+            .clip(RoundedCornerShape(50))
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            icon, description, Modifier.size(20.dp),
+            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.35f),
+        )
+    }
+}
+
+/**
+ * Seek bar with times: under the bar (player) or beside it on one row (lyrics dock, saves a row).
+ * The dragged value is shown live and committed only on release; the optimistic position then
+ * holds until the device confirms (no rubber-banding).
+ */
+@Composable
+private fun Progress(p: PlayerParts, m: Morph, inlineTimes: Boolean) {
+    val session = p.info
+    val position = p.position
+    var dragFraction by remember { mutableStateOf<Float?>(null) }
+    val duration = session.durationMs
+    // Quantised (≈ 1/2000 of the track) so the slider is not re-targeted every frame.
+    val live by remember(duration) {
+        derivedStateOf {
+            if (duration != null && duration > 0) ((position.value.toFloat() / duration).coerceIn(0f, 1f) * 2000f).roundToInt() / 2000f else 0f
+        }
+    }
+    var scrubbing by remember { mutableStateOf(false) }
+    // Time labels change once per second, not every frame; they light up while scrubbing.
+    val seconds by remember { derivedStateOf { position.value / 1000 } }
+    val labelColor by animateColorAsState(
+        if (scrubbing) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+        label = "timeLabels",
+    )
+    val shown = dragFraction?.let { f -> duration?.let { (f * it).toLong() } } ?: (seconds * 1000)
+    val elapsed = formatTime(shown)
+    val remaining = if (duration != null) stringResource(R.string.time_remaining, formatTime(((duration - shown) / 1000 * 1000).coerceAtLeast(0))) else formatTime(null)
+    val slider = @Composable { modifier: Modifier ->
+        MediaSlider(
+            value = { dragFraction ?: live },
+            onValueChange = { dragFraction = it },
+            modifier = modifier.shared(m, "progress"),
+            enabled = p.canSeek,
+            contentDescription = stringResource(R.string.a11y_playback_position),
+            onActiveChange = { scrubbing = it },
+            onValueChangeFinished = { f ->
+                if (duration != null) p.controls.seek((f * duration).toLong())
+                dragFraction = null
+            },
+        )
+    }
+    val labelStyle = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum")
+    if (inlineTimes) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(elapsed, style = labelStyle, color = labelColor, modifier = Modifier.widthIn(min = 40.dp))
+            Spacer(Modifier.width(10.dp))
+            slider(Modifier.weight(1f))
+            Spacer(Modifier.width(10.dp))
+            Text(remaining, style = labelStyle, color = labelColor, textAlign = TextAlign.End, modifier = Modifier.widthIn(min = 44.dp))
+        }
+    } else {
+        slider(Modifier.fillMaxWidth())
+        Row(Modifier.fillMaxWidth()) {
+            Text(elapsed, style = labelStyle, color = labelColor)
+            Spacer(Modifier.weight(1f))
+            Text(remaining, style = labelStyle, color = labelColor)
+        }
+    }
+}
+
+/** Previous · Play/Pause · Next as liquid-glass buttons (shared between the modes, so they morph). */
+@Composable
+private fun Transport(p: PlayerParts, m: Morph, backdrop: Backdrop, small: androidx.compose.ui.unit.Dp, big: androidx.compose.ui.unit.Dp, spacing: androidx.compose.ui.unit.Dp) {
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(spacing, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TransportButtons(p, m, backdrop, small, big)
+    }
+}
+
+@Composable
+private fun TransportButtons(p: PlayerParts, m: Morph, backdrop: Backdrop, small: androidx.compose.ui.unit.Dp, big: androidx.compose.ui.unit.Dp) {
+    val session = p.info
+    val canControl = p.view.canControl
+    GlassIconButton(
+        AppIcons.Previous, stringResource(R.string.action_previous), { p.controls.skip(false) }, backdrop,
+        Modifier.shared(m, "prev"),
+        size = small, iconSize = small * 0.42f,
+        enabled = canControl && Action.PREVIOUS in session.actions,
+    )
+    GlassIconButton(
+        if (p.playing) AppIcons.Pause else AppIcons.Play,
+        stringResource(if (p.playing) R.string.action_pause else R.string.action_play),
+        p.controls.togglePlay, backdrop,
+        Modifier.shared(m, "play"),
+        size = big, iconSize = big * 0.42f,
+        enabled = canControl && (Action.TOGGLE in session.actions || Action.PLAY in session.actions || Action.PAUSE in session.actions),
+    )
+    GlassIconButton(
+        AppIcons.Next, stringResource(R.string.action_next), { p.controls.skip(true) }, backdrop,
+        Modifier.shared(m, "next"),
+        size = small, iconSize = small * 0.42f,
+        enabled = canControl && Action.NEXT in session.actions,
+    )
+}
+
+/** The lyrics dock's single row: Lyrics · ◀◀ ▶ ▶▶ · Source. */
+@Composable
+private fun DockRow(p: PlayerParts, m: Morph, backdrop: Backdrop) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        LyricsToggle(p.ui, p.lyricsAvailable, m)
+        Spacer(Modifier.weight(1f))
+        Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            TransportButtons(p, m, backdrop, small = 48.dp, big = 60.dp)
+        }
+        Spacer(Modifier.weight(1f))
+        SourceIconButton(p.ui, p.view, m)
+    }
+}
+
+/** Lyrics on / off: accent with a soft fill while on, dimmed (not hidden) when there are none. */
+@Composable
+private fun LyricsToggle(ui: UiContext, lyricsAvailable: Boolean, m: Morph?) {
+    val haptics = LocalHapticFeedback.current
+    val glass = LocalGlass.current
+    val secondary = MaterialTheme.colorScheme.onSurfaceVariant
+    val active = ui.nav.lyricsMode && lyricsAvailable
+    val unavailable = stringResource(R.string.lyrics_unavailable)
+    Box(
+        Modifier
+            .then(if (m != null) Modifier.shared(m, "lyricsBtn") else Modifier)
+            .size(48.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (active) glass.fill else Color.Transparent)
+            .clickable(role = Role.Button, onClickLabel = if (lyricsAvailable) null else unavailable) {
+                if (!lyricsAvailable) {
+                    haptics.performHapticFeedback(HapticFeedbackType.Reject)
+                    ui.toast(unavailable)
+                } else {
+                    haptics.performHapticFeedback(if (active) HapticFeedbackType.ToggleOff else HapticFeedbackType.ToggleOn)
+                    ui.setNav(ui.nav.copy(lyricsMode = !active))
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            AppIcons.QuoteBubble,
+            when {
+                !lyricsAvailable -> unavailable
+                active -> stringResource(R.string.lyrics_hide)
+                else -> stringResource(R.string.lyrics_show)
+            },
+            Modifier.size(24.dp),
+            tint = when {
+                active -> glass.accent
+                lyricsAvailable -> secondary
+                else -> secondary.copy(alpha = secondary.alpha * 0.4f)
+            },
+        )
+    }
+}
+
+/** Where the playback is, icon only (lyrics dock); opens the source sheet. */
+@Composable
+private fun SourceIconButton(ui: UiContext, view: PlayerView, m: Morph) {
+    val haptics = LocalHapticFeedback.current
+    Box(
+        Modifier
+            .size(48.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(role = Role.Button, onClickLabel = stringResource(R.string.source_title)) {
+                haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+                ui.setNav(ui.nav.copy(sheetOpen = true))
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            if (view.side == Side.PC) AppIcons.Computer else AppIcons.Phone,
+            deviceLabel(view),
+            Modifier.shared(m, "source").size(22.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/**
+ * One small, non-blocking status pill for the most important issue (missing access, no paired
+ * PC, PC not connected, app versions that don't match); tapping it opens the relevant settings
+ * page. "This phone only" mode shows only the access issue.
+ */
+@Composable
+private fun StatusPill(ui: UiContext, view: PlayerView?) {
+    val peers by ui.engine.trust.peers.collectAsStateWithLifecycle()
+    val link by ui.engine.link.status.collectAsStateWithLifecycle()
+    val mode by ui.engine.settings.mode.collectAsStateWithLifecycle()
+    val dismissed by ui.engine.settings.dismissedVersionWarning.collectAsStateWithLifecycle()
+    val current = link.current
+    val versionWarning = current?.let { c ->
+        val local = app.mediaduet.BuildConfig.VERSION_NAME
+        c.takeIf { VersionCompat.compare(local, it.peer.app) == VersionCompat.Level.MISMATCH && dismissed != "$local|${it.peer.app}" }
+    }
+    val (text, route) = when {
+        !ui.permissions.listenerAccess -> stringResource(R.string.banner_access) to SettingsRoute.PERMISSIONS
+        !mode.linked -> return
+        peers.isEmpty() -> stringResource(R.string.banner_pair) to SettingsRoute.CONNECTION
+        current == null || view?.fallback == true -> stringResource(R.string.pill_pc_disconnected) to SettingsRoute.CONNECTION
+        versionWarning != null -> stringResource(R.string.version_pill, versionWarning.peer.name) to SettingsRoute.CONNECTION
+        else -> return
+    }
+    val glass = LocalGlass.current
+    Row(
+        Modifier
+            .padding(bottom = 12.dp)
+            .clip(RoundedCornerShape(50))
+            .background(glass.fill)
+            .clickable(role = Role.Button) { ui.openSettings(route) }
+            .heightIn(min = 40.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(8.dp).background(glass.warn, RoundedCornerShape(50)))
+        Spacer(Modifier.width(10.dp))
+        Text(text, style = MaterialTheme.typography.labelLarge, maxLines = 2)
+        Icon(AppIcons.ChevronRight, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@OptIn(ExperimentalSharedTransitionApi::class)
+@Composable
+private fun Modifier.shared(m: Morph, key: String): Modifier = with(m.shared) {
+    this@shared.sharedElement(
+        rememberSharedContentState(key),
+        m.visibility,
+        boundsTransform = { _, _ -> if (m.reduced) snap() else spring(dampingRatio = 0.86f, stiffness = 260f) },
+    )
+}
+
+/** Text that changes size between the modes: both versions scale into the animated bounds. */
+@OptIn(ExperimentalSharedTransitionApi::class)
+@Composable
+private fun Modifier.sharedText(m: Morph, key: String): Modifier = with(m.shared) {
+    this@sharedText.sharedBounds(
+        rememberSharedContentState(key),
+        m.visibility,
+        enter = fadeIn(if (m.reduced) snap() else tween(220)),
+        exit = fadeOut(if (m.reduced) snap() else tween(160)),
+        boundsTransform = { _, _ -> if (m.reduced) snap() else spring(dampingRatio = 0.86f, stiffness = 260f) },
+        resizeMode = SharedTransitionScope.ResizeMode.scaleToBounds(ContentScale.FillWidth, Alignment.CenterStart),
+    )
+}
+
+/** "This phone · App" / "PC name · App". */
+@Composable
+fun deviceLabel(view: PlayerView): String {
+    val device = if (view.side == Side.PHONE) stringResource(R.string.this_phone) else view.deviceName ?: stringResource(R.string.pc_generic)
+    val app = view.info.appName.ifEmpty { view.info.appId }
+    return if (app.isEmpty()) device else listOf(device, app).joinToString(stringResource(R.string.list_separator))
+}
+
+/**
+ * Apple-Music-style action row at the bottom of the player: Lyrics (left), playback source with a
+ * caption (centre, opens the source sheet) and Settings (right). Plain icons tinted like secondary
+ * text with 48 dp targets.
+ */
+@Composable
+private fun ActionRow(ui: UiContext, view: PlayerView?, lyricsAvailable: Boolean, morph: Morph?) {
+    val haptics = LocalHapticFeedback.current
+    val secondary = MaterialTheme.colorScheme.onSurfaceVariant
+    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+            LyricsToggle(ui, lyricsAvailable, morph)
+        }
+        // Centre: where the playback is (icon + caption, like Apple Music's AirPlay row).
+        val caption = when {
+            view == null -> stringResource(R.string.source_title)
+            view.automatic -> stringResource(R.string.target_auto_caption, deviceLabel(view))
+            else -> deviceLabel(view)
+        }
+        Column(
+            Modifier
+                .weight(2f)
+                .clip(RoundedCornerShape(14.dp))
+                .clickable(role = Role.Button, onClickLabel = stringResource(R.string.source_title)) {
+                    haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+                    ui.setNav(ui.nav.copy(sheetOpen = true))
+                }
+                .heightIn(min = 48.dp)
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Icon(
+                when (view?.side) {
+                    Side.PC -> AppIcons.Computer
+                    Side.PHONE -> AppIcons.Phone
+                    null -> AppIcons.Devices
+                },
+                null,
+                (if (morph != null) Modifier.shared(morph, "source") else Modifier).size(22.dp),
+                tint = secondary,
+            )
+            Text(
+                caption,
+                style = MaterialTheme.typography.labelSmall,
+                color = secondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+            SettingsButton(ui)
+        }
+    }
+}
+
+@Composable
+private fun SettingsButton(ui: UiContext) {
+    val haptics = LocalHapticFeedback.current
+    Box(
+        Modifier
+            .size(48.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(role = Role.Button) {
+                haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+                ui.openSettings(null)
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(AppIcons.Gear, stringResource(R.string.settings_title), Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -375,335 +1154,6 @@ fun commandFailureText(): (String?) -> String {
     }
 }
 
-
-/**
- * One small, non-blocking status pill for the most important issue (missing access, no paired
- * PC, PC not connected); tapping it opens the relevant settings page.
- */
-@Composable
-private fun StatusPill(ui: UiContext, fallback: Boolean) {
-    val peers by ui.engine.trust.peers.collectAsStateWithLifecycle()
-    val link by ui.engine.link.status.collectAsStateWithLifecycle()
-    val (text, route) = when {
-        !ui.permissions.listenerAccess -> stringResource(R.string.banner_access) to SettingsRoute.PERMISSIONS
-        peers.isEmpty() -> stringResource(R.string.banner_pair) to SettingsRoute.CONNECTION
-        link.current == null || fallback -> stringResource(R.string.pill_pc_disconnected) to SettingsRoute.CONNECTION
-        else -> return
-    }
-    val glass = LocalGlass.current
-    Row(
-        Modifier
-            .padding(bottom = 12.dp)
-            .clip(RoundedCornerShape(50))
-            .background(glass.fill)
-            .clickable(role = Role.Button) { ui.openSettings(route) }
-            .heightIn(min = 40.dp)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(Modifier.size(8.dp).background(glass.warn, RoundedCornerShape(50)))
-        Spacer(Modifier.width(10.dp))
-        Text(text, style = MaterialTheme.typography.labelLarge, maxLines = 2)
-        Icon(AppIcons.ChevronRight, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-@OptIn(ExperimentalSharedTransitionApi::class)
-@Composable
-private fun Modifier.shared(
-    scope: SharedTransitionScope,
-    visibility: AnimatedVisibilityScope,
-    key: String,
-    reduced: Boolean,
-): Modifier = with(scope) {
-    this@shared.sharedElement(
-        rememberSharedContentState(key),
-        visibility,
-        boundsTransform = { _, _ -> if (reduced) snap() else spring(dampingRatio = 0.86f, stiffness = 260f) },
-    )
-}
-
-/** Text that changes size between the modes: both versions scale into the animated bounds. */
-@OptIn(ExperimentalSharedTransitionApi::class)
-@Composable
-private fun Modifier.sharedText(
-    scope: SharedTransitionScope,
-    visibility: AnimatedVisibilityScope,
-    key: String,
-    reduced: Boolean,
-): Modifier = with(scope) {
-    this@sharedText.sharedBounds(
-        rememberSharedContentState(key),
-        visibility,
-        enter = fadeIn(if (reduced) snap() else tween(220)),
-        exit = fadeOut(if (reduced) snap() else tween(160)),
-        boundsTransform = { _, _ -> if (reduced) snap() else spring(dampingRatio = 0.86f, stiffness = 260f) },
-        resizeMode = SharedTransitionScope.ResizeMode.scaleToBounds(ContentScale.FillWidth, Alignment.CenterStart),
-    )
-}
-
-/** "This phone · App" / "PC name · App". */
-@Composable
-fun deviceLabel(view: PlayerView): String {
-    val device = if (view.side == Side.PHONE) stringResource(R.string.this_phone) else view.deviceName ?: stringResource(R.string.pc_generic)
-    val app = view.info.appName.ifEmpty { view.info.appId }
-    return if (app.isEmpty()) device else listOf(device, app).joinToString(stringResource(R.string.list_separator))
-}
-
-@OptIn(ExperimentalSharedTransitionApi::class)
-@Composable
-private fun ArtworkMode(
-    shared: SharedTransitionScope,
-    visibility: AnimatedVisibilityScope,
-    view: PlayerView,
-    playing: Boolean,
-    reduced: Boolean,
-    controls: PlayerControls,
-    onArtworkClick: () -> Unit,
-) {
-    val glass = LocalGlass.current
-    val haptics = LocalHapticFeedback.current
-    val density = LocalDensity.current
-    val scope = rememberCoroutineScope()
-    // Horizontal artwork offset: set synchronously while dragging; only the release animates.
-    var swipe by remember { mutableFloatStateOf(0f) }
-    var swipeJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
-    val info = view.info
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        // Title block (two text lines at the current font scale) + its spacing below the artwork.
-        val titleBlock = with(density) { TitleLarge.lineHeight.toDp() + ArtistLarge.lineHeight.toDp() } + 24.dp
-        val side = minOf(maxWidth, maxHeight - titleBlock).coerceAtLeast(96.dp)
-        val widthPx = with(density) { maxWidth.toPx() }
-        Column(Modifier.fillMaxSize()) {
-            val artScale by animateFloatAsState(
-                if (playing || reduced) 1f else 0.86f,
-                if (reduced) snap() else spring(dampingRatio = 0.72f, stiffness = 220f),
-                label = "artScale",
-            )
-            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Artwork(
-                    view.art,
-                    Modifier
-                        .shared(shared, visibility, "artwork", reduced)
-                        .size(side)
-                        .graphicsLayer {
-                            scaleX = artScale
-                            scaleY = artScale
-                            translationX = swipe
-                            alpha = 1f - (abs(swipe) / widthPx).coerceIn(0f, 0.6f)
-                        }
-                        // Horizontal swipe: next (left) / previous (right), when supported.
-                        .pointerInput(view.key, info.actions, view.canControl) {
-                            val threshold = 72.dp.toPx()
-                            var crossed = false
-                            fun settle(block: suspend () -> Unit) {
-                                swipeJob?.cancel()
-                                swipeJob = scope.launch { block() }
-                            }
-                            suspend fun animateSwipe(to: Float, spec: androidx.compose.animation.core.AnimationSpec<Float>) =
-                                animate(swipe, to, animationSpec = spec) { v, _ -> swipe = v }
-                            detectHorizontalDragGestures(
-                                onDragStart = {
-                                    crossed = false
-                                    swipeJob?.cancel()
-                                },
-                                onHorizontalDrag = { change, dx ->
-                                    change.consume()
-                                    swipe += dx * 0.6f
-                                    if (!crossed && abs(swipe) > threshold) {
-                                        crossed = true
-                                        haptics.performHapticFeedback(HapticFeedbackType.GestureThresholdActivate)
-                                    }
-                                },
-                                onDragEnd = {
-                                    val next = swipe < 0
-                                    val action = if (next) Action.NEXT else Action.PREVIOUS
-                                    val allowed = view.canControl && action in info.actions
-                                    val past = abs(swipe) > threshold
-                                    if (past && allowed) controls.skip(next)
-                                    if (past && !allowed) haptics.performHapticFeedback(HapticFeedbackType.Reject)
-                                    settle {
-                                        if (past && allowed && !reduced) {
-                                            // Slide out, re-enter from the other side.
-                                            animateSwipe(if (next) -widthPx else widthPx, tween(160))
-                                            swipe = if (next) widthPx * 0.4f else -widthPx * 0.4f
-                                        }
-                                        animateSwipe(0f, if (reduced) snap() else spring(dampingRatio = 0.75f, stiffness = 300f))
-                                    }
-                                },
-                                onDragCancel = { settle { animateSwipe(0f, spring()) } },
-                            )
-                        }
-                        .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onArtworkClick),
-                )
-            }
-            Spacer(Modifier.height(24.dp))
-            // Title / artist, left-aligned (ellipsized).
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TitleBlock(info, Modifier.weight(1f).sharedText(shared, visibility, "title", reduced), large = true)
-                if (!view.connected) {
-                    Spacer(Modifier.width(8.dp))
-                    StatusChip(stringResource(R.string.stale), dot = glass.warn)
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalSharedTransitionApi::class)
-@Composable
-private fun LyricsMode(
-    shared: SharedTransitionScope,
-    visibility: AnimatedVisibilityScope,
-    ui: UiContext,
-    session: MediaSessionInfo,
-    art: Bitmap?,
-    lyrics: LyricsState,
-    position: State<Long>,
-    translations: Boolean,
-    reduced: Boolean,
-    timing: LyricsTiming,
-    onHeaderClick: () -> Unit,
-    onSeek: ((Long) -> Unit)?,
-) {
-    var timingOpen by remember { mutableStateOf(false) }
-    var timingTouch by remember { mutableIntStateOf(0) }
-    LaunchedEffect(timingOpen, timingTouch) {
-        if (timingOpen) {
-            delay(5_000)
-            timingOpen = false
-        }
-    }
-    Column(Modifier.fillMaxSize()) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(top = 4.dp, bottom = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Row(
-                Modifier
-                    .weight(1f)
-                    .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onHeaderClick),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Artwork(art, Modifier.shared(shared, visibility, "artwork", reduced).size(56.dp))
-                Spacer(Modifier.width(12.dp))
-                TitleBlock(session, Modifier.weight(1f).sharedText(shared, visibility, "title", reduced), large = false)
-            }
-            // Translation toggle: only when these lyrics carry translations (persisted setting).
-            if (lyrics.lyrics?.hasTranslations == true) {
-                Spacer(Modifier.width(6.dp))
-                GlassIconButton(
-                    AppIcons.Translate,
-                    stringResource(if (translations) R.string.lyrics_hide_translation else R.string.lyrics_show_translation),
-                    { ui.engine.settings.setShowTranslations(!translations) },
-                    ui.backdrop, size = 48.dp, iconSize = 22.dp, active = translations,
-                )
-            }
-            if (lyrics.synced) {
-                Spacer(Modifier.width(6.dp))
-                GlassIconButton(
-                    AppIcons.Timer,
-                    stringResource(R.string.lyrics_timing),
-                    { timingOpen = !timingOpen },
-                    ui.backdrop, size = 48.dp, iconSize = 22.dp, active = timingOpen || timing.offsetMs != 0,
-                )
-            }
-        }
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            val synced = lyrics.lyrics
-            if (synced != null && !synced.isEmpty) {
-                SyncedLyrics(synced, position, onSeek, ui.backdrop, Modifier.fillMaxSize(), showTranslations = translations)
-            } else {
-                PlainLyrics(lyrics.plain, Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 16.dp))
-            }
-            androidx.compose.animation.AnimatedVisibility(
-                visible = timingOpen,
-                enter = if (reduced) fadeIn(snap()) else fadeIn(tween(160)) + scaleIn(initialScale = 0.92f, transformOrigin = androidx.compose.ui.graphics.TransformOrigin(1f, 0f)),
-                exit = if (reduced) fadeOut(snap()) else fadeOut(tween(140)) + scaleOut(targetScale = 0.92f, transformOrigin = androidx.compose.ui.graphics.TransformOrigin(1f, 0f)),
-                modifier = Modifier.align(Alignment.TopEnd).padding(top = 4.dp),
-            ) {
-                LyricsOffsetControl(timing, ui.backdrop) { timingTouch++ }
-            }
-        }
-    }
-}
-
-/**
- * Small glass control for the per-app lyric offset: −0.1 s / value / +0.1 s / reset, with
- * haptics. Positive = lyrics later. The automatic output delay (Bluetooth) is shown below.
- */
-@Composable
-private fun LyricsOffsetControl(timing: LyricsTiming, backdrop: Backdrop, onTouch: () -> Unit) {
-    val glass = LocalGlass.current
-    val haptics = LocalHapticFeedback.current
-    fun step(steps: Int) {
-        onTouch()
-        val next = LyricsDelay.step(timing.offsetMs, steps)
-        if (next == timing.offsetMs) {
-            haptics.performHapticFeedback(HapticFeedbackType.Reject)
-        } else {
-            haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
-            timing.set(next)
-        }
-    }
-    Column(
-        Modifier
-            .drawBackdrop(
-                backdrop = backdrop,
-                shape = { Capsule() },
-                effects = {
-                    vibrancy()
-                    blur(16.dp.toPx())
-                    lens(10.dp.toPx(), 20.dp.toPx())
-                },
-                onDrawSurface = { drawRect(glass.surfaceStrong) },
-            )
-            .padding(horizontal = 6.dp, vertical = 6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            OffsetButton(AppIcons.Minus, stringResource(R.string.lyrics_offset_earlier)) { step(-1) }
-            Column(Modifier.widthIn(min = 76.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    stringResource(R.string.lyrics_offset_value, LyricsDelay.signedSeconds(timing.offsetMs)),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = if (timing.offsetMs != 0) glass.accent else MaterialTheme.colorScheme.onSurface,
-                )
-                if (timing.outputLatencyMs > 0) {
-                    Text(
-                        stringResource(R.string.lyrics_offset_auto, timing.outputLatencyMs),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-            OffsetButton(AppIcons.Plus, stringResource(R.string.lyrics_offset_later)) { step(1) }
-            OffsetButton(AppIcons.Restore, stringResource(R.string.lyrics_offset_reset), enabled = timing.offsetMs != 0) {
-                onTouch()
-                haptics.performHapticFeedback(HapticFeedbackType.Confirm)
-                timing.set(0)
-            }
-        }
-    }
-}
-
-@Composable
-private fun OffsetButton(icon: ImageVector, description: String, enabled: Boolean = true, onClick: () -> Unit) {
-    Box(
-        Modifier
-            .size(48.dp)
-            .clip(RoundedCornerShape(50))
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            icon, description, Modifier.size(22.dp),
-            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.35f),
-        )
-    }
-}
 
 /**
  * Artwork corner radius and shadow follow its current size (8 dp small … 20 dp large), so the
@@ -776,82 +1226,6 @@ private fun TitleText(title: String, sub: String, large: Boolean) {
     }
 }
 
-@Composable
-private fun Controls(
-    ui: UiContext,
-    session: MediaSessionInfo,
-    position: State<Long>,
-    playing: Boolean,
-    canControl: Boolean,
-    controls: PlayerControls,
-    compact: Boolean = false,
-) {
-    // Seek: the dragged value is shown live and committed only on release; the optimistic
-    // position then holds until the device confirms (no rubber-banding).
-    var dragFraction by remember { mutableStateOf<Float?>(null) }
-    val duration = session.durationMs
-    val canSeek = canControl && Action.SEEK in session.actions && duration != null && duration > 0
-    // Quantised (≈ 1/2000 of the track) so the slider is not re-targeted every frame.
-    val live by remember(duration) {
-        derivedStateOf {
-            if (duration != null && duration > 0) ((position.value.toFloat() / duration).coerceIn(0f, 1f) * 2000f).roundToInt() / 2000f else 0f
-        }
-    }
-    var scrubbing by remember { mutableStateOf(false) }
-    MediaSlider(
-        value = { dragFraction ?: live },
-        onValueChange = { dragFraction = it },
-        enabled = canSeek,
-        contentDescription = stringResource(R.string.a11y_playback_position),
-        onActiveChange = { scrubbing = it },
-        onValueChangeFinished = { f ->
-            if (duration != null) controls.seek((f * duration).toLong())
-            dragFraction = null
-        },
-    )
-    // Time labels change once per second, not every frame; they light up while scrubbing.
-    val seconds by remember { derivedStateOf { position.value / 1000 } }
-    val labelColor by androidx.compose.animation.animateColorAsState(
-        if (scrubbing) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-        label = "timeLabels",
-    )
-    Row(Modifier.fillMaxWidth()) {
-        val shown = dragFraction?.let { f -> duration?.let { (f * it).toLong() } } ?: (seconds * 1000)
-        Text(formatTime(shown), style = MaterialTheme.typography.labelMedium, color = labelColor)
-        Spacer(Modifier.weight(1f))
-        Text(
-            if (duration != null) stringResource(R.string.time_remaining, formatTime(((duration - shown) / 1000 * 1000).coerceAtLeast(0))) else formatTime(null),
-            style = MaterialTheme.typography.labelMedium,
-            color = labelColor,
-        )
-    }
-    Spacer(Modifier.height(if (compact) 8.dp else 18.dp))
-    val small = if (compact) 52.dp else 64.dp
-    val big = if (compact) 64.dp else 80.dp
-    Row(
-        Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(if (compact) 24.dp else 32.dp, Alignment.CenterHorizontally),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        GlassIconButton(
-            AppIcons.Previous, stringResource(R.string.action_previous), { controls.skip(false) }, ui.backdrop,
-            size = small, iconSize = small * 0.47f,
-            enabled = canControl && Action.PREVIOUS in session.actions,
-        )
-        GlassIconButton(
-            if (playing) AppIcons.Pause else AppIcons.Play,
-            stringResource(if (playing) R.string.action_pause else R.string.action_play),
-            controls.togglePlay, ui.backdrop,
-            size = big, iconSize = big * 0.5f,
-            enabled = canControl && (Action.TOGGLE in session.actions || Action.PLAY in session.actions || Action.PAUSE in session.actions),
-        )
-        GlassIconButton(
-            AppIcons.Next, stringResource(R.string.action_next), { controls.skip(true) }, ui.backdrop,
-            size = small, iconSize = small * 0.47f,
-            enabled = canControl && Action.NEXT in session.actions,
-        )
-    }
-}
 
 /**
  * Liquid-glass volume control for the target device: the phone's media volume (AudioManager) or
@@ -950,109 +1324,6 @@ private fun VolumeSlider(
     }
 }
 
-/**
- * Apple-Music-style action row at the bottom of the player: Lyrics (left), playback source with a
- * caption (centre, opens the source sheet) and Settings (right). Plain icons tinted like secondary
- * text with 48 dp targets; Lyrics turns accent with a soft fill when lyrics mode is on and is shown
- * dimmed (not hidden) when the track has no lyrics, so the row stays balanced.
- */
-@Composable
-private fun ActionRow(ui: UiContext, view: PlayerView?, lyricsAvailable: Boolean) {
-    val haptics = LocalHapticFeedback.current
-    val glass = LocalGlass.current
-    val secondary = MaterialTheme.colorScheme.onSurfaceVariant
-    val active = ui.nav.lyricsMode && lyricsAvailable
-    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-            val unavailable = stringResource(R.string.lyrics_unavailable)
-            Box(
-                Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(if (active) glass.fill else Color.Transparent)
-                    .clickable(
-                        role = Role.Button,
-                        onClickLabel = if (lyricsAvailable) null else unavailable,
-                    ) {
-                        if (!lyricsAvailable) {
-                            haptics.performHapticFeedback(HapticFeedbackType.Reject)
-                            ui.toast(unavailable)
-                        } else {
-                            haptics.performHapticFeedback(if (active) HapticFeedbackType.ToggleOff else HapticFeedbackType.ToggleOn)
-                            ui.setNav(ui.nav.copy(lyricsMode = !active))
-                        }
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    AppIcons.QuoteBubble,
-                    when {
-                        !lyricsAvailable -> unavailable
-                        active -> stringResource(R.string.lyrics_hide)
-                        else -> stringResource(R.string.lyrics_show)
-                    },
-                    Modifier.size(24.dp),
-                    tint = when {
-                        active -> glass.accent
-                        lyricsAvailable -> secondary
-                        else -> secondary.copy(alpha = secondary.alpha * 0.4f)
-                    },
-                )
-            }
-        }
-        // Centre: where the playback is (icon + caption, like Apple Music's AirPlay row).
-        val caption = when {
-            view == null -> stringResource(R.string.source_title)
-            view.automatic -> stringResource(R.string.target_auto_caption, deviceLabel(view))
-            else -> deviceLabel(view)
-        }
-        Column(
-            Modifier
-                .weight(2f)
-                .clip(RoundedCornerShape(14.dp))
-                .clickable(role = Role.Button, onClickLabel = stringResource(R.string.source_title)) {
-                    haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
-                    ui.setNav(ui.nav.copy(sheetOpen = true))
-                }
-                .heightIn(min = 48.dp)
-                .padding(horizontal = 8.dp, vertical = 4.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
-            Icon(
-                when (view?.side) {
-                    Side.PC -> AppIcons.Computer
-                    Side.PHONE -> AppIcons.Phone
-                    null -> AppIcons.Devices
-                },
-                null, Modifier.size(22.dp), tint = secondary,
-            )
-            Text(
-                caption,
-                style = MaterialTheme.typography.labelSmall,
-                color = secondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(top = 2.dp),
-            )
-        }
-        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
-            Box(
-                Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .clickable(role = Role.Button) {
-                        haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
-                        ui.openSettings(null)
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(AppIcons.Gear, stringResource(R.string.settings_title), Modifier.size(24.dp), tint = secondary)
-            }
-        }
-    }
-}
 
 /** Control-target switcher: Automatic, this phone's sessions and the PC's sessions. */
 @Composable
@@ -1065,6 +1336,7 @@ private fun TargetSheet(ui: UiContext) {
     val resolved by engine.target.collectAsStateWithLifecycle()
     val link by engine.link.status.collectAsStateWithLifecycle()
     val policy by engine.remote.policy.collectAsStateWithLifecycle()
+    val mode by engine.settings.mode.collectAsStateWithLifecycle()
     val reduced = rememberReducedMotion()
     val glass = LocalGlass.current
     val haptics = LocalHapticFeedback.current
@@ -1120,30 +1392,32 @@ private fun TargetSheet(ui: UiContext) {
                     }
                 }
 
-                SheetDivider()
-                val connected = link.current != null && remote?.connected == true
-                SheetHeader(link.current?.peer?.name ?: stringResource(R.string.pc_generic))
-                val st = remote
-                when {
-                    !connected -> SourceRow(
-                        AppIcons.Link, stringResource(R.string.pill_pc_disconnected), stringResource(R.string.sheet_pc_disconnected_text),
-                        selected = false, chevron = true,
-                    ) {
-                        close()
-                        ui.openSettings(SettingsRoute.CONNECTION)
+                if (mode.linked) {
+                    SheetDivider()
+                    val connected = link.current != null && remote?.connected == true
+                    SheetHeader(link.current?.peer?.name ?: stringResource(R.string.pc_generic))
+                    val st = remote
+                    when {
+                        !connected -> SourceRow(
+                            AppIcons.Link, stringResource(R.string.pill_pc_disconnected), stringResource(R.string.sheet_pc_disconnected_text),
+                            selected = false, chevron = true,
+                        ) {
+                            close()
+                            ui.openSettings(SettingsRoute.CONNECTION)
+                        }
+                        st == null || st.snapshot.sessions.isEmpty() -> SheetNote(stringResource(R.string.empty_no_media))
+                        else -> for (s in st.snapshot.sessions) {
+                            SourceRow(
+                                AppIcons.Computer,
+                                s.appName.ifEmpty { s.appId },
+                                listOf(s.title, statusLabel(s.status)).filter { it.isNotEmpty() }.joinToString(stringResource(R.string.list_separator)),
+                                selected = choice.side == Side.PC && resolved?.side == Side.PC && resolved?.key == s.key,
+                            ) { pick(TargetChoice(Side.PC, if (s.key == st.snapshot.active) null else s.key)) }
+                        }
                     }
-                    st == null || st.snapshot.sessions.isEmpty() -> SheetNote(stringResource(R.string.empty_no_media))
-                    else -> for (s in st.snapshot.sessions) {
-                        SourceRow(
-                            AppIcons.Computer,
-                            s.appName.ifEmpty { s.appId },
-                            listOf(s.title, statusLabel(s.status)).filter { it.isNotEmpty() }.joinToString(stringResource(R.string.list_separator)),
-                            selected = choice.side == Side.PC && resolved?.side == Side.PC && resolved?.key == s.key,
-                        ) { pick(TargetChoice(Side.PC, if (s.key == st.snapshot.active) null else s.key)) }
+                    policy?.takeIf { connected }?.let { pol ->
+                        SheetNote(stringResource(R.string.settings_policy_current, policyModeLabel(pol.mode)))
                     }
-                }
-                policy?.takeIf { connected }?.let { pol ->
-                    SheetNote(stringResource(R.string.settings_policy_current, policyModeLabel(pol.mode)))
                 }
             }
         }

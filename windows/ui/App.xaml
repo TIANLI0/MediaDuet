@@ -110,6 +110,16 @@
                 <Setter Property="TextWrapping" Value="Wrap" />
                 <Setter Property="Margin" Value="0,3,0,3" />
             </Style>
+            <!-- First-run choice cards (main window): a large, left-aligned button per option. -->
+            <Style x:Key="WelcomeCardStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
+                <Setter Property="VerticalAlignment" Value="Stretch" />
+                <Setter Property="HorizontalContentAlignment" Value="Left" />
+                <Setter Property="VerticalContentAlignment" Value="Top" />
+                <Setter Property="Padding" Value="20,18,20,20" />
+                <Setter Property="CornerRadius" Value="8" />
+                <Setter Property="MinHeight" Value="156" />
+            </Style>
             <Style x:Key="PillStyle" TargetType="Border">
                 <Setter Property="Background" Value="{ThemeResource PillBackgroundBrush}" />
                 <Setter Property="CornerRadius" Value="12" />

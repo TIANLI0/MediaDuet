@@ -81,6 +81,9 @@ import app.mediaduet.ui.theme.LocalGlass
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import app.mediaduet.service.WorkMode
+import app.mediaduet.ui.screens.ModeWelcome
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.CancellationException
 
 /** Shared UI state handed to screens. */
@@ -142,6 +145,13 @@ fun MediaDuetRoot(engine: Engine, requestedPage: MutableState<String?>) {
         // Returning from system settings refreshes every permission state.
         refresh()
         onPauseOrDispose { }
+    }
+
+    // Installs from before the work-mode choice that already have a PC paired keep using it.
+    val peers by engine.trust.peers.collectAsStateWithLifecycle()
+    val mode by engine.settings.mode.collectAsStateWithLifecycle()
+    LaunchedEffect(mode, peers.isNotEmpty()) {
+        if (mode == WorkMode.UNSET && peers.isNotEmpty()) engine.settings.setMode(WorkMode.LINKED)
     }
 
     // The background follows the player's control target (phone or PC artwork).
@@ -270,6 +280,7 @@ fun MediaDuetRoot(engine: Engine, requestedPage: MutableState<String?>) {
             }
             ToastHost(toast, bottomInset, overlayBackdrop, reduced) { toast = null }
             PairingOverlay(engine, overlayBackdrop) { nav = nav.open(SettingsRoute.CONNECTION) }
+            ModeWelcome(ui, ui.backdrop, reduced)
             ConfirmHost(confirm, overlayBackdrop, reduced) { confirm = null }
         }
     }

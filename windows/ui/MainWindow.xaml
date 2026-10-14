@@ -49,12 +49,13 @@
         <!-- ===== Player page ===== -->
         <Grid x:Name="PlayerPage" Grid.Row="1">
             <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
         <!-- Player -->
-        <Grid x:Name="PlayerGrid" Grid.Row="0" Padding="20,0,24,0" Visibility="Collapsed" HorizontalAlignment="Stretch">
+        <Grid x:Name="PlayerGrid" Grid.Row="1" Padding="20,0,24,0" Visibility="Collapsed" HorizontalAlignment="Stretch">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition x:Name="CardColumn" Width="*" />
                 <ColumnDefinition x:Name="LyricsColumn" Width="0" />
@@ -244,7 +245,7 @@
         </Grid>
 
         <!-- Nothing playing -->
-        <StackPanel x:Name="EmptyPanel" Grid.Row="0" HorizontalAlignment="Center" VerticalAlignment="Center"
+        <StackPanel x:Name="EmptyPanel" Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center"
                     MaxWidth="420" Spacing="10" Visibility="Collapsed">
             <FontIcon FontSize="56" Glyph="&#xE8D6;" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
             <TextBlock x:Uid="EmptyTitle" Margin="0,8,0,0" HorizontalAlignment="Center" Style="{StaticResource SubtitleTextBlockStyle}" />
@@ -252,10 +253,47 @@
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             <Button x:Name="EmptyPairButton" x:Uid="EmptyPairButton" Margin="0,8,0,0" HorizontalAlignment="Center"
                     Style="{StaticResource AccentButtonStyle}" Visibility="Collapsed" />
+            <!-- No phone yet: the PC-only mode is one click away (Settings > General > Work mode). -->
+            <HyperlinkButton x:Name="EmptyStandaloneButton" x:Uid="EmptyStandaloneButton" HorizontalAlignment="Center"
+                             Visibility="Collapsed" />
         </StackPanel>
 
+        <!-- First run (no phone paired yet, no work mode chosen): how MediaDuet will be used. Asked
+             once, inside the window (no dialog); changeable in Settings > General. -->
+        <ScrollViewer x:Name="WelcomePanel" Grid.Row="0" Grid.RowSpan="3" Visibility="Collapsed"
+                      HorizontalScrollMode="Disabled" VerticalScrollBarVisibility="Auto">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="620" Padding="24,12,24,32" Spacing="6">
+                <Image x:Name="WelcomeIcon" Width="56" Height="56" HorizontalAlignment="Center" />
+                <TextBlock x:Uid="WelcomeTitle" Margin="0,10,0,0" HorizontalAlignment="Center" TextAlignment="Center"
+                           TextWrapping="Wrap" Style="{StaticResource TitleTextBlockStyle}" />
+                <TextBlock x:Uid="WelcomeSubtitle" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <Grid Margin="0,22,0,0" ColumnSpacing="14" RowSpacing="14">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                    <Button x:Name="WelcomeLinkedButton" Style="{StaticResource WelcomeCardStyle}">
+                        <StackPanel Spacing="6">
+                            <FontIcon FontSize="26" Glyph="&#xE8EA;" HorizontalAlignment="Left" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                            <TextBlock x:Uid="WelcomeLinkedTitle" Margin="0,6,0,0" Style="{StaticResource BodyStrongTextBlockStyle}" TextWrapping="Wrap" />
+                            <TextBlock x:Uid="WelcomeLinkedDesc" Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="WelcomeStandaloneButton" Grid.Column="1" Style="{StaticResource WelcomeCardStyle}">
+                        <StackPanel Spacing="6">
+                            <FontIcon FontSize="26" Glyph="&#xE7F4;" HorizontalAlignment="Left" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                            <TextBlock x:Uid="WelcomeStandaloneTitle" Margin="0,6,0,0" Style="{StaticResource BodyStrongTextBlockStyle}" TextWrapping="Wrap" />
+                            <TextBlock x:Uid="WelcomeStandaloneDesc" Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                    </Button>
+                </Grid>
+                <TextBlock x:Uid="WelcomeFootnote" Margin="0,14,0,0" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"
+                           Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+            </StackPanel>
+        </ScrollViewer>
+
         <!-- Host not running / connecting -->
-        <StackPanel x:Name="HostPanel" Grid.Row="0" HorizontalAlignment="Center" VerticalAlignment="Center"
+        <StackPanel x:Name="HostPanel" Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center"
                     MaxWidth="440" Spacing="10" Visibility="Collapsed">
             <ProgressRing x:Name="HostProgress" Width="40" Height="40" IsActive="False" />
             <FontIcon x:Name="HostIcon" FontSize="56" Glyph="&#xE7BA;" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
@@ -267,8 +305,13 @@
                     Style="{StaticResource AccentButtonStyle}" />
         </StackPanel>
 
+        <!-- Phone and PC on different major/minor versions (host: md::version), dismissible per pair.
+             Its own Auto row: while open it moves the player down instead of covering it. -->
+        <InfoBar x:Name="VersionBar" Grid.Row="0" HorizontalAlignment="Center" MaxWidth="760"
+                 Margin="24,2,24,10" IsOpen="False" Severity="Warning" IsClosable="True" />
+
         <!-- Bottom bar -->
-        <Grid x:Name="BottomBar" Grid.Row="1" Padding="24,6,16,12" ColumnSpacing="12">
+        <Grid x:Name="BottomBar" Grid.Row="2" Padding="24,6,16,12" ColumnSpacing="12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />

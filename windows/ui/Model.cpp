@@ -1,6 +1,8 @@
 #include "pch.h"
 #include "Model.h"
 
+#include "LyricTiming.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -289,6 +291,8 @@ namespace mdui
         auto const& self = JObj(j, "self");
         s.self.id = JStr(self, "id");
         s.self.name = JStr(self, "name");
+        s.self.app = JStr(self, "app");
+        s.standalone = JBool(j, "standalone", false);
 
         auto const& c = JObj(j, "connection");
         s.connection.status = JStr(c, "status", "no_peer");
@@ -298,6 +302,8 @@ namespace mdui
         s.connection.peer.id = JStr(peer, "id");
         s.connection.peer.name = JStr(peer, "name");
         s.connection.peer.platform = JStr(peer, "platform");
+        s.connection.peer.app = JStr(peer, "app");
+        s.connection.peer.versionMatch = JStr(peer, "versionMatch", "unknown");
         s.connection.sinceTick = static_cast<uint64_t>(JInt(c, "sinceTick", 0));
         s.connection.rttMs = JInt(c, "rttMs", -1);
         s.connection.mode = JStr(c, "mode");
@@ -337,6 +343,8 @@ namespace mdui
             dev.connected = JBool(d, "connected", false);
             dev.transport = JStr(d, "transport");
             dev.lastSeen = JInt(d, "lastSeen", 0);
+            dev.app = JStr(d, "app");
+            dev.versionMatch = JStr(d, "versionMatch", "unknown");
             s.devices.push_back(std::move(dev));
         }
 
@@ -522,6 +530,9 @@ namespace mdui
         l.status = JStr(j, "status");
         l.source = JStr(j, "source");
         l.synced = JBool(j, "synced", false);
+        l.title = JStr(j, "title");
+        l.artist = JStr(j, "artist");
+        l.durationMs = JInt(j, "durationMs", -1);
         for (auto const& lj : JArr(j, "lines"))
         {
             if (!lj.is_object()) continue;
@@ -554,11 +565,53 @@ namespace mdui
         return std::any_of(lines.begin(), lines.end(), [](auto const& l) { return !l.words.empty(); });
     }
 
+    namespace
+    {
+        lyrics::SongRef SongOf(Session const& s)
+        {
+            return { s.trackId, s.side == Side::Remote ? 1 : 0, s.key, s.title, s.artist, s.durationMs };
+        }
+    }
+
+    bool SameSong(Session const& a, Session const& b)
+    {
+        return lyrics::SameSong(SongOf(a), SongOf(b));
+    }
+
+    bool Lyrics::BelongsTo(Session const* s) const
+    {
+        if (!valid || !s) return false;
+        if (trackId.empty() || s->trackId.empty() || key.empty())
+        {
+            if (!trackId.empty() && !s->trackId.empty()) return trackId == s->trackId;
+            return side == s->side && key == s->key;
+        }
+        return lyrics::SameSong({ trackId, side == Side::Remote ? 1 : 0, key, title, artist, durationMs }, SongOf(*s)) ||
+            trackId == s->trackId;
+    }
+
     bool Lyrics::MatchesAndShowable(Session const* s) const
     {
-        if (!valid || !s || status != "found" || lines.empty()) return false;
-        if (!trackId.empty() && !s->trackId.empty()) return trackId == s->trackId;
-        return side == s->side && key == s->key;
+        return status == "found" && !lines.empty() && BelongsTo(s);
+    }
+
+    std::string Lyrics::ContentKey() const
+    {
+        // FNV-1a over everything a view shows.
+        uint64_t h = 1469598103934665603ull;
+        auto mix = [&h](std::string_view v) {
+            for (unsigned char c : v) h = (h ^ c) * 1099511628211ull;
+            h = (h ^ 0xFF) * 1099511628211ull;
+        };
+        for (auto const& l : lines)
+        {
+            mix(std::to_string(l.t));
+            mix(l.text);
+            mix(l.tr);
+            for (auto const& w : l.words) mix(std::to_string(w.t) + "/" + std::to_string(w.d));
+        }
+        return key + "|" + source + "|" + std::to_string(lines.size()) + (synced ? "s" : "u") + (hasTranslation ? "|tr|" : "|") +
+            std::to_string(h);
     }
 
     int Lyrics::LineAt(int64_t positionMs) const

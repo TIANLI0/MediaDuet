@@ -55,6 +55,7 @@ namespace winrt::MediaDuetUI::implementation
         std::optional<mdui::Session> m_session;
         // Lyric clock (smoothed, minus the session's lyricsDelayMs) and optimistic play/pause.
         md::lyrics::LyricsClock m_clock;
+        std::string m_clockTrack;   // clock track key: per song (SameSong), not per trackId
         mdui::OptimisticFlag m_playHold;
         bool m_dirty{ false };
         bool m_closed{ false };

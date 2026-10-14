@@ -84,3 +84,19 @@ TEST_CASE("lyrics latency, offsets and overlay layout settings") {
     CHECK(s.data()["lyrics"]["offsets"].is_object());
     CHECK(s.data()["lyrics"]["offsets"].empty());
 }
+
+TEST_CASE("work mode and online artwork settings") {
+    Settings s;
+    CHECK(s.get<std::string>("mode", "") == "linked");
+    CHECK_FALSE(s.get<bool>("modeChosen", true));
+    CHECK(s.get<bool>("artwork.online", false));
+    s.apply({{"mode", "standalone"}, {"modeChosen", true}, {"artwork", {{"online", false}}}});
+    CHECK(s.get<std::string>("mode", "") == "standalone");
+    CHECK(s.get<bool>("modeChosen", false));
+    CHECK_FALSE(s.get<bool>("artwork.online", true));
+    s.apply({{"mode", "offline"}});                 // unknown value -> default
+    CHECK(s.get<std::string>("mode", "") == "linked");
+    s.apply({{"mode", 3}, {"modeChosen", "yes"}});  // wrong types -> defaults
+    CHECK(s.get<std::string>("mode", "") == "linked");
+    CHECK_FALSE(s.get<bool>("modeChosen", true));
+}

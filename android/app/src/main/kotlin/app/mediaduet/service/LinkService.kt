@@ -84,7 +84,8 @@ class LinkService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (!Engine.get(this).settings.foregroundService.value) {
+        val settings = Engine.get(this).settings
+        if (!settings.foregroundService.value || !settings.mode.value.linked) {
             stopSelf()
             return START_NOT_STICKY
         }
@@ -128,7 +129,7 @@ class LinkService : Service() {
         fun start(context: Context, reason: String) {
             val engine = Engine.get(context)
             engine.start()
-            if (!engine.settings.foregroundService.value) return
+            if (!engine.settings.foregroundService.value || !engine.settings.mode.value.linked) return
             try {
                 context.startForegroundService(Intent(context, LinkService::class.java))
                 MdLog.i(TAG, "foreground service requested ($reason)")

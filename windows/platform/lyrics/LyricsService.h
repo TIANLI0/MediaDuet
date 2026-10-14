@@ -35,6 +35,12 @@ public:
     // neteaseId: exact NetEase song id when known (NetEase desktop), skips searching.
     void request(const media::MediaSessionInfo& track, int64_t neteaseId = 0);
     void clear();
+    // The current track got a new trackId for the same song (a player re-reporting its
+    // duration, see lyrics::sameSong): relabels the current result without a "loading"
+    // phase (also a lookup still in flight) and caches found lyrics under the new id.
+    // Does not call onResult. Returns false when there is nothing worth keeping (no
+    // result, notfound, disabled): the caller should request() instead.
+    bool rekey(const std::string& trackId);
     // Lyrics pushed by the peer for a track (spec lyrics.push).
     void offerRemote(const std::string& trackId, const std::string& lrc, const std::string& source,
                      const std::string& translation = {});
@@ -42,6 +48,7 @@ public:
 
 private:
     void deliver(Result r);
+    void cacheCopy(const Result& r);
 
     IScheduler& sched_;
     std::filesystem::path cacheDir_;

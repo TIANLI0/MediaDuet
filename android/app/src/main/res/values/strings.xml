@@ -274,10 +274,11 @@
     <string name="settings_translations_text">Show translated lines (when the PC provides them) under the original lyrics.</string>
     <string name="about_title">About</string>
     <string name="about_text">MediaDuet links your phone and your PC: each side sees and controls what the other is playing. Connections are end-to-end encrypted; notification contents are never read.</string>
+    <string name="about_project_license">MediaDuet is open source under the MIT License. © 2026 tianli.</string>
     <string name="about_licenses">Open-source licences</string>
     <string name="about_license_backdrop">Backdrop (liquid glass) by Kyant — Apache License 2.0. Slider and toggle adapted from its catalog.</string>
     <string name="about_license_androidx">AndroidX, Jetpack Compose, Kotlin coroutines and kotlinx.serialization — Apache License 2.0.</string>
-    <string name="about_license_icons">Material Symbols icons — Apache License 2.0.</string>
+    <string name="about_license_icons">MingCute icons — Apache License 2.0.</string>
     <plurals name="summary_missing">
         <item quantity="one">%1$d missing</item>
         <item quantity="other">%1$d missing</item>
@@ -309,8 +310,6 @@
     <string name="saved">Saved</string>
     <string name="settings_device_name_hint">Saved when you press Done.</string>
     <string name="perm_fix_all">Fix all</string>
-    <string name="lyrics_show_translation">Show translation</string>
-    <string name="lyrics_hide_translation">Hide translation</string>
 
     <!-- Round 4: crash reports -->
     <string name="diag_crash_title">The app crashed last time</string>
@@ -350,4 +349,31 @@
     <string name="lyrics_unavailable">No lyrics for this track</string>
     <string name="a11y_playback_position">Playback position</string>
     <string name="a11y_volume">Volume</string>
+    <string name="lyrics_options">Lyrics options</string>
+    <string name="lyrics_searching">Looking for lyrics…</string>
+    <string name="lyrics_offset_hint">Move the lyrics if they run early or late</string>
+    <string name="version_pill">Version differs from %1$s · Tap for details</string>
+    <string name="version_title">Versions</string>
+    <string name="version_this_phone">This phone</string>
+    <string name="version_value">MediaDuet %1$s</string>
+    <string name="version_unknown">Unknown version</string>
+    <string name="version_mismatch_title">Versions don’t match</string>
+    <string name="version_mismatch_text">%1$s runs MediaDuet %2$s and this phone runs %3$s. Newer features may not work between them — update both to the same version.</string>
+    <string name="version_patch_text">%1$s runs MediaDuet %2$s (this phone: %3$s). Updating both to the same version is recommended.</string>
+    <string name="version_dismiss">Don’t remind me for these versions</string>
+    <string name="mode_header">How you use MediaDuet</string>
+    <string name="mode_linked">With my PC</string>
+    <string name="mode_linked_text">See and control what plays on your PC, and let the PC see this phone.</string>
+    <string name="mode_standalone">This phone only</string>
+    <string name="mode_standalone_text">Player, lyrics and controls for this phone’s media. No PC needed and nothing listens for connections.</string>
+    <string name="mode_welcome_title">Welcome to MediaDuet</string>
+    <string name="mode_welcome_text">How would you like to use it? You can change this anytime in Settings.</string>
+    <string name="mode_continue">Continue</string>
+    <string name="settings_online_lyrics">Find lyrics on this phone</string>
+    <string name="settings_online_lyrics_text">When the PC has none, searches NetEase Cloud Music, QQ Music and LRCLIB with the song’s title, artist and length. Nothing else is sent.</string>
+    <string name="about_developer">Developer</string>
+    <string name="about_email">Email</string>
+    <string name="about_email_chooser">Send email</string>
+    <string name="about_developer_name" translatable="false">tianli</string>
+    <string name="about_developer_email" translatable="false">wutianli@tianli0.top</string>
 </resources>

@@ -28,6 +28,7 @@ struct DeviceRecord {
     Bytes key; // decrypted pairing key, memory only
     int64_t pairedAt = 0;
     int64_t lastSeen = 0;
+    std::string app; // last app version the device reported (DeviceInfo.app); empty = never seen
 };
 
 // Paired devices in devices.json; pairing keys are DPAPI-protected.

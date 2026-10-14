@@ -198,6 +198,10 @@ fun SyncedLyrics(
     backdrop: com.kyant.backdrop.Backdrop,
     modifier: Modifier = Modifier,
     showTranslations: Boolean = true,
+    /** Height of the bottom fade (lines dissolve under floating controls). */
+    bottomFade: androidx.compose.ui.unit.Dp = 96.dp,
+    /** Space at the bottom covered by floating controls (the "back to current" pill sits above it). */
+    bottomObscured: androidx.compose.ui.unit.Dp = 0.dp,
 ) {
     val reduced = rememberReducedMotion()
     val rows = remember(lyrics) { LyricRows.build(lyrics) }
@@ -263,7 +267,7 @@ fun SyncedLyrics(
                 .drawWithContent {
                     drawContent()
                     val top = 40.dp.toPx()
-                    val bottom = 96.dp.toPx()
+                    val bottom = bottomFade.toPx().coerceAtMost(size.height * 0.6f)
                     drawRect(
                         Brush.verticalGradient(0f to Color.Transparent, 1f to Color.Black, startY = 0f, endY = top),
                         size = Size(size.width, top),
@@ -312,7 +316,7 @@ fun SyncedLyrics(
             visible = browsing && active != -2,
             enter = fadeIn() + scaleIn(initialScale = 0.9f),
             exit = fadeOut() + scaleOut(targetScale = 0.9f),
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp),
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp + bottomObscured),
         ) {
             GlassButton({ browsing = false }, backdrop, height = 44.dp) {
                 Text(stringResource(R.string.lyrics_back_to_current), style = MaterialTheme.typography.labelLarge)

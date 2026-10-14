@@ -36,12 +36,13 @@ Every message has a `"type"` field. Messages from the UI to the host may carry a
 {
   "type": "state",
   "tick": 123456789,
-  "self": {"id":"…","name":"DESKTOP-1"},
+  "self": {"id":"…","name":"DESKTOP-1","app":"1.2.1"},
+  "standalone": false,
   "connection": {
     "status": "connected",
     "transport": "bt",
     "secondary": "lan",
-    "peer": {"id":"…","name":"OPPO Find X8 Ultra","platform":"android"},
+    "peer": {"id":"…","name":"OPPO Find X8 Ultra","platform":"android","app":"1.2.1","versionMatch":"equal"},
     "sinceTick": 123400000,
     "rttMs": 41,
     "mode": "auto",
@@ -51,7 +52,8 @@ Every message has a `"type"` field. Messages from the UI to the host may carry a
   "devices": [
     {"id":"…","name":"OPPO Find X8 Ultra","platform":"android",
      "btAddress":"AA:BB:CC:DD:EE:FF","lanHost":"192.168.1.20:47321",
-     "connected":true,"transport":"bt","lastSeen":1760000000000}
+     "connected":true,"transport":"bt","lastSeen":1760000000000,
+     "app":"1.2.1","versionMatch":"equal"}
   ],
   "local":  { "gen": 3, "active": "Spotify.exe", "sessions": [ SESSION… ] },
   "remote": { "gen": 9, "active": "com.netease.cloudmusic#1", "sessions": [ SESSION… ] },
@@ -134,6 +136,16 @@ Every message has a `"type"` field. Messages from the UI to the host may carry a
   `taskbar_not_ready` / `no_taskbar` / `unavailable` (the host is still measuring
   or recovering, e.g. right after sign-in or an Explorer restart; it retries by
   itself).
+* `standalone`: the work mode is "This PC only" (`settings.mode`): no transports,
+  discovery, pairing, arbitration or audio sending; commands that need the phone
+  answer `result` with `error: "standalone"`. Local sessions, in-app lyrics, the
+  desktop overlay and taskbar lyrics keep working.
+* `self.app` is this PC's MediaDuet version; `connection.peer.app` /
+  `devices[].app` the phone's (`DeviceInfo.app`, protocol §6.2; the last
+  version seen is kept with the paired device, `null` if never seen).
+  `versionMatch` ∈ `equal`, `patch` (only the patch number differs: show quietly),
+  `mismatch` (different major or minor: warn, both apps should be updated),
+  `unknown` (no version: no warning).
 * `policyState` ∈ `playing`, `user_paused`, `policy_paused`, `remote_paused`,
   `stopped`, `unknown`.
 * `connection.status` ∈ `no_peer`, `disconnected`, `connecting`, `connected`.
@@ -151,6 +163,7 @@ Every message has a `"type"` field. Messages from the UI to the host may carry a
 {
   "type":"lyrics",
   "trackId":"…","side":"remote","key":"…",
+  "title":"…","artist":"…","durationMs":269000,
   "status":"found",
   "source":"lrclib",
   "synced":true,
@@ -161,6 +174,14 @@ Every message has a `"type"` field. Messages from the UI to the host may carry a
 `status` ∈ `loading`, `found`, `notfound`, `disabled`. `words` is present only for
 enhanced (word-timed) LRC. Without lyrics the UI shows only the media card — no
 placeholder lyrics.
+
+`title` / `artist` / `durationMs` describe the song the lyrics belong to. Players
+re-report the same song with a slightly different duration or album (QQ Music
+does this often), which changes the `trackId` (protocol §8.3). The UI therefore
+matches lyrics to a session by `trackId` **or** by the same song (same normalised
+title and artist, durations within 3 s) and must not clear, fade or rebuild the
+lyrics view for such a change; the host re-keys the current lyrics to the new
+`trackId` without a `loading` phase.
 
 ### `diagnostics` (only while enabled, every 2 s)
 ```json
@@ -249,6 +270,9 @@ Unknown keys are preserved. Defaults:
   "language": "auto",
   "theme": "system",
   "autostart": true,
+  "mode": "linked",
+  "modeChosen": false,
+  "artwork": {"online": true},
   "connection": {"mode": "auto", "switchBackDelaySec": 10},
   "policy": {
     "mode": "windows_first",
@@ -303,6 +327,16 @@ Unknown keys are preserved. Defaults:
 * `language` ∈ `auto`, `zh-CN`, `en-US`; `theme` ∈ `system`, `light`, `dark`.
 * `ui.main.width` / `ui.main.height` (physical pixels, `null` = default size) and
   `ui.main.maximized` are written by the UI to restore the main window.
+* `mode` ∈ `linked` (with a paired phone) or `standalone` (this PC only, see
+  `state.standalone`). `modeChosen` is set once the user chose (the UI shows a
+  first-run choice while it is `false` and no phone is paired; installs that
+  already have a paired phone are set to `linked` silently).
+* `artwork.online` (default `true`): when a player's own cover is missing or
+  small (< 500 px), look up the song's cover on NetEase Cloud Music, QQ Music and
+  iTunes (same matching rules as lyrics; title/artist/album/duration only),
+  cached per track; the session's `artwork` then points to the better image.
+* `ui.versionNoticeDismissed`: "local|phone" version pair whose mismatch notice
+  the user dismissed on the player page.
 * `policy.mode` ∈ `off`, `windows_first`, `android_first`, `latest`, `custom`.
 * `policy.headsetAssist`: multipoint-headset helper. When a player is paused by the
   headset within ~2.5 s of a user starting it (because the other device still

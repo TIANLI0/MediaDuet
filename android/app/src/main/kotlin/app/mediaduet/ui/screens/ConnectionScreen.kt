@@ -92,6 +92,8 @@ fun ConnectionPage(ui: UiContext, onBack: () -> Unit) {
             }
         }
 
+        VersionCard(ui, showWhenSame = false)
+
         // ---- pairing -----------------------------------------------------------------------
         SectionHeader(stringResource(R.string.pairing_header))
         GlassCard(ui.backdrop, Modifier.fillMaxWidth()) {
@@ -137,15 +139,18 @@ fun ConnectionPage(ui: UiContext, onBack: () -> Unit) {
                 val connected = link.sessions.any { it.peer.id == p.id && it.connected }
                 InfoRow(
                     p.name,
-                    subtitle = if (connected) {
-                        stringResource(R.string.trusted_connected)
-                    } else {
-                        stringResource(
-                            R.string.trusted_last_seen,
-                            if (p.lastSeenMs > 0) DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(p.lastSeenMs))
-                            else stringResource(R.string.placeholder_none),
-                        )
-                    },
+                    subtitle = listOfNotNull(
+                        if (connected) {
+                            stringResource(R.string.trusted_connected)
+                        } else {
+                            stringResource(
+                                R.string.trusted_last_seen,
+                                if (p.lastSeenMs > 0) DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(p.lastSeenMs))
+                                else stringResource(R.string.placeholder_none),
+                            )
+                        },
+                        p.appVersion.takeIf { it.isNotBlank() }?.let { stringResource(R.string.version_value, it) },
+                    ).joinToString(stringResource(R.string.list_separator)),
                     leading = { Icon(AppIcons.Computer, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) },
                     trailing = {
                         TextButton({

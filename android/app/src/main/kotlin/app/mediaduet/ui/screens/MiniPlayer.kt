@@ -59,12 +59,12 @@ fun MiniPlayer(ui: UiContext, backdrop: Backdrop, modifier: Modifier = Modifier)
     val engine = ui.engine
     val glass = LocalGlass.current
     val scope = rememberCoroutineScope()
-    val lyricsMap by engine.remote.lyrics.collectAsStateWithLifecycle()
+    val lyricsMap by engine.lyrics.entries.collectAsStateWithLifecycle()
     val autoLatency by engine.settings.lyricsAutoLatency.collectAsStateWithLifecycle()
     val offsets by engine.settings.lyricOffsets.collectAsStateWithLifecycle()
     val view = rememberPlayerView(engine) ?: return
     val session = view.info
-    val lyrics = lyricsMap[session.trackId]
+    val lyrics = engine.lyrics.resolve(session, lyricsMap)
     // The frame position is only read inside derivedStateOf: the mini player recomposes when the
     // lyric line changes, not every frame.
     val position = rememberFramePosition(view.positionKey, view.playing && lyrics?.synced == true, visible = true) { now -> view.position(now) }

@@ -80,6 +80,10 @@ private:
     const media::MediaSessionInfo* focused(Side* side = nullptr) const;
     void updateFocus();
     void onLyrics(const platform::LyricsService::Result& r);
+    bool standalone() const { return standalone_; }
+    void rememberPeerApp(platform::DeviceRecord& d, const std::string& app);
+    json peerAppFor(const link::LinkStatus& ls) const;
+    void pushLyricsToPhone(const platform::LyricsService::Result& r);
     void updateOverlayPlayback();
     // Lyrics timing (docs/ipc.md "Lyrics timing"): output latency of the device that
     // plays the session (this PC's default output, or what the phone reports) and
@@ -176,6 +180,13 @@ private:
     Side focusSide_ = Side::Remote;
     bool focusAuto_ = true;
     std::string lyricsTrack_;
+    // Session and song the current lyrics belong to (same-song trackId changes keep them).
+    Side lyricsSide_ = Side::Remote;
+    std::string lyricsKey_;
+    lyrics::Candidate lyricsSong_;
+    uint64_t lyricsSongGen_ = 0; // changes per song, not per trackId (lyrics clock key)
+    ScopedTimer lyricsGraceTimer_;
+    bool lyricsGraceExpired_ = false;
     std::shared_ptr<lyrics::Lyrics> lyricsData_;
     std::set<std::string> lyricsPushed_;
     std::string lastPolicyJson_;
@@ -201,6 +212,7 @@ private:
     } pairing_;
     std::map<std::string, platform::BtCandidate> btCandidates_;
     bool discovering_ = false;
+    bool standalone_ = false; // settings "mode" == "standalone": this PC only, no phone links
     std::map<std::string, std::string> btPresenceByAddr_;
     bool btAdapter_ = false, btRadio_ = false;
 

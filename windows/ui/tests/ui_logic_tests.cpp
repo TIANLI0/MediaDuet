@@ -51,6 +51,36 @@ TEST_CASE("optimistic play/pause confirms or rolls back")
     CHECK(f.Resolve(true, 3000));                    // no confirmation: roll back
 }
 
+TEST_CASE("song identity: same song across a trackId change, in either message order")
+{
+    SongRef lyrics{ "aaaa", 0, "QQMusic.exe", "晴天", "周杰伦", 269000 };
+    SongRef session = lyrics;
+    CHECK(SameSong(lyrics, session));
+    session.trackId = "bbbb";                 // the player re-reported the duration: new trackId
+    session.durationMs = 269600;
+    CHECK(SameSong(lyrics, session));
+    CHECK(SameSong(session, lyrics));
+    session.durationMs = -1;                  // duration not known (yet)
+    CHECK(SameSong(lyrics, session));
+    session.durationMs = 280000;              // another recording
+    CHECK_FALSE(SameSong(lyrics, session));
+    session = lyrics;
+    session.trackId = "cccc";
+    session.title = "七里香";                  // the next song
+    CHECK_FALSE(SameSong(lyrics, session));
+    session = lyrics;
+    session.trackId = "dddd";
+    session.key = "cloudmusic.exe";           // same song in another player: not this session's lyrics
+    CHECK_FALSE(SameSong(lyrics, session));
+    session = lyrics;
+    session.side = 1;
+    CHECK_FALSE(SameSong(lyrics, session));   // other side, even with the same trackId
+    SongRef noMeta{ "aaaa", 0, "QQMusic.exe", "", "", -1 };   // older host: lyrics without the song
+    CHECK(SameSong(noMeta, lyrics));          // still matched by trackId
+    lyrics.trackId = "eeee";
+    CHECK_FALSE(SameSong(noMeta, lyrics));
+}
+
 TEST_CASE("offset formatting")
 {
     CHECK(FormatOffsetSeconds(0) == L"0");

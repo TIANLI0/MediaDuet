@@ -83,6 +83,37 @@ class AppSettings(context: Context) {
         _lyricOffsets.value = next
     }
 
+    private val _onlineLyrics = MutableStateFlow(prefs.getBoolean(KEY_ONLINE_LYRICS, true))
+    /** Look up lyrics online on this phone (NetEase / QQ Music / LRCLIB) when the PC has none. */
+    val onlineLyrics: StateFlow<Boolean> = _onlineLyrics
+
+    fun setOnlineLyrics(enabled: Boolean) {
+        prefs.edit { putBoolean(KEY_ONLINE_LYRICS, enabled) }
+        _onlineLyrics.value = enabled
+    }
+
+    private val _mode = MutableStateFlow(WorkMode.decode(prefs.getString(KEY_MODE, null)))
+    /**
+     * How the app is used: with a PC ([WorkMode.LINKED]) or on this phone only
+     * ([WorkMode.STANDALONE]: no listening for PCs, no pairing prompts). [WorkMode.UNSET] until the
+     * user chose (first run); it behaves like LINKED.
+     */
+    val mode: StateFlow<WorkMode> = _mode
+
+    fun setMode(mode: WorkMode) {
+        prefs.edit { putString(KEY_MODE, mode.key) }
+        _mode.value = mode
+    }
+
+    private val _dismissedVersionWarning = MutableStateFlow(prefs.getString(KEY_VERSION_DISMISSED, "") ?: "")
+    /** "local|peer" version pair whose mismatch warning the user dismissed on Now Playing. */
+    val dismissedVersionWarning: StateFlow<String> = _dismissedVersionWarning
+
+    fun dismissVersionWarning(pair: String) {
+        prefs.edit { putString(KEY_VERSION_DISMISSED, pair) }
+        _dismissedVersionWarning.value = pair
+    }
+
     private val _target = MutableStateFlow(TargetChoice.decode(prefs.getString(KEY_TARGET, null)))
     /** Player control target (auto / phone / PC, optionally a specific session). */
     val target: StateFlow<TargetChoice> = _target
@@ -124,6 +155,23 @@ class AppSettings(context: Context) {
         const val KEY_LATENCY_AUTO = "lyrics.latency.auto"
         const val KEY_LATENCY_BT = "lyrics.latency.bluetoothMs"
         const val KEY_OFFSETS = "lyrics.offsets"
+        const val KEY_ONLINE_LYRICS = "lyrics.online"
+        const val KEY_MODE = "work_mode"
+        const val KEY_VERSION_DISMISSED = "version_warning_dismissed"
+    }
+}
+
+/** How MediaDuet is used on this phone. */
+enum class WorkMode(val key: String) {
+    UNSET("unset"),
+    LINKED("linked"),
+    STANDALONE("standalone");
+
+    /** Talks to a PC (listens, pairs, shows PC media). */
+    val linked: Boolean get() = this != STANDALONE
+
+    companion object {
+        fun decode(s: String?): WorkMode = entries.firstOrNull { it.key == s } ?: UNSET
     }
 }
 

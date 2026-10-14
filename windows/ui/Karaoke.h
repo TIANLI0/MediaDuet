@@ -39,8 +39,28 @@ namespace mdui
     // True when the line has nothing to show (instrumental gap), using the host's rules.
     bool LineIsBlank(LyricLine const& line);
     // The session's position report for the lyrics clock: positionMs at anchorQpcMs (atTick on the
-    // QPC time base, converted on receipt), track key "key|trackId" like the host overlay's.
-    md::lyrics::LyricsClock::Report SessionReport(Session const& s);
+    // QPC time base, converted on receipt). trackKey: the clock's track key - the views pass a key
+    // per song (so a same-song trackId change does not snap the clock, like the host overlay);
+    // empty = "key|trackId".
+    md::lyrics::LyricsClock::Report SessionReport(Session const& s, std::string const& trackKey = {});
+
+    // Lyrics typeface: HarmonyOS Sans SC, bundled unmodified in Assets\Fonts (one file per weight;
+    // licence in Assets\Fonts\HarmonyOS_Sans_LICENSE.txt, notice in Settings > About). Each weight
+    // points at its own file and requests exactly that file's weight, so DirectWrite never
+    // synthesises bold. Two weights are shipped (the files are ~8 MB each and must not be subset):
+    // Bold for the main window's lines, Medium for the compact window's line and every translation
+    // row (smaller and dimmer, so Medium reads as the lighter voice). When the files are missing the
+    // default UI font is used as before: SemiBold for lines, Normal for translations.
+    enum class LyricWeight
+    {
+        Medium,    // 500: the compact window's line, translation rows
+        Bold,      // 700: the main window's lyric lines
+    };
+    // Applies family + weight to a TextBlock (all lyric text goes through this). translation: only
+    // changes the fallback weight when the bundled font is missing (Normal instead of SemiBold).
+    void ApplyLyricFont(winrt::Microsoft::UI::Xaml::Controls::TextBlock const& tb, LyricWeight weight, bool translation = false);
+    // True when the bundled lyrics font files were found next to the executable.
+    bool LyricFontAvailable();
 
     class KaraokeLine
     {
@@ -48,7 +68,7 @@ namespace mdui
         struct Style
         {
             double fontSize{ 22 };
-            bool semiBold{ true };
+            LyricWeight weight{ LyricWeight::Bold };   // the original row (the translation is Medium)
             double lineHeight{ 0 };   // row height; 0 = fontSize x 1.36
             bool wrap{ true };
             bool scrollLongLine{ false };   // single row: scroll like the overlay when wider than the view

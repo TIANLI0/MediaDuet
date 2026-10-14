@@ -13,13 +13,13 @@
                 <NavigationViewItem x:Uid="NavGeneral" Tag="general">
                     <NavigationViewItem.Icon><FontIcon Glyph="&#xE713;" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem x:Uid="NavDevices" Tag="devices">
+                <NavigationViewItem x:Name="NavDevicesItem" x:Uid="NavDevices" Tag="devices">
                     <NavigationViewItem.Icon><FontIcon Glyph="&#xE8EA;" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem x:Uid="NavConnection" Tag="connection">
+                <NavigationViewItem x:Name="NavConnectionItem" x:Uid="NavConnection" Tag="connection">
                     <NavigationViewItem.Icon><FontIcon Glyph="&#xE702;" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem x:Uid="NavArbitration" Tag="arbitration">
+                <NavigationViewItem x:Name="NavArbitrationItem" x:Uid="NavArbitration" Tag="arbitration">
                     <NavigationViewItem.Icon><FontIcon Glyph="&#xE8AB;" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem x:Uid="NavLyrics" Tag="lyrics">
@@ -34,7 +34,7 @@
                 <NavigationViewItem x:Uid="NavCompat" Tag="compat">
                     <NavigationViewItem.Icon><FontIcon Glyph="&#xE90F;" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem x:Uid="NavAudio" Tag="audio">
+                <NavigationViewItem x:Name="NavAudioItem" x:Uid="NavAudio" Tag="audio">
                     <NavigationViewItem.Icon><FontIcon Glyph="&#xE767;" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem x:Uid="NavDiagnostics" Tag="diagnostics">
@@ -65,6 +65,22 @@
                         <!-- ================= General ================= -->
                         <StackPanel x:Name="PageGeneral" Spacing="0">
                             <TextBlock x:Uid="NavGeneralTitle" Style="{StaticResource PageTitleStyle}" />
+
+                            <TextBlock x:Uid="HdrWorkMode" Style="{StaticResource SectionHeaderStyle}" />
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid ColumnSpacing="0">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE770;" VerticalAlignment="Top" Margin="2,2,18,0" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock x:Uid="SetWorkModeTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="SetWorkModeDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                        <RadioButtons x:Name="WorkModeRadios" Margin="0,8,0,0">
+                                            <RadioButton x:Uid="WorkModeLinked" Tag="linked" />
+                                            <RadioButton x:Uid="WorkModeStandalone" Tag="standalone" />
+                                        </RadioButtons>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
 
                             <TextBlock x:Uid="HdrAppearance" Style="{StaticResource SectionHeaderStyle}" />
                             <Border Style="{StaticResource CardStyle}">
@@ -179,6 +195,8 @@
                         <!-- ================= Devices & pairing ================= -->
                         <StackPanel x:Name="PageDevices" Visibility="Collapsed">
                             <TextBlock x:Uid="NavDevicesTitle" Style="{StaticResource PageTitleStyle}" />
+                            <!-- Phone and PC on different versions (md::version rule, from the host). -->
+                            <InfoBar x:Name="DevicesVersionBar" IsOpen="False" IsClosable="False" Margin="0,12,0,0" />
 
                             <TextBlock x:Uid="HdrPaired" Style="{StaticResource SectionHeaderStyle}" />
                             <StackPanel x:Name="PairedList" />
@@ -826,7 +844,7 @@
                         <!-- ================= Windows media integration ================= -->
                         <StackPanel x:Name="PageIntegration" Visibility="Collapsed">
                             <TextBlock x:Uid="NavIntegrationTitle" Style="{StaticResource PageTitleStyle}" />
-                            <Border Style="{StaticResource CardStyle}" Margin="0,16,0,4">
+                            <Border x:Name="SmtcCard" Style="{StaticResource CardStyle}" Margin="0,16,0,4">
                                 <Grid>
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                     <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE93E;" />
@@ -837,7 +855,19 @@
                                     <ToggleSwitch x:Name="SmtcToggle" Grid.Column="2" />
                                 </Grid>
                             </Border>
-                            <TextBlock x:Uid="SmtcNote" Style="{StaticResource CardDescriptionStyle}" Margin="2,8,0,0" />
+                            <TextBlock x:Name="SmtcNoteText" x:Uid="SmtcNote" Style="{StaticResource CardDescriptionStyle}" Margin="2,8,0,0" />
+                            <TextBlock x:Uid="HdrArtwork" Style="{StaticResource SectionHeaderStyle}" />
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE8B9;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetArtworkOnlineTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="SetArtworkOnlineDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                    <ToggleSwitch x:Name="ArtworkOnlineToggle" Grid.Column="2" />
+                                </Grid>
+                            </Border>
                         </StackPanel>
 
                         <!-- ================= Audio ================= -->
@@ -913,13 +943,34 @@
                             <Border Style="{StaticResource CardStyle}">
                                 <Grid>
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                                    <Grid.RowDefinitions><RowDefinition /><RowDefinition /><RowDefinition /></Grid.RowDefinitions>
+                                    <Grid.RowDefinitions><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /></Grid.RowDefinitions>
                                     <TextBlock x:Uid="LblUiVersion" Style="{StaticResource ValueLabelStyle}" />
                                     <TextBlock x:Name="UiVersionValue" Grid.Column="1" Style="{StaticResource ValueTextStyle}" />
                                     <TextBlock x:Uid="LblHostVersion" Grid.Row="1" Style="{StaticResource ValueLabelStyle}" />
                                     <TextBlock x:Name="HostVersionValue" Grid.Row="1" Grid.Column="1" Style="{StaticResource ValueTextStyle}" />
-                                    <TextBlock x:Uid="LblLicense" Grid.Row="2" Style="{StaticResource ValueLabelStyle}" />
-                                    <TextBlock Grid.Row="2" Grid.Column="1" x:Uid="AboutLicenseValue" Style="{StaticResource ValueTextStyle}" />
+                                    <TextBlock x:Uid="LblPhoneVersion" Grid.Row="2" Style="{StaticResource ValueLabelStyle}" />
+                                    <TextBlock x:Name="PhoneVersionValue" Grid.Row="2" Grid.Column="1" Style="{StaticResource ValueTextStyle}" />
+                                    <TextBlock x:Uid="LblLicense" Grid.Row="3" Style="{StaticResource ValueLabelStyle}" />
+                                    <TextBlock Grid.Row="3" Grid.Column="1" x:Uid="AboutLicenseValue" Style="{StaticResource ValueTextStyle}" />
+                                </Grid>
+                            </Border>
+                            <TextBlock x:Uid="HdrDeveloper" Style="{StaticResource SectionHeaderStyle}" />
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid ColumnSpacing="16">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <!-- 192 px source, circular crop; a hairline ring keeps it crisp on any background. -->
+                                    <Ellipse Width="56" Height="56" VerticalAlignment="Center"
+                                             Stroke="{ThemeResource CardStrokeColorDefaultBrush}" StrokeThickness="1">
+                                        <Ellipse.Fill>
+                                            <ImageBrush x:Name="DeveloperAvatar" Stretch="UniformToFill" />
+                                        </Ellipse.Fill>
+                                    </Ellipse>
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="AboutDeveloperName" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="AboutDeveloperRole" Style="{StaticResource CardDescriptionStyle}" />
+                                        <HyperlinkButton x:Uid="AboutDeveloperEmail" NavigateUri="mailto:wutianli@tianli0.top"
+                                                         Padding="0" Margin="0,4,0,0" />
+                                    </StackPanel>
                                 </Grid>
                             </Border>
                             <TextBlock x:Uid="HdrThirdParty" Style="{StaticResource SectionHeaderStyle}" />
@@ -944,6 +995,12 @@
                                     <StackPanel>
                                         <TextBlock x:Uid="ThirdLrclibTitle" Style="{StaticResource CardTitleStyle}" />
                                         <TextBlock x:Uid="AboutLrclib" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                    <!-- Required notice of the bundled lyrics typeface (Assets\Fonts). -->
+                                    <StackPanel>
+                                        <TextBlock x:Uid="ThirdHarmonyTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="ThirdHarmonyDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                        <HyperlinkButton x:Name="HarmonyLicenseLink" x:Uid="ThirdHarmonyLicense" Padding="0" Margin="0,2,0,0" />
                                     </StackPanel>
                                 </StackPanel>
                             </Border>

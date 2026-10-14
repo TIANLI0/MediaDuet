@@ -72,6 +72,8 @@ fun SettingsRoot(ui: UiContext, onBack: () -> Unit) {
     val translations by engine.settings.showTranslations.collectAsStateWithLifecycle()
     val audioOn by engine.settings.audioReceiveEnabled.collectAsStateWithLifecycle()
     val audio by engine.audio.status.collectAsStateWithLifecycle()
+    val mode by engine.settings.mode.collectAsStateWithLifecycle()
+    val linked = mode.linked
     val current = link.current
     val p = ui.permissions
     val missing = listOf(
@@ -82,15 +84,17 @@ fun SettingsRoot(ui: UiContext, onBack: () -> Unit) {
     ).count { it }
 
     ScreenScaffold(stringResource(R.string.settings_title), backdrop = ui.backdrop, onBack = onBack) {
+        SectionHeader(stringResource(R.string.mode_header))
+        WorkModeCard(ui)
         GlassCard(ui.backdrop, Modifier.fillMaxWidth(), contentPadding = PaddingValues(vertical = 4.dp)) {
-            NavRow(
+            if (linked) NavRow(
                 AppIcons.Link, stringResource(R.string.connection_title),
                 current?.let { s ->
                     val primary = s.transports.firstOrNull { it.primary } ?: s.transports.firstOrNull()
                     listOfNotNull(primary?.let { transportLabel(it.kind) }, s.peer.name).joinToString(stringResource(R.string.list_separator))
                 } ?: stringResource(R.string.conn_disconnected),
             ) { ui.openSettings(SettingsRoute.CONNECTION) }
-            RowDivider()
+            if (linked) RowDivider()
             NavRow(
                 AppIcons.Shield, stringResource(R.string.permissions_title),
                 if (missing == 0) stringResource(R.string.summary_all_set) else pluralStringResource(R.plurals.summary_missing, missing, missing),
@@ -98,27 +102,31 @@ fun SettingsRoot(ui: UiContext, onBack: () -> Unit) {
             ) { ui.openSettings(SettingsRoute.PERMISSIONS) }
         }
         GlassCard(ui.backdrop, Modifier.fillMaxWidth(), contentPadding = PaddingValues(vertical = 4.dp)) {
-            NavRow(
-                AppIcons.Tune, stringResource(R.string.settings_policy_header),
-                policy?.let { policyModeLabel(it.mode) } ?: stringResource(R.string.placeholder_none),
-            ) { ui.openSettings(SettingsRoute.ARBITRATION) }
-            RowDivider()
+            if (linked) {
+                NavRow(
+                    AppIcons.Tune, stringResource(R.string.settings_policy_header),
+                    policy?.let { policyModeLabel(it.mode) } ?: stringResource(R.string.placeholder_none),
+                ) { ui.openSettings(SettingsRoute.ARBITRATION) }
+                RowDivider()
+            }
             NavRow(
                 AppIcons.QuoteBubble, stringResource(R.string.settings_lyrics_header),
                 stringResource(if (translations) R.string.summary_translations_on else R.string.summary_translations_off),
             ) { ui.openSettings(SettingsRoute.LYRICS) }
             RowDivider()
-            NavRow(
-                AppIcons.Speaker, stringResource(R.string.settings_audio_row),
-                stringResource(
-                    when {
-                        !audioOn -> R.string.summary_off
-                        audio.phase == AudioReceiver.Phase.STREAMING -> R.string.summary_streaming
-                        else -> R.string.summary_on
-                    },
-                ),
-            ) { ui.openSettings(SettingsRoute.AUDIO) }
-            RowDivider()
+            if (linked) {
+                NavRow(
+                    AppIcons.Speaker, stringResource(R.string.settings_audio_row),
+                    stringResource(
+                        when {
+                            !audioOn -> R.string.summary_off
+                            audio.phase == AudioReceiver.Phase.STREAMING -> R.string.summary_streaming
+                            else -> R.string.summary_on
+                        },
+                    ),
+                ) { ui.openSettings(SettingsRoute.AUDIO) }
+                RowDivider()
+            }
             NavRow(
                 AppIcons.Globe, stringResource(R.string.settings_language_header),
                 languageLabel(remember { AppLanguage.current(context) }),
@@ -281,6 +289,8 @@ fun LyricsDisplayPage(ui: UiContext, onBack: () -> Unit) {
     val glass = LocalGlass.current
     val translations by settings.showTranslations.collectAsStateWithLifecycle()
     val mirror by settings.mirrorEnabled.collectAsStateWithLifecycle()
+    val online by settings.onlineLyrics.collectAsStateWithLifecycle()
+    val mode by settings.mode.collectAsStateWithLifecycle()
     ScreenScaffold(stringResource(R.string.settings_lyrics_header), backdrop = ui.backdrop, onBack = onBack) {
         GlassCard(ui.backdrop, Modifier.fillMaxWidth()) {
             InfoRow(
@@ -292,8 +302,19 @@ fun LyricsDisplayPage(ui: UiContext, onBack: () -> Unit) {
                 onClick = { settings.setShowTranslations(!translations) },
                 role = Role.Switch,
             )
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
+            InfoRow(
+                stringResource(R.string.settings_online_lyrics),
+                subtitle = stringResource(R.string.settings_online_lyrics_text),
+                trailing = {
+                    LiquidToggle({ online }, { settings.setOnlineLyrics(it) }, ui.backdrop, contentDescription = stringResource(R.string.settings_online_lyrics))
+                },
+                onClick = { settings.setOnlineLyrics(!online) },
+                role = Role.Switch,
+            )
         }
         LyricsTimingSettings(ui)
+        if (!mode.linked) return@ScreenScaffold
         SectionHeader(stringResource(R.string.settings_mirror_header))
         GlassCard(ui.backdrop, Modifier.fillMaxWidth()) {
             InfoRow(
@@ -594,6 +615,7 @@ fun BrandMark(modifier: Modifier = Modifier) {
 
 @Composable
 fun AboutPage(ui: UiContext, onBack: () -> Unit) {
+    val mode by ui.engine.settings.mode.collectAsStateWithLifecycle()
     ScreenScaffold(stringResource(R.string.about_title), backdrop = ui.backdrop, onBack = onBack) {
         GlassCard(ui.backdrop, Modifier.fillMaxWidth()) {
             BrandMark(Modifier.size(72.dp))
@@ -606,6 +628,18 @@ fun AboutPage(ui: UiContext, onBack: () -> Unit) {
             )
             Spacer(Modifier.height(12.dp))
             Text(stringResource(R.string.about_text), style = MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.height(8.dp))
+            Text(
+                stringResource(R.string.about_project_license),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        SectionHeader(stringResource(R.string.about_developer))
+        DeveloperCard(ui)
+        if (mode.linked) {
+            SectionHeader(stringResource(R.string.version_title))
+            VersionCard(ui, showWhenSame = true)
         }
         SectionHeader(stringResource(R.string.about_licenses))
         GlassCard(ui.backdrop, Modifier.fillMaxWidth()) {

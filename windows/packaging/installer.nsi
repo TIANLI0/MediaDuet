@@ -2,7 +2,7 @@
 ; Build the staged folder first:
 ;   powershell -ExecutionPolicy Bypass -File windows\packaging\package.ps1 -Arch x64
 ; then:
-;   makensis /DVERSION=1.2.1 /DARCH=x64 windows\packaging\installer.nsi
+;   makensis /DVERSION=1.3.0 /DARCH=x64 windows\packaging\installer.nsi
 
 Unicode true
 ManifestDPIAware true
@@ -10,7 +10,7 @@ RequestExecutionLevel user
 SetCompressor /SOLID lzma
 
 !ifndef VERSION
-  !define VERSION "1.2.1"
+  !define VERSION "1.3.0"
 !endif
 !ifndef ARCH
   !define ARCH "x64"
@@ -59,8 +59,8 @@ VIAddVersionKey /LANG=${LANG_ENGLISH} "ProductName" "MediaDuet"
 VIAddVersionKey /LANG=${LANG_ENGLISH} "FileDescription" "MediaDuet Setup"
 VIAddVersionKey /LANG=${LANG_ENGLISH} "FileVersion" "${VERSION}"
 VIAddVersionKey /LANG=${LANG_ENGLISH} "ProductVersion" "${VERSION}"
-VIAddVersionKey /LANG=${LANG_ENGLISH} "LegalCopyright" "MIT License"
-VIAddVersionKey /LANG=${LANG_ENGLISH} "CompanyName" "MediaDuet contributors"
+VIAddVersionKey /LANG=${LANG_ENGLISH} "LegalCopyright" "Copyright (c) 2026 tianli. MIT License."
+VIAddVersionKey /LANG=${LANG_ENGLISH} "CompanyName" "tianli"
 
 Function .onInit
   ${IfNot} ${RunningX64}
@@ -97,7 +97,7 @@ Section "MediaDuet" SecMain
   WriteRegStr HKCU "Software\MediaDuet" "InstallDir" "$INSTDIR"
   WriteRegStr HKCU "${UNINST_KEY}" "DisplayName" "MediaDuet"
   WriteRegStr HKCU "${UNINST_KEY}" "DisplayVersion" "${VERSION}"
-  WriteRegStr HKCU "${UNINST_KEY}" "Publisher" "MediaDuet contributors"
+  WriteRegStr HKCU "${UNINST_KEY}" "Publisher" "tianli"
   WriteRegStr HKCU "${UNINST_KEY}" "DisplayIcon" "$INSTDIR\MediaDuet.exe"
   WriteRegStr HKCU "${UNINST_KEY}" "InstallLocation" "$INSTDIR"
   WriteRegStr HKCU "${UNINST_KEY}" "UninstallString" '"$INSTDIR\Uninstall.exe"'

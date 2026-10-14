@@ -56,6 +56,9 @@ namespace winrt::MediaDuetUI::implementation
         void UpdateAudio();
         void UpdateDiagnostics();
         void UpdateAbout();
+        void UpdateWorkMode();
+        void UpdateDevicesVersionBar();
+        static std::wstring DeviceVersionText(std::string const& platform, std::string const& app, std::string const& match);
         void UpdateTaskbar();
         void UpdateProviders();
         void UpdateOutputs();

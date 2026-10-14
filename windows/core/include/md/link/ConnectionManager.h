@@ -49,6 +49,7 @@ struct LinkStatus {
     enum class State { NoPeer, Disconnected, Connecting, Connected };
     State state = State::NoPeer;
     std::string peerId, peerName, peerPlatform;
+    std::string peerApp; // the peer's app version (DeviceInfo.app) from this session; empty = not known yet
     std::optional<TransportKind> primary, secondary;
     int64_t sinceMs = 0;
     int64_t rttMs = -1;
@@ -157,6 +158,7 @@ private:
     };
     struct Peer {
         PeerRecord rec;
+        std::string app; // DeviceInfo.app reported in this run (hello.ack / device.info)
         Slot bt{TransportKind::Bluetooth};
         Slot lan{TransportKind::Lan};
         Connection* primary = nullptr;

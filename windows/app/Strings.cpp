@@ -38,6 +38,7 @@ const std::map<std::string_view, Entry>& table() {
         {"status.connecting", {L"Connecting…", L"正在连接…"}},
         {"status.bt", {L"Connected via Bluetooth", L"已通过蓝牙连接"}},
         {"status.lan", {L"Connected via LAN", L"已通过局域网连接"}},
+        {"status.standalone", {L"This PC only", L"仅此电脑"}},
         {"overlay.lock", {L"Lock position", L"锁定位置"}},
         {"overlay.unlock", {L"Unlock position", L"解锁位置"}},
         {"overlay.hide", {L"Hide lyrics", L"隐藏歌词"}},

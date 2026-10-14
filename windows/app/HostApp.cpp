@@ -5,6 +5,7 @@
 #include "Strings.h"
 
 #include "md/crypto/Crypto.h"
+#include "md/util/AppVersion.h"
 #include "md/util/Log.h"
 #include "md/util/Text.h"
 
@@ -21,6 +22,8 @@ using media::PlaybackStatus;
 namespace {
 
 constexpr int64_t kStateCoalesceMs = 100;
+// How long lyrics survive the focused session's metadata going blank (updateFocus).
+constexpr int64_t kLyricsGraceMs = 1500;
 constexpr size_t kChunk = 32 * 1024;
 
 std::vector<std::string> baseCaps() {
@@ -79,6 +82,13 @@ void HostApp::init() {
     platform::ensureAppIdentity(L"MediaDuet");
     log::info("host", "app id resolves to '{}'", text::toUtf8(platform::resolvedAppName()));
     devices_.load();
+    standalone_ = settings_.get<std::string>("mode", "linked") == "standalone";
+    // Work mode (Settings > General): installs that already have a paired phone keep using
+    // it ("linked") without being asked; a fresh install lets the UI ask once.
+    if (!settings_.get<bool>("modeChosen", false) && !devices_.devices().empty()) {
+        settings_.apply({{"modeChosen", true}});
+        settings_.save(settingsPath_);
+    }
 
     stateTimer_.bind(&sched_);
     policyTimer_.bind(&sched_);
@@ -87,6 +97,7 @@ void HostApp::init() {
     volumeTimer_.bind(&sched_);
     appVolTimer_.bind(&sched_);
     volumeAnswerTimer_.bind(&sched_);
+    lyricsGraceTimer_.bind(&sched_);
 
     art_ = std::make_unique<platform::ArtworkCache>(platform::cacheDir() / L"art");
     art_->prune();
@@ -121,12 +132,14 @@ void HostApp::init() {
             TrayMenuState st;
             auto ls = cm_->status();
             using S = link::LinkStatus::State;
-            std::wstring s = ls.state == S::NoPeer        ? tr("status.no_peer")
+            std::wstring s = standalone()                 ? tr("status.standalone")
+                             : ls.state == S::NoPeer        ? tr("status.no_peer")
                              : ls.state == S::Connecting   ? tr("status.connecting")
                              : ls.state == S::Disconnected ? tr("status.disconnected")
                              : (ls.primary == link::TransportKind::Bluetooth ? tr("status.bt") : tr("status.lan"));
-            if (ls.state == S::Connected) s += L" · " + text::toWide(ls.peerName);
+            if (ls.state == S::Connected && !standalone()) s += L" · " + text::toWide(ls.peerName);
             st.status = s;
+            st.standalone = standalone();
             st.lyricsOn = overlay_->enabled();
             st.policyMode = settings_.get<std::string>("policy.mode", "windows_first");
             st.canControl = focused() != nullptr;
@@ -317,6 +330,7 @@ void HostApp::shutdown() {
     policyTimer_.cancel();
     diagTimer_.cancel();
     artTimer_.cancel();
+    lyricsGraceTimer_.cancel();
     overlay_.reset();
     taskbar_.reset();
     smtc_.reset();
@@ -341,6 +355,22 @@ void HostApp::exitApp() {
 
 void HostApp::applySettings() {
     setLanguage(settings_.get<std::string>("language", "auto"));
+    bool wasStandalone = standalone_;
+    standalone_ = settings_.get<std::string>("mode", "linked") == "standalone";
+    if (standalone_ != wasStandalone) {
+        log::info("host", "work mode: {}", standalone_ ? "this PC only (no phone links)" : "linked with a phone");
+        if (standalone_) {
+            // Drop everything that needs the phone; local sessions, lyrics, overlay and
+            // taskbar keep working.
+            if (auto id = cm_->activePeer()) cm_->disconnect(*id);
+            cancelPairing();
+            discovering_ = false;
+            if (a2dp_->active()) a2dp_->disable();
+            setLanSend(false);
+        }
+        reloadPeers(); // linked again: transports restart
+        updateSmtc();
+    }
     cm_->setMode(link::connModeFromString(settings_.get<std::string>("connection.mode", "auto")));
     cm_->setSwitchBackDelay(settings_.get<int64_t>("connection.switchBackDelaySec", 10) * 1000);
 
@@ -362,6 +392,7 @@ void HostApp::applySettings() {
     audio_->setConfig(ac);
 
     smtc_->setEnabled(settings_.get<bool>("smtcBridge", true));
+    gsmtc_->setArtworkOnline(settings_.get<bool>("artwork.online", true));
     netease_->setEnabled(settings_.get<bool>("compat.neteaseDesktop", true));
     updateSuspension();
     lyrics_->configure(settings_.get<bool>("lyrics.online", true),
@@ -409,10 +440,11 @@ void HostApp::applySettings() {
 }
 
 void HostApp::reloadPeers() {
-    cm_->setPeers(devices_.peers());
+    // This PC only: no peers, so the link manager neither connects nor retries.
+    cm_->setPeers(standalone_ ? std::vector<link::PeerRecord>{} : devices_.peers());
     std::vector<uint64_t> addrs;
     for (auto& d : devices_.devices())
-        if (d.btAddress) addrs.push_back(d.btAddress);
+        if (d.btAddress && !standalone_) addrs.push_back(d.btAddress);
     bt_->watchDevices(addrs);
     updateDiscoveryWatchers();
     markDirty();
@@ -420,7 +452,7 @@ void HostApp::reloadPeers() {
 
 void HostApp::updateDiscoveryWatchers() {
     bool lanAllowed = settings_.get<std::string>("connection.mode", "auto") != "bt_only";
-    bool want = discovering_ || (lanAllowed && !devices_.devices().empty());
+    bool want = !standalone_ && (discovering_ || (lanAllowed && !devices_.devices().empty()));
     if (want && !dnssd_->running()) dnssd_->start();
     if (!want && dnssd_->running()) dnssd_->stop();
 }
@@ -431,6 +463,7 @@ void HostApp::onLinkUp(const std::string& peerId, bool resumed) {
     log::info("host", "link up with {} ({})", peerId.substr(0, 8), resumed ? "resumed" : "new");
     if (auto* d = devices_.find(peerId)) {
         d->lastSeen = sched_.wallMs();
+        rememberPeerApp(*d, cm_->status().peerApp);
         devices_.save();
     }
     if (!resumed) {
@@ -470,6 +503,16 @@ void HostApp::onPeerRevoked(const std::string& peerId) {
     devices_.remove(peerId);
     devices_.save();
     reloadPeers();
+}
+
+void HostApp::rememberPeerApp(platform::DeviceRecord& d, const std::string& app) {
+    if (app.empty() || app.size() > 32 || app == d.app) return;
+    d.app = app;
+    auto m = version::compare(MD_VERSION, app);
+    if (m == version::Match::Mismatch)
+        log::warn("host", "{} runs MediaDuet {}, this PC {}: update both to the same version", d.name, app, MD_VERSION);
+    else
+        log::info("host", "{} runs MediaDuet {} ({})", d.name, app, version::toString(m));
 }
 
 void HostApp::onStatusChanged() {
@@ -514,6 +557,17 @@ void HostApp::onEnvelope(const std::string& peerId, const proto::Envelope& e, ui
             volume_->step(std::clamp(e.body["delta"].get<int>(), -50, 50));
         localVol_ = volume_->state();
         sendVolumeState();
+        return;
+    }
+    if (t == proto::types::DeviceInfo) {
+        if (auto* d = devices_.find(peerId); d && e.body.is_object() && e.body.contains("app") && e.body["app"].is_string()) {
+            std::string before = d->app;
+            rememberPeerApp(*d, e.body["app"].get<std::string>());
+            if (d->app != before) {
+                devices_.save();
+                markDirty();
+            }
+        }
         return;
     }
     if (t == proto::types::LyricsPush) {
@@ -695,7 +749,7 @@ void HostApp::updateSuspension() {
     }
     if (gated_ != wasGated)
         log::info("policy", "arbitration {} (output: {})", gated_ ? "gated" : "active", localVol_.deviceName);
-    arbiter_->setSuspended(a2dp_->active() || gated_);
+    arbiter_->setSuspended(a2dp_->active() || gated_ || standalone_); // standalone: nothing to arbitrate with
     markDirty();
 }
 
@@ -878,25 +932,72 @@ void HostApp::updateFocus() {
         focusSide_ = side;
         focusKey_ = key;
     }
-    const MediaSessionInfo* f = focused();
+    Side fs = Side::Remote;
+    const MediaSessionInfo* f = focused(&fs);
+    // The lyrics shown belong to this player session (side + key) and song.
+    bool sameSession = f && !lyricsTrack_.empty() && fs == lyricsSide_ && f->key == lyricsKey_;
+    // The focused session's metadata went blank (some players clear it between two
+    // reports of one song): keep the current lyrics for a moment instead of clearing
+    // every surface and reloading them when the same song comes back.
+    bool blank = f && f->title.empty() && f->artist.empty();
+    if (blank && sameSession && f->trackId != lyricsTrack_ && !lyricsGraceExpired_) {
+        if (!lyricsGraceTimer_.active())
+            lyricsGraceTimer_.start(kLyricsGraceMs, [this] {
+                lyricsGraceExpired_ = true;
+                updateFocus();
+            });
+        return;
+    }
+    if (!blank) lyricsGraceExpired_ = false;
+    lyricsGraceTimer_.cancel();
     if (f) {
         if (f->trackId != lyricsTrack_) {
-            lyricsTrack_ = f->trackId;
-            lyricsData_.reset();
-            overlay_->setLyrics(nullptr, f->trackId);
-            taskbar_->setLyrics(nullptr, f->trackId);
-            Side fs = Side::Remote;
-            focused(&fs);
-            lyrics_->request(*f, fs == Side::Local && f->key == platform::NeteaseCompat::kKey ? netease_->songId() : 0);
+            lyrics::Candidate song{f->title, f->artist, f->album, f->durationMs};
+            if (sameSession && lyrics::sameSong(song, lyricsSong_) && lyrics_->rekey(f->trackId)) {
+                // Same song under a new trackId (the player re-reported its duration or
+                // album): keep the lyrics on the overlay, taskbar, UI and phone, no reload.
+                log::info("lyrics", "track id {} -> {} for the same song; keeping its lyrics", lyricsTrack_, f->trackId);
+                lyricsTrack_ = f->trackId;
+                lyricsSong_ = std::move(song);
+                if (lyrics_->current().status == "found") pushLyricsToPhone(lyrics_->current());
+                sendLyricsToUi();
+            } else {
+                lyricsTrack_ = f->trackId;
+                lyricsSide_ = fs;
+                lyricsKey_ = f->key;
+                lyricsSong_ = std::move(song);
+                ++lyricsSongGen_;
+                lyricsData_.reset();
+                overlay_->setLyrics(nullptr, f->trackId);
+                taskbar_->setLyrics(nullptr, f->trackId);
+                lyrics_->request(*f, fs == Side::Local && f->key == platform::NeteaseCompat::kKey ? netease_->songId() : 0);
+            }
         }
     } else if (!lyricsTrack_.empty()) {
         lyricsTrack_.clear();
+        lyricsKey_.clear();
+        lyricsSong_ = {};
+        ++lyricsSongGen_;
         lyricsData_.reset();
         overlay_->setLyrics(nullptr, "");
         taskbar_->setLyrics(nullptr, "");
         lyrics_->clear();
     }
     updateOverlayPlayback();
+}
+
+void HostApp::pushLyricsToPhone(const platform::LyricsService::Result& r) {
+    // Share with the phone so it can show them too (once per trackId; lyrics that came
+    // from the phone are not sent back).
+    if (!cm_->isUp() || r.source == "remote" || r.trackId.empty() || lyricsPushed_.count(r.trackId) ||
+        r.lrc.size() > proto::kMaxLyricsBytes)
+        return;
+    const auto* caps = cm_->peerCaps();
+    if (!caps || std::find(caps->begin(), caps->end(), proto::caps::Lyrics) == caps->end()) return;
+    json body = {{"trackId", r.trackId}, {"format", "lrc"}, {"source", r.source}, {"text", r.lrc}};
+    if (!r.translation.empty() && r.translation.size() <= proto::kMaxLyricsBytes) body["translation"] = r.translation;
+    cm_->send(proto::types::LyricsPush, body);
+    lyricsPushed_.insert(r.trackId);
 }
 
 void HostApp::onLyrics(const platform::LyricsService::Result& r) {
@@ -907,18 +1008,7 @@ void HostApp::onLyrics(const platform::LyricsService::Result& r) {
         taskbar_->setLyrics(lyricsData_, r.trackId);
         log::info("lyrics", "lyrics for {} from {} ({} lines{})", r.trackId, r.source, r.lyrics.lines.size(),
                   r.lyrics.synced ? ", synced" : "");
-        // Share with the phone so it can show them too (once per track).
-        if (cm_->isUp() && r.source != "remote" && !lyricsPushed_.count(r.trackId) &&
-            r.lrc.size() <= proto::kMaxLyricsBytes) {
-            const auto* caps = cm_->peerCaps();
-            if (caps && std::find(caps->begin(), caps->end(), proto::caps::Lyrics) != caps->end()) {
-                json body = {{"trackId", r.trackId}, {"format", "lrc"}, {"source", r.source}, {"text", r.lrc}};
-                if (!r.translation.empty() && r.translation.size() <= proto::kMaxLyricsBytes)
-                    body["translation"] = r.translation;
-                cm_->send(proto::types::LyricsPush, body);
-                lyricsPushed_.insert(r.trackId);
-            }
-        }
+        pushLyricsToPhone(r);
     } else {
         lyricsData_.reset();
         overlay_->setLyrics(nullptr, r.trackId);
@@ -929,6 +1019,7 @@ void HostApp::onLyrics(const platform::LyricsService::Result& r) {
 
 void HostApp::updateOverlayPlayback() {
     if (!overlay_ || !taskbar_) return;
+    if (lyricsGraceTimer_.active()) return; // focused metadata briefly blank: keep the surfaces as they are
     Side side = Side::Remote;
     const MediaSessionInfo* f = focused(&side);
     // Feed the shared clock; it slews small report jitter instead of jumping.
@@ -939,7 +1030,8 @@ void HostApp::updateOverlayPlayback() {
         r.atMs = now - static_cast<double>(sched_.nowMs() - f->positionAtMs);
         r.rate = f->rate;
         r.playing = f->isPlaying();
-        r.trackId = f->key + "|" + f->trackId;
+        // Per song, not per trackId: a same-song trackId change (updateFocus) must not snap.
+        r.trackId = f->key + "|" + std::to_string(lyricsSongGen_);
     }
     lyricsClock_->update(r, now, lyricsSeek_);
     lyricsSeek_ = false;
@@ -1060,6 +1152,7 @@ void HostApp::startPairing(const std::string& kind, const std::string& target) {
             rec.platform = peer.platform;
             rec.key = key;
             rec.pairedAt = sched_.wallMs();
+            if (!peer.app.empty() && peer.app.size() <= 32) rec.app = peer.app;
             if (pairing_.btAddress) rec.btAddress = pairing_.btAddress;
             if (pairing_.lan && std::find(rec.manualEndpoints.begin(), rec.manualEndpoints.end(), *pairing_.lan) ==
                                     rec.manualEndpoints.end())
@@ -1184,6 +1277,12 @@ void HostApp::handleIpc(const std::string& line) {
         if (!error.empty()) r["error"] = error;
         ipc_->send(r.dump());
     };
+    // This PC only: commands that need a phone are refused (the UI hides them anyway).
+    static const char* const kNeedsPhone[] = {"pair.start", "device.connect", "connect.manual"};
+    bool enabling = m.value("enable", false);
+    if (standalone_ && (std::find(std::begin(kNeedsPhone), std::end(kNeedsPhone), type) != std::end(kNeedsPhone) ||
+                        (enabling && (type == "discover" || type == "audio.a2dpSink" || type == "audio.lanSend"))))
+        return result(false, "standalone");
     try {
         if (type == "media.command") {
             Side side = m.value("side", std::string("remote")) == "local" ? Side::Local : Side::Remote;
@@ -1210,7 +1309,10 @@ void HostApp::handleIpc(const std::string& line) {
             return result(true);
         }
         if (type == "settings.set") {
-            settings_.apply(m.value("patch", json::object()));
+            json patch = m.value("patch", json::object());
+            // Choosing a work mode anywhere (first-run panel, Settings > General) ends the first-run question.
+            if (patch.is_object() && patch.contains("mode")) patch["modeChosen"] = true;
+            settings_.apply(patch);
             if (!settings_.save(settingsPath_)) log::warn("host", "could not save settings");
             applySettings();
             if (ipc_->connected())
@@ -1389,6 +1491,15 @@ json HostApp::sessionJson(const MediaSessionInfo& s, Side side) const {
     return j;
 }
 
+json HostApp::peerAppFor(const link::LinkStatus& ls) const {
+    // This session's DeviceInfo.app, else the version the phone reported last time.
+    std::string app = ls.peerApp;
+    if (app.empty())
+        for (auto& d : devices_.devices())
+            if (d.id == ls.peerId) app = d.app;
+    return app.empty() ? json(nullptr) : json(app);
+}
+
 json HostApp::buildState() const {
     auto ls = cm_->status();
     using S = link::LinkStatus::State;
@@ -1399,7 +1510,10 @@ json HostApp::buildState() const {
                  {"transport", ls.primary ? json(link::toString(*ls.primary)) : json(nullptr)},
                  {"secondary", ls.secondary ? json(link::toString(*ls.secondary)) : json(nullptr)},
                  {"peer", ls.peerId.empty() ? json(nullptr)
-                                            : json{{"id", ls.peerId}, {"name", ls.peerName}, {"platform", ls.peerPlatform}}},
+                                            : json{{"id", ls.peerId}, {"name", ls.peerName}, {"platform", ls.peerPlatform},
+                                                   {"app", peerAppFor(ls)},
+                                                   {"versionMatch", version::toString(version::compare(
+                                                       MD_VERSION, peerAppFor(ls).is_string() ? peerAppFor(ls).get<std::string>() : ""))}}},
                  {"sinceTick", ls.sinceMs},
                  {"rttMs", ls.rttMs},
                  {"mode", settings_.get<std::string>("connection.mode", "auto")},
@@ -1418,7 +1532,11 @@ json HostApp::buildState() const {
                         {"lanHost", lanHost},
                         {"connected", connected},
                         {"transport", connected && ls.primary ? json(link::toString(*ls.primary)) : json(nullptr)},
-                        {"lastSeen", d.lastSeen}});
+                        {"lastSeen", d.lastSeen},
+                        // Last app version the phone reported (kept while disconnected) and how it
+                        // compares with this PC's (md::version: equal | patch | mismatch | unknown).
+                        {"app", d.app.empty() ? json(nullptr) : json(d.app)},
+                        {"versionMatch", version::toString(version::compare(MD_VERSION, d.app))}});
     }
     auto snapJson = [&](const media::MediaSnapshot& s, Side side) {
         json arr = json::array();
@@ -1472,7 +1590,8 @@ json HostApp::buildState() const {
     }
     return {{"type", "state"},
             {"tick", sched_.nowMs()},
-            {"self", {{"id", identity_.id}, {"name", identity_.name}}},
+            {"self", {{"id", identity_.id}, {"name", identity_.name}, {"app", MD_VERSION}}},
+            {"standalone", standalone_},
             {"connection", conn},
             {"devices", devs},
             {"local", snapJson(decoratedLocal(), Side::Local)},
@@ -1505,6 +1624,13 @@ void HostApp::sendLyricsToUi() {
               {"key", focusKey_},
               {"status", r.status},
               {"source", r.source}};
+    // The song these lyrics belong to (docs/ipc.md): lets the UI keep showing them while
+    // its state still carries another trackId for the same song (see lyrics::sameSong).
+    if (!r.trackId.empty() && r.trackId == lyricsTrack_ && !lyricsSong_.title.empty()) {
+        m["title"] = lyricsSong_.title;
+        m["artist"] = lyricsSong_.artist;
+        m["durationMs"] = lyricsSong_.durationMs ? json(*lyricsSong_.durationMs) : json(nullptr);
+    }
     json lj = lyrics::toJson(r.lyrics);
     m["synced"] = lj["synced"];
     m["lines"] = lj["lines"];

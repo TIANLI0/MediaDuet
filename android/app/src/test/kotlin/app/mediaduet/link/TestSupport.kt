@@ -56,8 +56,10 @@ class InMemoryTrustStore : TrustStore {
         _peers.value = _peers.value.filter { it.id != peerId }
     }
 
-    @Synchronized override fun updateSeen(peerId: String, name: String, seenAtMs: Long) {
-        _peers.value = _peers.value.map { if (it.id == peerId) it.copy(name = name, lastSeenMs = seenAtMs) else it }
+    @Synchronized override fun updateSeen(peerId: String, name: String, seenAtMs: Long, appVersion: String) {
+        _peers.value = _peers.value.map {
+            if (it.id == peerId) it.copy(name = name, lastSeenMs = seenAtMs, appVersion = appVersion.ifEmpty { it.appVersion }) else it
+        }
     }
 }
 

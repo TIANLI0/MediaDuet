@@ -175,10 +175,35 @@
   <data name="DiagWaiting.Text" xml:space="preserve"><value>Waiting for data…</value></data>
   <data name="AboutTagline.Text" xml:space="preserve"><value>Two-way media control between Windows and Android.</value></data>
   <data name="LblUiVersion.Text" xml:space="preserve"><value>App version</value></data>
-  <data name="LblHostVersion.Text" xml:space="preserve"><value>Background service</value></data>
+  <data name="LblHostVersion.Text" xml:space="preserve"><value>This PC (background service)</value></data>
   <data name="LblLicense.Text" xml:space="preserve"><value>License</value></data>
   <data name="HdrThirdParty.Text" xml:space="preserve"><value>Third-party software</value></data>
   <data name="AboutLrclib.Text" xml:space="preserve"><value>Free synced-lyrics database used for online lyrics (lrclib.net).</value></data>
+  <data name="LblPhoneVersion.Text" xml:space="preserve"><value>Phone app</value></data>
+  <data name="HdrWorkMode.Text" xml:space="preserve"><value>Work mode</value></data>
+  <data name="SetWorkModeTitle.Text" xml:space="preserve"><value>How MediaDuet is used</value></data>
+  <data name="SetWorkModeDesc.Text" xml:space="preserve"><value>With a phone, MediaDuet links the two devices. "This PC only" turns every phone feature off (no Bluetooth or network connections); the player, lyrics, desktop lyrics and taskbar lyrics keep working.</value></data>
+  <data name="WorkModeLinked.Content" xml:space="preserve"><value>Use with my phone</value></data>
+  <data name="WorkModeStandalone.Content" xml:space="preserve"><value>This PC only</value></data>
+  <data name="EmptyStandaloneButton.Content" xml:space="preserve"><value>Use MediaDuet on this PC only</value></data>
+  <data name="WelcomeTitle.Text" xml:space="preserve"><value>Welcome to MediaDuet</value></data>
+  <data name="WelcomeSubtitle.Text" xml:space="preserve"><value>How would you like to use it?</value></data>
+  <data name="WelcomeLinkedTitle.Text" xml:space="preserve"><value>Use with my phone</value></data>
+  <data name="WelcomeLinkedDesc.Text" xml:space="preserve"><value>Control your phone's music from this PC and the PC's from your phone, with automatic pausing and shared lyrics. Pair your phone next.</value></data>
+  <data name="WelcomeStandaloneTitle.Text" xml:space="preserve"><value>Use on this PC only</value></data>
+  <data name="WelcomeStandaloneDesc.Text" xml:space="preserve"><value>A player with lyrics, desktop lyrics and taskbar lyrics for what plays on this PC. No phone, no Bluetooth or network connections.</value></data>
+  <data name="WelcomeFootnote.Text" xml:space="preserve"><value>You can change this at any time in Settings &gt; General.</value></data>
+  <data name="HdrArtwork.Text" xml:space="preserve"><value>Cover art</value></data>
+  <data name="SetArtworkOnlineTitle.Text" xml:space="preserve"><value>Look up high-resolution covers online</value></data>
+  <data name="SetArtworkOnlineDesc.Text" xml:space="preserve"><value>When a player only provides a small cover, MediaDuet searches NetEase Cloud Music, QQ Music or iTunes for the song (sends its title, artist and album). Covers found before are still used when this is off.</value></data>
+  <data name="HdrDeveloper.Text" xml:space="preserve"><value>Developer</value></data>
+  <data name="AboutDeveloperName.Text" xml:space="preserve"><value>tianli</value></data>
+  <data name="AboutDeveloperRole.Text" xml:space="preserve"><value>Developer</value></data>
+  <data name="AboutDeveloperEmail.Content" xml:space="preserve"><value>wutianli@tianli0.top</value></data>
+  <data name="AboutDeveloperEmail.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Send an email</value></data>
+  <data name="ThirdHarmonyTitle.Text" xml:space="preserve"><value>HarmonyOS Sans</value></data>
+  <data name="ThirdHarmonyDesc.Text" xml:space="preserve"><value>© Huawei Device Co., Ltd. · HarmonyOS Sans Fonts License Agreement · the lyrics typeface, shipped unmodified</value></data>
+  <data name="ThirdHarmonyLicense.Content" xml:space="preserve"><value>View the license agreement</value></data>
   <data name="TransportBluetooth" xml:space="preserve"><value>Bluetooth</value></data>
   <data name="TransportLan" xml:space="preserve"><value>LAN</value></data>
   <data name="YourPhone" xml:space="preserve"><value>Phone</value></data>
@@ -316,7 +341,7 @@
   <data name="LangZh.Content" xml:space="preserve"><value>简体中文</value></data>
   <data name="LangEn.Content" xml:space="preserve"><value>English</value></data>
   <data name="AboutAppName.Text" xml:space="preserve"><value>MediaDuet</value></data>
-  <data name="AboutLicenseValue.Text" xml:space="preserve"><value>MIT License · © 2026 MediaDuet contributors</value></data>
+  <data name="AboutLicenseValue.Text" xml:space="preserve"><value>MIT License · © 2026 tianli</value></data>
   <data name="ThirdWasdkTitle.Text" xml:space="preserve"><value>Windows App SDK / WinUI 3</value></data>
   <data name="ThirdWasdkDesc.Text" xml:space="preserve"><value>© Microsoft Corporation · MIT License · github.com/microsoft/WindowsAppSDK</value></data>
   <data name="ThirdCppWinrtTitle.Text" xml:space="preserve"><value>C++/WinRT</value></data>
@@ -328,6 +353,16 @@
   <data name="ThirdLrclibTitle.Text" xml:space="preserve"><value>LRCLIB</value></data>
   <data name="LblBluetooth.Text" xml:space="preserve"><value>Bluetooth</value></data>
   <data name="AppName" xml:space="preserve"><value>MediaDuet</value></data>
+  <data name="EmptyHintStandalone" xml:space="preserve"><value>Play music or a video on this PC and it shows up here.</value></data>
+  <data name="WorkModeStandaloneShort" xml:space="preserve"><value>This PC only</value></data>
+  <data name="NoPhonePaired" xml:space="preserve"><value>No phone paired</value></data>
+  <data name="VersionMismatchTitle" xml:space="preserve"><value>Versions differ</value></data>
+  <data name="VersionMismatchMessage" xml:space="preserve"><value>The phone runs MediaDuet {0}, this PC {1}. Some features may not work; please update both to the same version.</value></data>
+  <data name="DeviceVersion" xml:space="preserve"><value>MediaDuet {0} {1}</value></data>
+  <data name="DeviceVersionUnknown" xml:space="preserve"><value>MediaDuet version unknown</value></data>
+  <data name="VersionPatchNote" xml:space="preserve"><value>patch version differs</value></data>
+  <data name="VersionMismatchShort" xml:space="preserve"><value>differs from this PC</value></data>
+  <data name="PhoneVersionLastSeen" xml:space="preserve"><value>{0} (last connected)</value></data>
   <data name="CompactTitle" xml:space="preserve"><value>MediaDuet mini player</value></data>
   <data name="Milliseconds" xml:space="preserve"><value>{0} ms</value></data>
   <data name="DeviceBt" xml:space="preserve"><value>Bluetooth {0}</value></data>

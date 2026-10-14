@@ -258,6 +258,22 @@ namespace winrt::MediaDuetUI::implementation
         CompactButton().Click([](auto&&, auto&&) { Controller::Get().SwitchToCompact(); });
         SettingsButton().Click([](auto&&, auto&&) { Controller::Get().ShowSettings(L""); });
         EmptyPairButton().Click([](auto&&, auto&&) { Controller::Get().ShowSettings(L"pair"); });
+        // Work mode (settings "mode"; "modeChosen" ends the first-run choice).
+        EmptyStandaloneButton().Click([](auto&&, auto&&) {
+            Controller::Get().SetSettings(json{ { "mode", "standalone" }, { "modeChosen", true } });
+        });
+        WelcomeLinkedButton().Click([](auto&&, auto&&) {
+            Controller::Get().SetSettings(json{ { "mode", "linked" }, { "modeChosen", true } });
+            Controller::Get().ShowSettings(L"pair");
+        });
+        WelcomeStandaloneButton().Click([](auto&&, auto&&) {
+            Controller::Get().SetSettings(json{ { "mode", "standalone" }, { "modeChosen", true } });
+        });
+        WelcomeIcon().Source(BitmapImage(winrt::Windows::Foundation::Uri(L"ms-appx:///Assets/MediaDuet.png")));
+        // Dismissed per version pair: a different phone / PC version shows it again.
+        VersionBar().CloseButtonClick([this](auto&&, auto&&) {
+            if (!m_versionPair.empty()) Controller::Get().SetSetting("ui.versionNoticeDismissed", m_versionPair);
+        });
         StartHostButton().Click([this](auto&&, auto&&) {
             if (!Controller::Get().LaunchHost()) UpdateLink();
         });
@@ -586,6 +602,8 @@ namespace winrt::MediaDuetUI::implementation
         UpdateLink();
         UpdateConnection();
         UpdateCard();
+        UpdateWelcome();
+        UpdateVersionBar();
         UpdatePolicy();
         UpdateLyrics();
         auto const& st = Controller::Get().Model();
@@ -628,6 +646,12 @@ namespace winrt::MediaDuetUI::implementation
         if (c.Link() != HostLink::Connected || !c.Model().valid) return;
         auto const& st = c.Model();
         auto const& cn = st.connection;
+        if (st.standalone)
+        {
+            // This PC only: there is no phone to report on.
+            ConnectionPill().Visibility(Visibility::Collapsed);
+            return;
+        }
         std::wstring peer = Widen(st.PeerDisplayName());
         if (peer.empty()) peer = Str(L"YourPhone");
 
@@ -682,17 +706,22 @@ namespace winrt::MediaDuetUI::implementation
             m_playHold.Clear();
             PlayerGrid().Visibility(Visibility::Collapsed);
             EmptyPanel().Visibility(Visibility::Visible);
-            bool noPeer = st.connection.status == "no_peer" && st.devices.empty();
+            bool noPeer = !st.standalone && st.connection.status == "no_peer" && st.devices.empty();
             auto peer = Widen(st.PeerDisplayName());
-            EmptyHint().Text(noPeer ? std::wstring(Str(L"EmptyHintNoPeer")) : StrF(L"EmptyHint", { peer.empty() ? std::wstring(Str(L"YourPhone")) : peer }));
+            EmptyHint().Text(st.standalone ? std::wstring(Str(L"EmptyHintStandalone"))
+                             : noPeer      ? std::wstring(Str(L"EmptyHintNoPeer"))
+                                           : StrF(L"EmptyHint", { peer.empty() ? std::wstring(Str(L"YourPhone")) : peer }));
             EmptyPairButton().Visibility(noPeer ? Visibility::Visible : Visibility::Collapsed);
+            EmptyStandaloneButton().Visibility(noPeer ? Visibility::Visible : Visibility::Collapsed);
             m_art.Request(DispatcherQueue(), {}, 0, nullptr, nullptr);
             ArtBrush().ImageSource(nullptr);
             m_ambient.SetPalette({});
             return;
         }
 
-        bool trackChanged = !m_session || m_session->trackId != s->trackId || m_session->key != s->key || m_session->side != s->side;
+        // A new trackId for the same song (players re-reporting the duration) is not a track change.
+        bool trackChanged = !m_session || !SameSong(*m_session, *s);
+        if (trackChanged) m_clockTrack = s->key + "|" + s->trackId;
         double now = QpcNowMs();
         double shownBefore = m_session && !trackChanged ? m_session->PositionPrecise(now) : -1;
         m_session = *s;
@@ -721,7 +750,7 @@ namespace winrt::MediaDuetUI::implementation
         }
         // Lyrics use the smoothed clock (the progress bar stays exact).
         // Same clock as the host overlay (md::lyrics::LyricsClock); a track change snaps it.
-        m_clock.update(SessionReport(*m_session), now);
+        m_clock.update(SessionReport(*m_session, m_clockTrack), now);
 
         EmptyPanel().Visibility(Visibility::Collapsed);
         PlayerGrid().Visibility(Visibility::Visible);
@@ -805,11 +834,47 @@ namespace winrt::MediaDuetUI::implementation
         ToolTipService::SetToolTip(PlayPauseButton(), box_value(playing ? Str(L"Pause") : Str(L"Play")));
     }
 
+    void MainWindow::UpdateWelcome()
+    {
+        // First run: the host has no paired phone and no work mode was chosen yet. Only hosts that
+        // know the setting send "modeChosen": an older host never triggers the choice.
+        auto& c = Controller::Get();
+        auto const& st = c.Model();
+        auto chosen = JPath(st.settings, "modeChosen");
+        bool show = c.Link() == HostLink::Connected && st.valid && chosen && chosen->is_boolean() && !chosen->get<bool>() &&
+            st.devices.empty() && !st.standalone;
+        WelcomePanel().Visibility(show ? Visibility::Visible : Visibility::Collapsed);
+        BottomBar().Visibility(show ? Visibility::Collapsed : Visibility::Visible);
+        if (!show) return;
+        PlayerGrid().Visibility(Visibility::Collapsed);
+        EmptyPanel().Visibility(Visibility::Collapsed);
+        ConnectionPill().Visibility(Visibility::Collapsed);
+    }
+
+    void MainWindow::UpdateVersionBar()
+    {
+        // Connected phone on another major/minor version than this PC (host: md::version).
+        auto& c = Controller::Get();
+        auto const& st = c.Model();
+        auto const& peer = st.connection.peer;
+        bool mismatch = c.Link() == HostLink::Connected && st.valid && !st.standalone && st.connection.status == "connected" &&
+            peer.versionMatch == "mismatch";
+        std::string pc = st.self.app.empty() ? c.HostVersion() : st.self.app;
+        m_versionPair = mismatch ? pc + "|" + peer.app : std::string{};
+        bool dismissed = mismatch && st.Setting("ui.versionNoticeDismissed", std::string{}) == m_versionPair;
+        if (mismatch && !dismissed)
+        {
+            VersionBar().Title(Str(L"VersionMismatchTitle"));
+            VersionBar().Message(StrF(L"VersionMismatchMessage", { Widen(peer.app), Widen(pc) }));
+        }
+        VersionBar().IsOpen(mismatch && !dismissed);
+    }
+
     void MainWindow::UpdatePolicy()
     {
         auto& c = Controller::Get();
         auto const& st = c.Model();
-        if (c.Link() != HostLink::Connected || !st.valid)
+        if (c.Link() != HostLink::Connected || !st.valid || st.standalone)   // standalone: nothing is arbitrated
         {
             PolicyPanel().Visibility(Visibility::Collapsed);
             return;
@@ -871,7 +936,7 @@ namespace winrt::MediaDuetUI::implementation
         m_playHold.Begin(!playing, now);
         m_session->status = playing ? "paused" : "playing";
         if (pos >= 0) m_session->Rebase(static_cast<int64_t>(std::llround(pos)));
-        m_clock.update(SessionReport(*m_session), now, true);
+        m_clock.update(SessionReport(*m_session, m_clockTrack), now, true);
         m_playHoldTimer.Stop();
         m_playHoldTimer.Start();
         UpdatePlayState();
@@ -886,7 +951,7 @@ namespace winrt::MediaDuetUI::implementation
         double now = QpcNowMs();
         m_session->Rebase(positionMs);
         m_seekHold.Begin(static_cast<double>(positionMs), now);
-        m_clock.update(SessionReport(*m_session), now, true);
+        m_clock.update(SessionReport(*m_session, m_clockTrack), now, true);
         m_keySeekPending = false;
         m_lastShownSecond = -2;
         UpdateProgress(TickNow());
@@ -1005,18 +1070,18 @@ namespace winrt::MediaDuetUI::implementation
         bool show = connected && lyrics.MatchesAndShowable(s);
         // The next track's lyrics are not known yet (the lyrics message for it has not arrived or
         // says "loading"): keep the current layout for a moment instead of jumping to one column.
-        bool forTrack = s && lyrics.valid &&
-            ((!lyrics.trackId.empty() && !s->trackId.empty()) ? lyrics.trackId == s->trackId : (lyrics.side == s->side && lyrics.key == s->key));
+        // Lyrics for the same song under another trackId (the state and the lyrics message carrying
+        // a player's new trackId arrive in either order) count as this track's: no hold, no rebuild.
+        bool forTrack = lyrics.BelongsTo(s);
         bool pending = connected && s && (!forTrack || lyrics.status == "loading");
         if (show)
         {
+            bool faded = m_holding;   // the old lines faded out for a track change: build again
             m_holdTimer.Stop();
             m_holding = false;
-            std::string identity = lyrics.trackId + "|" + lyrics.key + "|" + lyrics.source + "|" +
-                std::to_string(lyrics.lines.size()) + (lyrics.synced ? "s" : "u") +
-                (lyrics.lines.empty() ? std::string{} : lyrics.lines.front().text + lyrics.lines.back().text) +
-                (lyrics.hasTranslation ? "|tr" : "");
-            if (identity != m_lyricsIdentity)
+            // Content identity, not the trackId: the same lyrics re-keyed to a new trackId stay as they are.
+            std::string identity = lyrics.ContentKey();
+            if (identity != m_lyricsIdentity || faded)
             {
                 m_lyricsIdentity = identity;
                 m_translationOn = Controller::Get().Model().Setting("lyrics.translation", true);

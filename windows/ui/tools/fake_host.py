@@ -25,6 +25,7 @@ import ctypes.wintypes as wt
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -102,6 +103,35 @@ def current_user_sid() -> str:
 # Test data
 # --------------------------------------------------------------------------------------------
 
+def make_showcase_artwork(folder: Path):
+    """An invented, text-free cover (dusk sky, two overlapping suns) for showcase screenshots."""
+    try:
+        from PIL import Image, ImageDraw, ImageFilter
+    except ImportError:
+        return None
+    folder.mkdir(parents=True, exist_ok=True)
+    size = 512
+    img = Image.new("RGB", (size, size))
+    px = img.load()
+    top, bottom = (58, 44, 120), (236, 140, 120)
+    for y in range(size):
+        t = y / size
+        row = tuple(int(top[i] + (bottom[i] - top[i]) * t) for i in range(3))
+        for x in range(size):
+            px[x, y] = row
+    glow = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    d = ImageDraw.Draw(glow)
+    d.ellipse((96, 170, 296, 370), fill=(255, 214, 170, 200))
+    d.ellipse((216, 150, 416, 350), fill=(255, 240, 220, 170))
+    glow = glow.filter(ImageFilter.GaussianBlur(2))
+    img.paste(glow, (0, 0), glow)
+    hills = ImageDraw.Draw(img)
+    hills.polygon([(0, 400), (140, 340), (300, 390), (420, 350), (512, 380), (512, 512), (0, 512)], fill=(44, 34, 84))
+    path = folder / "art_showcase.png"
+    img.save(path)
+    return str(path)
+
+
 def make_artwork(folder: Path):
     """Creates two invented album covers (PNG) if Pillow is available; returns paths or Nones."""
     try:
@@ -139,8 +169,22 @@ def track_id(title, artist, album, duration_ms):
     return hashlib.sha256(raw).hexdigest()[:16]
 
 
+def version_match(pc, phone):
+    """md::version::compare: equal | patch | mismatch | unknown."""
+    def parse(v):
+        m = re.match(r"\s*[vV]?(\d{1,6})\.(\d{1,6})(?:\.(\d{1,6}))?", v or "")
+        return (int(m.group(1)), int(m.group(2)), int(m.group(3) or 0)) if m else None
+    a, b = parse(pc), parse(phone)
+    if not a or not b:
+        return "unknown"
+    if a[:2] != b[:2]:
+        return "mismatch"
+    return "patch" if a[2] != b[2] else "equal"
+
+
 DEFAULT_SETTINGS = {
-    "language": "auto", "theme": "system", "autostart": True,
+    "language": "auto", "theme": "system", "autostart": True, "mode": "linked", "modeChosen": True,
+    "artwork": {"online": True},
     "connection": {"mode": "auto", "switchBackDelaySec": 10},
     "policy": {"mode": "windows_first", "autoResume": True, "resumeDelaySec": 5, "activationMs": 1500,
                "sensitivity": 0.02, "pauseForCalls": True, "headsetAssist": True, "onlyWithOutputs": [],
@@ -199,13 +243,39 @@ TEST_LYRICS_WORDS = [
 ]
 
 
-def build_lyrics(session, words=True, translation=True):
+# --showcase: an invented song with original lyrics, for website / README screenshots.
+SHOWCASE_LYRICS = [
+    (8000, "窗外的晚风还没有停", "The evening wind is still outside"),
+    (12500, "你把这首歌放进口袋", "You put this song into your pocket"),
+    (17000, "走进另一个房间", "Walked into another room"),
+    (21500, "旋律也跟着你进来", "And the melody followed you in"),
+    (26000, "两块屏幕亮起同一句", "Two screens light up the same line"),
+    (30500, "不早一秒，也不晚一秒", "Not a second early, not a second late"),
+    (35000, "手机放下，电脑接着唱", "Put the phone down, the PC sings on"),
+    (39500, "这首歌一直没有断", "This song never stopped"),
+    (44000, "晚风写给你的信", "A letter the evening wind wrote you"),
+    (48500, "每个字都被点亮", "Every word is lit"),
+    (53000, "我们唱同一首歌", "We sing the same song"),
+    (57500, "在两个地方，同一个节拍", "In two places, on the same beat"),
+    (62000, "", ""),
+    (66000, "直到最后一句", "Until the very last line"),
+]
+
+
+def lyric_rows(showcase):
+    if showcase:
+        return [(t, text) for t, text, _ in SHOWCASE_LYRICS], {t: tr for t, _, tr in SHOWCASE_LYRICS if tr}
+    return TEST_LYRICS_WORDS, TEST_TRANSLATIONS
+
+
+def build_lyrics(session, words=True, translation=True, showcase=False):
     lines = []
-    for i, (t, text) in enumerate(TEST_LYRICS_WORDS):
-        nxt = TEST_LYRICS_WORDS[i + 1][0] if i + 1 < len(TEST_LYRICS_WORDS) else t + 4500
+    rows, translations = lyric_rows(showcase)
+    for i, (t, text) in enumerate(rows):
+        nxt = rows[i + 1][0] if i + 1 < len(rows) else t + 4500
         line = {"t": t, "d": nxt - t, "text": text}
-        if translation and t in TEST_TRANSLATIONS:
-            line["tr"] = TEST_TRANSLATIONS[t]
+        if translation and t in translations:
+            line["tr"] = translations[t]
         if words and text:
             parts = text.split(" ") if " " in text else list(text)
             step = max(1, int((nxt - t) * 0.8) // max(1, len(parts)))
@@ -249,6 +319,13 @@ class FakeHost:
                          "btAddress": "00:11:22:33:44:55", "lanHost": "192.168.1.20:47321",
                          "connected": True, "transport": "bt", "lastSeen": int(time.time() * 1000)}]
         self.connection_status = "connected"
+        # App versions (DeviceInfo.app): this PC and the phone (--phone-version, e.g. 1.1.0 -> mismatch warning).
+        self.self_app = "1.3.0"
+        for d in self.devices:
+            d["app"] = args.phone_version
+            d["versionMatch"] = version_match(self.self_app, args.phone_version)
+        self.peer["app"] = args.phone_version
+        self.peer["versionMatch"] = version_match(self.self_app, args.phone_version)
         self.pairing = {"state": "idle", "sas": None, "peerName": None, "error": None}
         self.a2dp = {"available": True, "state": "off", "device": self.peer["name"], "error": None}
         self.lansend = {"available": True, "state": "off", "error": None}
@@ -285,6 +362,17 @@ class FakeHost:
         self.local_gen = 3
         self.remote_gen = 9
         self.last_action = {"what": "pause_local", "reason": "remote_active", "app": "Spotify.exe", "atTick": now - 30000}
+        if args.showcase:
+            remote["app"] = {"id": "com.netease.cloudmusic", "name": "网易云音乐"}
+            remote["key"] = "com.netease.cloudmusic#1"
+            remote.update(title="晚风来信", artist="林岸", album="夜车", durationMs=212000)
+            remote["artworkPath"] = make_showcase_artwork(Path(os.environ.get("TEMP", ".")) / "mediaduet-fakehost") or self.art_a
+            local1.update(title="慢慢走", artist="林岸", album="夜车")
+            local2.update(title="周末的猫", artist="生活频道")
+            for s in (remote, local1, local2):
+                s["trackId"] = track_id(s["title"], s["artist"], s["album"], s["durationMs"])
+            self.peer["name"] = self.devices[0]["name"] = self.a2dp["device"] = "我的手机"
+            self.focus["key"] = remote["key"]
         if args.long_names:
             # Layout stress test: every user-visible name is far longer than the space for it.
             remote["title"] = "测试曲目 · An Extremely Long Test Track Title That Keeps Going (Extended Live Version) [Remastered 2026]"
@@ -298,8 +386,12 @@ class FakeHost:
                                 "app": "SomeVeryLongProcessNameForTesting_ThatNeverEnds.exe", "atTick": now - 30000}
         if args.scenario == "idle":
             self.remote, self.local = [], []
-        elif args.scenario == "nopeer":
+        elif args.scenario in ("nopeer", "firstrun", "standalone"):
             self.remote, self.devices = [], []
+            if args.scenario == "firstrun":
+                self.settings["modeChosen"] = False
+            if args.scenario == "standalone":
+                self.settings["mode"] = "standalone"
             self.connection_status = "no_peer"
             self.peer = {"id": "", "name": "", "platform": ""}
             self.local = [local1]
@@ -365,7 +457,9 @@ class FakeHost:
                 ]
             return {
                 "type": "state", "tick": tick(),
-                "self": {"id": "f00dfeedf00dfeedf00dfeedf00dfeed", "name": os.environ.get("COMPUTERNAME", "TEST-PC")},
+                "self": {"id": "f00dfeedf00dfeedf00dfeedf00dfeed", "name": "我的电脑" if self.args.showcase else os.environ.get("COMPUTERNAME", "TEST-PC"),
+                         "app": self.self_app},
+                "standalone": self.settings.get("mode") == "standalone",
                 "connection": {"status": self.connection_status, "transport": "bt" if self.connection_status == "connected" else None,
                                "secondary": "lan" if self.connection_status == "connected" else None,
                                "peer": peer, "sinceTick": self.since, "rttMs": 41 if self.connection_status == "connected" else None,
@@ -458,7 +552,7 @@ class FakeHost:
                        "status": "notfound", "source": None, "synced": False, "lines": []})
             return
         lyrics = build_lyrics(s, words=s is (self.remote[0] if self.remote else None),
-                              translation=not self.args.no_translation)
+                              translation=not self.args.no_translation, showcase=self.args.showcase)
         delay = getattr(self.args, "lyrics_loading_ms", 0) or 0
         if delay > 0:
             # Like the real host: "loading" first, the lyrics once the (simulated) lookup is done.
@@ -587,6 +681,8 @@ class FakeHost:
             elif t == "settings.set":
                 before = self.settings.get("language", "auto")
                 merge(self.settings, msg.get("patch", {}))
+                if "mode" in msg.get("patch", {}):
+                    self.settings["modeChosen"] = True
                 lyrics_changed = "lyrics" in msg.get("patch", {})
                 if self.settings.get("language", "auto") != before:
                     resend_hello = True
@@ -753,7 +849,9 @@ def main():
     p.add_argument("--pipe", help="pipe name (default: MediaDuet.UI.<your SID>)")
     p.add_argument("--lang", choices=["auto", "zh-CN", "en-US"])
     p.add_argument("--theme", choices=["system", "light", "dark"])
-    p.add_argument("--scenario", default="playing", choices=["playing", "idle", "nopeer", "pairing", "stale-pairing", "compat"])
+    p.add_argument("--scenario", default="playing",
+                   choices=["playing", "idle", "nopeer", "firstrun", "standalone", "pairing", "stale-pairing", "compat"])
+    p.add_argument("--phone-version", default="1.3.0", help="the phone's app version (e.g. 1.1.0: version warning)")
     p.add_argument("--no-lyrics", action="store_true")
     p.add_argument("--lyrics-loading-ms", type=int, default=0,
                    help="answer 'loading' first and send the lyrics after this many ms (layout hold test)")
@@ -761,6 +859,8 @@ def main():
                    help='phone volume changes fail with "background_restricted" (Android 17 background restriction)')
     p.add_argument("--no-translation", action="store_true", help="lyrics without translations (hasTranslation=false)")
     p.add_argument("--long-names", action="store_true", help="very long titles/names (layout clipping test)")
+    p.add_argument("--showcase", action="store_true",
+                   help="clean demo data for screenshots: invented song, original lyrics, neutral device names")
     p.add_argument("--diagnostics", action="store_true")
     p.add_argument("--log", help="append received commands (JSON lines) to this file")
     p.add_argument("--launch", choices=["main", "compact", "settings", "pair"],

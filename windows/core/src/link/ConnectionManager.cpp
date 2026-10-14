@@ -501,6 +501,7 @@ void ConnectionManager::onConnUp(Peer& p, Slot& s, Connection& c, const SessionC
     p.caps = est.caps;
     p.lastError.clear();
     if (!est.peer.name.empty()) p.rec.name = est.peer.name;
+    if (!est.peer.app.empty()) p.app = est.peer.app;
     bool hadPrimary = p.primary != nullptr;
     bool sessionChanged = false;
     if (p.session.sid() != est.sid) {
@@ -675,6 +676,7 @@ void ConnectionManager::onConnEnvelope(Peer& p, Connection& c, proto::Envelope e
     if (t == proto::types::DeviceInfo) {
         if (auto d = proto::deviceInfoFromJson(e.body); d && d->id == p.rec.id) {
             p.rec.name = d->name;
+            if (!d->app.empty()) p.app = d->app;
             listener_.onStatusChanged();
         }
     }
@@ -860,6 +862,7 @@ LinkStatus ConnectionManager::status() const {
     st.peerId = p->rec.id;
     st.peerName = p->rec.name;
     st.peerPlatform = p->rec.platform;
+    st.peerApp = p->app;
     st.lastError = p->lastError;
     st.rttMs = p->rttMs;
     st.msgsIn = p->msgsIn;

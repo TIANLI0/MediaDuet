@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(MediaDuet VERSION 1.2.1 LANGUAGES CXX)
+project(MediaDuet VERSION 1.3.0 LANGUAGES CXX)
 
 if(NOT MSVC)
   message(FATAL_ERROR "MediaDuet for Windows requires MSVC (C++/WinRT, Windows SDK).")
@@ -34,6 +34,7 @@ add_library(md_core STATIC
   core/src/util/Bytes.cpp
   core/src/util/Log.cpp
   core/src/util/Text.cpp
+  core/src/util/AppVersion.cpp
   core/src/crypto/Crypto.cpp
   core/src/protocol/Frame.cpp
   core/src/protocol/Envelope.cpp
@@ -46,6 +47,7 @@ add_library(md_core STATIC
   core/src/link/DedupWindow.cpp
   core/src/policy/PlaybackArbiter.cpp
   core/src/media/MediaTypes.cpp
+  core/src/media/ArtworkPolicy.cpp
   core/src/lyrics/Lrc.cpp
   core/src/lyrics/Karaoke.cpp
   core/src/lyrics/LyricsClock.cpp
@@ -74,6 +76,7 @@ add_library(md_platform STATIC
   platform/media/GsmtcSource.cpp
   platform/media/SmtcBridge.cpp
   platform/media/Artwork.cpp
+  platform/media/ArtworkLookup.cpp
   platform/media/NeteaseCompat.cpp
   platform/audio/AudioActivityMonitor.cpp
   platform/audio/A2dpSink.cpp
@@ -149,7 +152,9 @@ if(MD_BUILD_TESTS)
     tests/test_arbiter.cpp
     tests/test_lrc.cpp
     tests/test_settings.cpp
+    tests/test_app_version.cpp
     tests/test_media.cpp
+    tests/test_artwork_policy.cpp
     tests/test_karaoke.cpp
     tests/test_lyrics_clock.cpp
     tests/test_surface_policy.cpp

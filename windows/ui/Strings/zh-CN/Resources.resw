@@ -175,10 +175,35 @@
   <data name="DiagWaiting.Text" xml:space="preserve"><value>正在等待数据…</value></data>
   <data name="AboutTagline.Text" xml:space="preserve"><value>Windows 与 Android 之间的双向媒体控制。</value></data>
   <data name="LblUiVersion.Text" xml:space="preserve"><value>应用版本</value></data>
-  <data name="LblHostVersion.Text" xml:space="preserve"><value>后台服务</value></data>
+  <data name="LblHostVersion.Text" xml:space="preserve"><value>此电脑（后台服务）</value></data>
   <data name="LblLicense.Text" xml:space="preserve"><value>许可证</value></data>
   <data name="HdrThirdParty.Text" xml:space="preserve"><value>第三方软件</value></data>
   <data name="AboutLrclib.Text" xml:space="preserve"><value>用于在线歌词的免费同步歌词数据库（lrclib.net）。</value></data>
+  <data name="LblPhoneVersion.Text" xml:space="preserve"><value>手机端</value></data>
+  <data name="HdrWorkMode.Text" xml:space="preserve"><value>使用方式</value></data>
+  <data name="SetWorkModeTitle.Text" xml:space="preserve"><value>MediaDuet 的使用方式</value></data>
+  <data name="SetWorkModeDesc.Text" xml:space="preserve"><value>与手机配合时，MediaDuet 会连接两台设备。“仅此电脑”会关闭所有与手机相关的功能（不进行蓝牙或网络连接），播放器、歌词、桌面歌词和任务栏歌词照常可用。</value></data>
+  <data name="WorkModeLinked.Content" xml:space="preserve"><value>与手机配合使用</value></data>
+  <data name="WorkModeStandalone.Content" xml:space="preserve"><value>仅此电脑</value></data>
+  <data name="EmptyStandaloneButton.Content" xml:space="preserve"><value>仅在此电脑上使用</value></data>
+  <data name="WelcomeTitle.Text" xml:space="preserve"><value>欢迎使用 MediaDuet</value></data>
+  <data name="WelcomeSubtitle.Text" xml:space="preserve"><value>你打算如何使用？</value></data>
+  <data name="WelcomeLinkedTitle.Text" xml:space="preserve"><value>与手机配合使用</value></data>
+  <data name="WelcomeLinkedDesc.Text" xml:space="preserve"><value>在电脑上控制手机的音乐，也可在手机上控制电脑，支持自动暂停和歌词共享。下一步将配对手机。</value></data>
+  <data name="WelcomeStandaloneTitle.Text" xml:space="preserve"><value>仅在此电脑上使用</value></data>
+  <data name="WelcomeStandaloneDesc.Text" xml:space="preserve"><value>为此电脑上播放的内容提供播放器、歌词、桌面歌词和任务栏歌词。无需手机，不进行蓝牙或网络连接。</value></data>
+  <data name="WelcomeFootnote.Text" xml:space="preserve"><value>之后可随时在“设置 &gt; 常规”中更改。</value></data>
+  <data name="HdrArtwork.Text" xml:space="preserve"><value>封面</value></data>
+  <data name="SetArtworkOnlineTitle.Text" xml:space="preserve"><value>在线查找高清封面</value></data>
+  <data name="SetArtworkOnlineDesc.Text" xml:space="preserve"><value>当播放器只提供小尺寸封面时，MediaDuet 会在网易云音乐、QQ 音乐或 iTunes 中查找这首歌（会发送歌名、歌手和专辑）。关闭后，之前找到的封面仍会使用。</value></data>
+  <data name="HdrDeveloper.Text" xml:space="preserve"><value>开发者</value></data>
+  <data name="AboutDeveloperName.Text" xml:space="preserve"><value>tianli</value></data>
+  <data name="AboutDeveloperRole.Text" xml:space="preserve"><value>开发者</value></data>
+  <data name="AboutDeveloperEmail.Content" xml:space="preserve"><value>wutianli@tianli0.top</value></data>
+  <data name="AboutDeveloperEmail.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>发送邮件</value></data>
+  <data name="ThirdHarmonyTitle.Text" xml:space="preserve"><value>HarmonyOS Sans</value></data>
+  <data name="ThirdHarmonyDesc.Text" xml:space="preserve"><value>© 华为终端有限公司（Huawei Device Co., Ltd.）· HarmonyOS Sans 字体许可协议 · 用于歌词显示，随附未经修改的字体文件</value></data>
+  <data name="ThirdHarmonyLicense.Content" xml:space="preserve"><value>查看许可协议</value></data>
   <data name="TransportBluetooth" xml:space="preserve"><value>蓝牙</value></data>
   <data name="TransportLan" xml:space="preserve"><value>局域网</value></data>
   <data name="YourPhone" xml:space="preserve"><value>手机</value></data>
@@ -316,7 +341,7 @@
   <data name="LangZh.Content" xml:space="preserve"><value>简体中文</value></data>
   <data name="LangEn.Content" xml:space="preserve"><value>English</value></data>
   <data name="AboutAppName.Text" xml:space="preserve"><value>MediaDuet</value></data>
-  <data name="AboutLicenseValue.Text" xml:space="preserve"><value>MIT 许可证 · © 2026 MediaDuet 贡献者</value></data>
+  <data name="AboutLicenseValue.Text" xml:space="preserve"><value>MIT 许可证 · © 2026 tianli</value></data>
   <data name="ThirdWasdkTitle.Text" xml:space="preserve"><value>Windows App SDK / WinUI 3</value></data>
   <data name="ThirdWasdkDesc.Text" xml:space="preserve"><value>© Microsoft Corporation · MIT 许可证 · github.com/microsoft/WindowsAppSDK</value></data>
   <data name="ThirdCppWinrtTitle.Text" xml:space="preserve"><value>C++/WinRT</value></data>
@@ -328,6 +353,16 @@
   <data name="ThirdLrclibTitle.Text" xml:space="preserve"><value>LRCLIB</value></data>
   <data name="LblBluetooth.Text" xml:space="preserve"><value>蓝牙</value></data>
   <data name="AppName" xml:space="preserve"><value>MediaDuet</value></data>
+  <data name="EmptyHintStandalone" xml:space="preserve"><value>在此电脑上播放音乐或视频，就会显示在这里。</value></data>
+  <data name="WorkModeStandaloneShort" xml:space="preserve"><value>仅此电脑</value></data>
+  <data name="NoPhonePaired" xml:space="preserve"><value>尚未配对手机</value></data>
+  <data name="VersionMismatchTitle" xml:space="preserve"><value>版本不一致</value></data>
+  <data name="VersionMismatchMessage" xml:space="preserve"><value>手机端版本 {0} 与电脑端 {1} 不一致，部分功能可能无法使用，请将两端更新到同一版本。</value></data>
+  <data name="DeviceVersion" xml:space="preserve"><value>MediaDuet {0} {1}</value></data>
+  <data name="DeviceVersionUnknown" xml:space="preserve"><value>MediaDuet 版本未知</value></data>
+  <data name="VersionPatchNote" xml:space="preserve"><value>补丁版本不同</value></data>
+  <data name="VersionMismatchShort" xml:space="preserve"><value>与电脑端版本不一致</value></data>
+  <data name="PhoneVersionLastSeen" xml:space="preserve"><value>{0}（上次连接时）</value></data>
   <data name="CompactTitle" xml:space="preserve"><value>MediaDuet 迷你播放器</value></data>
   <data name="Milliseconds" xml:space="preserve"><value>{0} 毫秒</value></data>
   <data name="DeviceBt" xml:space="preserve"><value>蓝牙 {0}</value></data>

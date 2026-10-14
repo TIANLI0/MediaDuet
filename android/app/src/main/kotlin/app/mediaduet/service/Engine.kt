@@ -38,6 +38,8 @@ import app.mediaduet.protocol.LyricsPush
 import app.mediaduet.protocol.MediaCommand
 import app.mediaduet.protocol.MediaSnapshot
 import app.mediaduet.protocol.PolicyStatus
+import app.mediaduet.lyrics.LyricsRepository
+import app.mediaduet.media.TargetChoice
 import app.mediaduet.remote.MirrorSessionController
 import app.mediaduet.remote.RemoteMediaStore
 import app.mediaduet.transport.TransportController
@@ -89,6 +91,8 @@ class Engine private constructor(private val app: Context) : LinkHost {
         onLanChanged = link::broadcastTransportInfo,
     )
     val remote = RemoteMediaStore(scope, clock, link, app.cacheDir)
+    /** Lyrics from the PC and the phone's own lookup (see [LyricsRepository]). */
+    val lyrics = LyricsRepository(scope, app.filesDir, settings.onlineLyrics)
     val audio = AudioReceiver(scope, settings.audioReceiveEnabled) { peer, stream, reason -> link.sendAudioStop(peer, stream, reason) }
     val mirror = MirrorSessionController(app, scope, remote, settings.mirrorEnabled)
     val volume = VolumeController(app)
@@ -121,8 +125,10 @@ class Engine private constructor(private val app: Context) : LinkHost {
         scope.launch {
             var state: AutoState? = null
             var recheck: kotlinx.coroutines.Job? = null
-            val inputs = combine(settings.target, remote.state, _localStates, link.status) { choice, rem, local, status ->
-                Triple(choice, rem?.takeIf { it.connected && status.current != null }, local)
+            val inputs = combine(settings.target, remote.state, _localStates, link.status, settings.mode) { choice, rem, local, status, mode ->
+                // This phone only: the PC side does not exist for the player.
+                if (!mode.linked) Triple(TargetChoice.AUTO, null, local)
+                else Triple(choice, rem?.takeIf { it.connected && status.current != null }, local)
             }
             combine(inputs, userControl, autoTick) { i, uc, _ -> i to uc }.collect { (i, uc) ->
                 val (choice, rem, local) = i
@@ -139,6 +145,21 @@ class Engine private constructor(private val app: Context) : LinkHost {
                     }
                 }
             }
+        }
+    }
+
+    /** Asks the lyrics repository for the player's current track (works without the UI, e.g. for the mirror). */
+    private fun startLyricsRequests() {
+        scope.launch {
+            combine(_target, remote.state, _localStates, link.status) { t, rem, local, status ->
+                when (t?.side) {
+                    Side.PC -> rem?.snapshot?.sessions?.firstOrNull { it.key == t.key }?.let { Triple(it, Side.PC, rem.connected && status.current != null) }
+                    Side.PHONE -> local.firstOrNull { it.key == t.key }?.let { Triple(it.toSessionInfo(clock.nowMs()), Side.PHONE, false) }
+                    null -> null
+                }
+            }
+                .distinctUntilChanged { a, b -> a?.first?.trackId == b?.first?.trackId && a?.second == b?.second && a?.third == b?.third }
+                .collect { cur -> cur?.let { (info, side, pc) -> lyrics.request(info, side, pc) } }
         }
     }
 
@@ -169,8 +190,26 @@ class Engine private constructor(private val app: Context) : LinkHost {
         startedAtMs = clock.nowMs()
         MdLog.i(TAG, "engine starting (device ${settings.deviceId.take(8)}, ${settings.deviceName.value})")
         Notifications.createChannels(app)
-        transports.start()
         startTargetResolver()
+        startLyricsRequests()
+        // Work mode: listen for / talk to PCs only when linked.
+        scope.launch {
+            var first = true
+            settings.mode.map { it.linked }.distinctUntilChanged().collect { linked ->
+                if (linked) {
+                    transports.start()
+                    // At start-up the service is started by its usual triggers (activity, listener, boot).
+                    if (!first) LinkService.start(app, "mode")
+                } else {
+                    MdLog.i(TAG, "standalone mode: transports off")
+                    link.disconnectAll("standalone")
+                    transports.stop()
+                    LinkService.stop(app)
+                    audio.stop(null, "standalone", notifyPeer = false)
+                }
+                first = false
+            }
+        }
         scope.launch(Dispatchers.Main) { media.start() }
         mirror.start()
         volume.start()
@@ -328,8 +367,10 @@ class Engine private constructor(private val app: Context) : LinkHost {
     override fun onPeerSnapshot(peerId: String, snapshot: MediaSnapshot, rttMs: Long?) = remote.onSnapshot(peerId, snapshot, rttMs)
     override fun onBlobChunk(peerId: String, chunk: BlobChunk) = remote.onChunk(chunk)
     override fun onArtworkNotFound(peerId: String, hash: String) = remote.onArtworkNotFound(hash)
-    override fun onLyrics(peerId: String, lyrics: LyricsPush) = remote.onLyrics(lyrics)
-    override fun onLyricsNone(peerId: String, trackId: String) = remote.onLyricsNone(trackId)
+    override fun onLyrics(peerId: String, lyrics: LyricsPush) =
+        this.lyrics.onPcLyrics(lyrics.trackId, remote.parseLyrics(lyrics), remote.sessionForTrack(lyrics.trackId)?.let(LyricsRepository::songOf))
+    override fun onLyricsNone(peerId: String, trackId: String) =
+        lyrics.onPcNone(trackId, remote.sessionForTrack(trackId)?.let(LyricsRepository::songOf))
     override fun onPolicyStatus(peerId: String, status: PolicyStatus) = remote.onPolicyStatus(status)
     override suspend fun onAudioOffer(peerId: String, offer: AudioOffer, baseKey: ByteArray): JsonObject =
         withContext(Dispatchers.IO) { audio.handleOffer(peerId, offer, baseKey) }

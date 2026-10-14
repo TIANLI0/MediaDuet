@@ -14,7 +14,7 @@
 #>
 param(
     [ValidateSet('x64', 'ARM64')] [string]$Arch = 'x64',
-    [string]$Version = '1.2.1',
+    [string]$Version = '1.3.0',
     [switch]$SkipTests
 )
 $ErrorActionPreference = 'Stop'
@@ -63,6 +63,15 @@ Copy-Item (Join-Path $root 'LICENSE') $dist
 Copy-Item (Join-Path $root 'README.md') $dist
 Copy-Item (Join-Path $root 'docs\THIRD_PARTY_NOTICES.md') $dist -ErrorAction SilentlyContinue
 Get-ChildItem $dist -Include *.pdb, *.lib, *.exp, *.winmd -Recurse | Remove-Item -Force
+# Lyrics typeface (HarmonyOS Sans SC, Assets\Fonts via the UI output): shipped unmodified and only
+# together with its licence (the in-app notice is in Settings > About).
+foreach ($f in 'HarmonyOS_Sans_SC_Medium.ttf', 'HarmonyOS_Sans_SC_Bold.ttf', 'HarmonyOS_Sans_LICENSE.txt') {
+    $p = Join-Path $dist "Assets\Fonts\$f"
+    if (-not (Test-Path $p)) { throw "Staged UI is missing Assets\Fonts\$f" }
+    $src = Join-Path $win "ui\Assets\Fonts\$f"
+    if ((Get-FileHash $p).Hash -ne (Get-FileHash $src).Hash) { throw "Assets\Fonts\$f differs from the original" }
+}
+if (-not (Test-Path (Join-Path $dist 'Assets\Developer.png'))) { throw 'Staged UI is missing Assets\Developer.png' }
 
 $zip = "$dist.zip"
 if (Test-Path $zip) { Remove-Item $zip }

@@ -112,6 +112,8 @@ namespace mdui
         std::string id;
         std::string name;
         std::string platform;
+        std::string app;            // app version (DeviceInfo.app); empty = unknown
+        std::string versionMatch;   // vs this PC (host): equal | patch | mismatch | unknown
     };
 
     struct Connection
@@ -143,6 +145,8 @@ namespace mdui
         bool connected{ false };
         std::string transport;
         int64_t lastSeen{ 0 };   // unix ms
+        std::string app;            // last app version the phone reported (kept while disconnected)
+        std::string versionMatch;   // equal | patch | mismatch | unknown (host: md::version)
     };
 
     struct Focus
@@ -220,7 +224,8 @@ namespace mdui
     {
         bool valid{ false };
         uint64_t tick{ 0 };
-        Peer self;
+        Peer self;                 // self.app = the host's (this PC's) version
+        bool standalone{ false };  // settings mode "standalone": this PC only, no phone
         Connection connection;
         std::vector<Device> devices;
         SideState local;
@@ -290,15 +295,29 @@ namespace mdui
         bool synced{ false };
         bool hasTranslation{ false };   // at least one line carries a translation
         std::vector<LyricLine> lines;
+        // The song these lyrics were found for (newer hosts; empty / -1 otherwise).
+        std::string title;
+        std::string artist;
+        int64_t durationMs{ -1 };
 
         bool HasWords() const;
+        // These lyrics are for the given session: same trackId, or the same player session and song
+        // under a new trackId (lyrics::SameSong). Older hosts without key: trackId, else side + key.
+        bool BelongsTo(Session const* s) const;
         // True when these lyrics belong to the given session and contain displayable lines.
         bool MatchesAndShowable(Session const* s) const;
+        // Identity of the content (lines, timing, translations, source) for rebuild decisions;
+        // independent of the trackId, so a same-song trackId change does not rebuild a view.
+        std::string ContentKey() const;
         // Index of the line active at positionMs (-1 before the first line).
         int LineAt(int64_t positionMs) const;
     };
 
     Lyrics ParseLyrics(json const& j);
+
+    // Same player session (side + key) and the same song, also across a trackId change for it
+    // (players re-reporting the duration). Views use it instead of comparing trackIds.
+    bool SameSong(Session const& a, Session const& b);
 
     std::wstring FormatTime(int64_t ms);
     std::wstring FormatBytes(int64_t bytes);

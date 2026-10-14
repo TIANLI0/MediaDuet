@@ -477,7 +477,9 @@ namespace winrt::MediaDuetUI::implementation
             return;
         }
 
-        bool trackChanged = !m_session || m_session->trackId != s->trackId || m_session->key != s->key || m_session->side != s->side;
+        // A new trackId for the same song (players re-reporting the duration) is not a track change.
+        bool trackChanged = !m_session || !SameSong(*m_session, *s);
+        if (trackChanged) m_clockTrack = s->key + "|" + s->trackId;
         double nowQpc = QpcNowMs();
         double shownBefore = m_session && !trackChanged ? m_session->PositionPrecise(nowQpc) : -1;
         m_session = *s;
@@ -491,7 +493,7 @@ namespace winrt::MediaDuetUI::implementation
             if (pos >= 0) m_session->Rebase(static_cast<int64_t>(std::llround(pos)));
         }
         // Same clock as the host overlay (md::lyrics::LyricsClock); a track change snaps it.
-        m_clock.update(SessionReport(*m_session), nowQpc);
+        m_clock.update(SessionReport(*m_session, m_clockTrack), nowQpc);
         MessageProgress().IsActive(false);
         MessageGrid().Visibility(Visibility::Collapsed);
         PlayerGrid().Visibility(Visibility::Visible);
@@ -550,6 +552,7 @@ namespace winrt::MediaDuetUI::implementation
         if (m_slots[0]) return;
         KaraokeLine::Style style;
         style.fontSize = 12.5;
+        style.weight = LyricWeight::Medium;   // Bold is too heavy at 12.5 epx next to the title
         style.wrap = false;
         style.translationScale = 0.88;   // 11 px: legible at this size
         style.scrollLongLine = true;      // long lines scroll with the fill, like the desktop lyrics
@@ -587,9 +590,8 @@ namespace winrt::MediaDuetUI::implementation
         bool show = Controller::Get().Link() == HostLink::Connected && lyrics.synced && lyrics.MatchesAndShowable(s);
         if (show)
         {
-            std::string identity = lyrics.trackId + "|" + lyrics.key + "|" + std::to_string(lyrics.lines.size()) +
-                (lyrics.lines.empty() ? std::string{} : lyrics.lines.front().text + lyrics.lines.back().text) +
-                (lyrics.hasTranslation ? "|tr" : "");
+            // Content identity, not the trackId: the same lyrics re-keyed to a new trackId stay as they are.
+            std::string identity = lyrics.ContentKey();
             if (identity != m_lyricsIdentity)
             {
                 m_lyricsIdentity = identity;
@@ -761,7 +763,7 @@ namespace winrt::MediaDuetUI::implementation
         m_playHold.Begin(!playing, now);
         m_session->status = playing ? "paused" : "playing";
         if (pos >= 0) m_session->Rebase(static_cast<int64_t>(std::llround(pos)));
-        m_clock.update(SessionReport(*m_session), now, true);
+        m_clock.update(SessionReport(*m_session, m_clockTrack), now, true);
         m_playHoldTimer.Stop();
         m_playHoldTimer.Start();
         UpdatePlayState();

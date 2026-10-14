@@ -310,7 +310,7 @@ class ServerHandshake(
                 put("mac", B64.encode(KeySchedule.confirmMac(secrets.pairingKey, "S", th)))
             }, null))
             val now = wallClock()
-            trust.add(TrustedPeer(peer.id, peer.name, peer.platform, now, now), secrets.pairingKey)
+            trust.add(TrustedPeer(peer.id, peer.name, peer.platform, now, now, peer.app), secrets.pairingKey)
             conn.sendHandshake(envelope(conn, MsgType.PAIR_RESULT, buildJsonObject { put("ok", true) }, null))
             conn.closeAfterFlush("paired")
             success = true

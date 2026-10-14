@@ -108,6 +108,16 @@ MediaDuetUI.exe [--show main|compact|settings|pair]... [--pipe <name>] [--langua
   for 4 s and shows "Back to current line"; clicking a line seeks (when the session can seek).
   Plain lyrics are a static, scrollable list. The compact window shows the current line with the
   same fill (long lines scroll like the desktop lyrics) and a 240 ms slide/cross-fade.
+* **Lyrics typeface**: HarmonyOS Sans SC, shipped unmodified in `Assets\Fonts` with its licence
+  (notice in Settings > About). Two weights: Bold (700) for the main window's lines, Medium (500)
+  for the compact window's line and all translation rows; each TextBlock points at the file of its
+  weight (`ms-appx:///Assets/Fonts/<file>#HarmonyOS Sans SC`, resolves in the unpackaged app) so no
+  bold is synthesised. Missing files fall back to the system UI font (SemiBold / Normal).
+* **Work mode** (settings `mode`: `linked` | `standalone`): the first run without a paired phone
+  asks once in the main window (`modeChosen`); "This PC only" hides the connection pill, the
+  arbitration line and the phone-only settings pages. **Versions**: Settings > Devices / About show
+  the phone's app version; a major/minor mismatch (host: `md::version`) shows a warning InfoBar on
+  the Devices page and a dismissible one (per version pair, `ui.versionNoticeDismissed`) in the player.
 * **Karaoke fill** uses the host's own code (`md::lyrics::buildKaraoke` / `fillAt`), so it is the
   desktop overlay's fill: the line is laid out as segments (words, single CJK characters / emoji
   clusters, whitespace runs; segments cut out of one word stay glued when wrapping), every segment
@@ -221,8 +231,10 @@ python tools\fake_host.py --pipe MediaDuetTest --launch compact
 
 Options: `--volume-restricted` (phone volume changes fail with `background_restricted`),
 `--lyrics-loading-ms N` (answer `loading` first, the lyrics N ms later),
-`--scenario playing|idle|nopeer|pairing|stale-pairing|compat` (`stale-pairing`: the host
-still reports an old pairing result; `compat`: a NetEase desktop session in compatibility mode),
+`--scenario playing|idle|nopeer|firstrun|standalone|pairing|stale-pairing|compat` (`stale-pairing`: the host
+still reports an old pairing result; `compat`: a NetEase desktop session in compatibility mode;
+`firstrun`: no phone and `modeChosen=false`, the first-run choice; `standalone`: settings `mode`
+"standalone"), `--phone-version 1.1.0` (the phone's app version: version warning),
 `--no-lyrics`, `--long-names` (layout stress test), `--diagnostics`,
 `--switch-lang-after 5 zh-CN` (runtime language switch: re-sends `hello` + `state`),
 `--show-on-connect settings`. Interactive console commands: `pair`, `unpair`, `next`,
@@ -258,14 +270,15 @@ cl /nologo /std:c++20 /EHsc /O2 /W4 /utf-8 /wd5285 /wd4100 /DNOMINMAX /I windows
 
 ## Render test (invisible)
 
-`MediaDuetUI.exe --render-test <outdir> --pipe <private test pipe> [--render-only karaoke|sizes|light|transitions|hold|compact]`
+`MediaDuetUI.exe --render-test <outdir> --pipe <private test pipe> [--render-only karaoke|sizes|light|transitions|hold|settings|compact]`
 renders the real windows against `tools\fake_host.py` and saves PNGs (`RenderTargetBitmap`,
 composited over a Mica-like colour) plus `render-test.log`. Nothing is ever shown on a monitor:
 
 * windows are tool windows (`WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE`, not in Alt+Tab or the taskbar),
   placed entirely beyond the union of all monitors and shown with `SW_SHOWNOACTIVATE` - never
   `Activate()` / `SetForegroundWindow`; the test aborts at once if a window rectangle intersects a
-  monitor or the foreground window changes;
+  monitor or this process ever becomes the foreground window (the user switching between other
+  apps meanwhile is logged and followed, not an error);
 * it refuses the default pipe, skips the single-instance redirection, persisted settings, window
   placement and every settings write;
 * the lyric clock is frozen and stepped (deterministic frames); composition transitions can run in

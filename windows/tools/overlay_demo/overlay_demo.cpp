@@ -106,7 +106,26 @@ bool save(const std::wstring& dir, const std::wstring& name, Bg bg, const std::v
 }
 
 // ------------------------------------------------------------------ sample lyrics
+// Showcase mode (website / README screenshots): lyrics and translation read from LRC files.
+std::string g_showcaseLrc, g_showcaseTr;
+
+std::string readFile(const std::wstring& path) {
+    std::string out;
+    FILE* f = nullptr;
+    if (_wfopen_s(&f, path.c_str(), L"rb") != 0 || !f) return out;
+    char buf[4096];
+    size_t n;
+    while ((n = fread(buf, 1, sizeof buf, f)) > 0) out.append(buf, n);
+    fclose(f);
+    return out;
+}
+
 std::shared_ptr<md::lyrics::Lyrics> sampleLyrics(bool withTranslation) {
+    if (!g_showcaseLrc.empty()) {
+        auto parsed = md::lyrics::parseLrc(g_showcaseLrc);
+        if (withTranslation && !g_showcaseTr.empty()) md::lyrics::mergeTranslation(parsed, md::lyrics::parseLrc(g_showcaseTr));
+        return std::make_shared<md::lyrics::Lyrics>(std::move(parsed));
+    }
     const char* lrc =
         "[00:00.00]<00:00.00>Sample <00:00.80>word-timed <00:02.00>karaoke <00:03.20>line<00:04.50>\n"
         // 逐行歌词也会平滑地填充
@@ -195,12 +214,13 @@ void runOverlay(md::ManualScheduler& sched, const std::wstring& dir, UINT dpi, c
     }
 }
 
-void runTaskbar(md::ManualScheduler& sched, const std::wstring& dir, UINT dpi, bool light) {
+void runTaskbar(md::ManualScheduler& sched, const std::wstring& dir, UINT dpi, bool light,
+                std::vector<int> times = {1400, 7000, 11000, 15000, 21000, 27000}) {
     TaskbarWidget tb(sched, {}, {true, [] { return g_now; }, dpi, light});
     tb.configure({{"enabled", true}, {"width", 360}, {"fontSize", 13}, {"translation", false}}, true, false);
     md::media::MediaSessionInfo s;
-    s.title = "Sample Track";
-    s.artist = "MediaDuet Demo";
+    s.title = g_showcaseLrc.empty() ? "Sample Track" : "\xE6\x99\x9A\xE9\xA3\x8E\xE6\x9D\xA5\xE4\xBF\xA1"; // 晚风来信
+    s.artist = g_showcaseLrc.empty() ? "MediaDuet Demo" : "\xE6\x9E\x97\xE5\xB2\xB8";                          // 林岸
     s.trackId = "demo";
     s.status = md::media::PlaybackStatus::Playing;
     tb.setTrack(&s);
@@ -209,7 +229,7 @@ void runTaskbar(md::ManualScheduler& sched, const std::wstring& dir, UINT dpi, b
     float k = dpi / 96.f;
     int w = static_cast<int>(360 * k), h = static_cast<int>(48 * k);
     std::vector<uint8_t> px;
-    for (int t : {1400, 7000, 11000, 15000, 21000, 27000}) {
+    for (int t : times) {
         for (bool hover : {false, true}) {
             if (hover && t != 7000) continue;
             g_now = t;
@@ -243,6 +263,20 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, LPWSTR, int) {
         _wfreopen_s(&f, L"CONOUT$", L"w", stdout);
     }
     md::ManualScheduler sched; // timers never fire: nothing runs behind our back
+
+    // MediaDuetOverlayDemo <dir> <dpi> showcase <lyrics.lrc> [translation.lrc]: website screenshots.
+    if (argc > 4 && std::wstring(argv[3]) == L"showcase") {
+        g_showcaseLrc = readFile(argv[4]);
+        if (argc > 5) g_showcaseTr = readFile(argv[5]);
+        std::vector<OverlayScenario> show = {
+            {L"showcase_center", {{"layout", "center"}}, true, {10200, 28000, 37000}, {Bg::Dark, Bg::Light}},
+            {L"showcase_alternate", {{"layout", "alternate"}}, false, {10200, 28000}, {Bg::Dark}},
+        };
+        for (auto& sc : show) runOverlay(sched, dir, dpi, sc);
+        runTaskbar(sched, dir, dpi, false, {10200, 28000});
+        runTaskbar(sched, dir, dpi, true, {10200, 28000});
+        return 0;
+    }
 
     std::vector<OverlayScenario> scenarios = {
         {L"alternate", {{"layout", "alternate"}}, false,

@@ -250,10 +250,11 @@
     <string name="settings_translations_text">在原文歌词下方显示翻译（若电脑提供）。</string>
     <string name="about_title">关于</string>
     <string name="about_text">MediaDuet 连接你的手机与电脑：双方都能看到并控制对方正在播放的内容。连接全程端到端加密，绝不读取通知内容。</string>
+    <string name="about_project_license">MediaDuet 以 MIT 许可证开源。© 2026 tianli。</string>
     <string name="about_licenses">开源许可</string>
     <string name="about_license_backdrop">Backdrop（液态玻璃）作者 Kyant — Apache License 2.0。滑块与开关改编自其示例。</string>
     <string name="about_license_androidx">AndroidX、Jetpack Compose、Kotlin 协程与 kotlinx.serialization — Apache License 2.0。</string>
-    <string name="about_license_icons">Material Symbols 图标 — Apache License 2.0。</string>
+    <string name="about_license_icons">MingCute 图标 — Apache License 2.0。</string>
     <plurals name="summary_missing">
         <item quantity="other">缺少 %1$d 项</item>
     </plurals>
@@ -283,8 +284,6 @@
     <string name="saved">已保存</string>
     <string name="settings_device_name_hint">按“完成”后保存。</string>
     <string name="perm_fix_all">一键修复</string>
-    <string name="lyrics_show_translation">显示翻译</string>
-    <string name="lyrics_hide_translation">隐藏翻译</string>
 
     <!-- Round 4: crash reports -->
     <string name="diag_crash_title">应用上次意外退出</string>
@@ -324,4 +323,29 @@
     <string name="lyrics_unavailable">这首歌暂无歌词</string>
     <string name="a11y_playback_position">播放进度</string>
     <string name="a11y_volume">音量</string>
+    <string name="lyrics_options">歌词选项</string>
+    <string name="lyrics_searching">正在查找歌词…</string>
+    <string name="lyrics_offset_hint">歌词偏早或偏晚时调整</string>
+    <string name="version_pill">与 %1$s 版本不一致 · 轻点查看</string>
+    <string name="version_title">版本</string>
+    <string name="version_this_phone">此手机</string>
+    <string name="version_value">MediaDuet %1$s</string>
+    <string name="version_unknown">版本未知</string>
+    <string name="version_mismatch_title">两端版本不一致</string>
+    <string name="version_mismatch_text">%1$s 使用 MediaDuet %2$s，此手机为 %3$s。新功能可能无法互通，请将两端更新到同一版本。</string>
+    <string name="version_patch_text">%1$s 使用 MediaDuet %2$s（此手机：%3$s）。建议将两端更新到同一版本。</string>
+    <string name="version_dismiss">这两个版本不再提醒</string>
+    <string name="mode_header">使用方式</string>
+    <string name="mode_linked">搭配电脑使用</string>
+    <string name="mode_linked_text">查看并控制电脑上正在播放的内容，电脑也能看到这台手机。</string>
+    <string name="mode_standalone">仅此手机</string>
+    <string name="mode_standalone_text">为这台手机的媒体提供播放器、歌词和控制。无需电脑，也不会监听任何连接。</string>
+    <string name="mode_welcome_title">欢迎使用 MediaDuet</string>
+    <string name="mode_welcome_text">你想怎样使用它？之后随时可以在设置中更改。</string>
+    <string name="mode_continue">继续</string>
+    <string name="settings_online_lyrics">在手机上查找歌词</string>
+    <string name="settings_online_lyrics_text">电脑没有歌词时，用歌名、歌手和时长在网易云音乐、QQ 音乐和 LRCLIB 中搜索。不会发送其他任何信息。</string>
+    <string name="about_developer">开发者</string>
+    <string name="about_email">邮箱</string>
+    <string name="about_email_chooser">发送邮件</string>
 </resources>
