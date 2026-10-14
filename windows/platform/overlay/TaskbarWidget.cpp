@@ -415,6 +415,7 @@ struct TaskbarWidget::Impl {
     bool enabled = false;
     std::string content = "auto";
     std::string position = "left";
+    std::string align = "auto";
     int offset = 0;
     float widthDip = 360.f;
     float fontSize = 13.f;
@@ -435,6 +436,7 @@ struct TaskbarWidget::Impl {
     bool shownFlag = false;
     std::string reason = "disabled";
     ov::Rect rect;
+    bool alignRight = false; // text anchored to the right edge (from the placement)
     UINT dpi = 96;
     bool hover = false;
     bool light = false;
@@ -621,7 +623,7 @@ struct TaskbarWidget::Impl {
         g.widgets = geo->widgets;
         g.group = geo->group;
         g.occupied = geo->occupied;
-        return ov::placeTaskbarWidget(g, position, offset, widthDip);
+        return ov::placeTaskbarWidget(g, position, offset, widthDip, align);
     }
 
     // ------------------------------------------------------------ window
@@ -780,6 +782,7 @@ struct TaskbarWidget::Impl {
             if (!ensureWindow()) return setState(false, "unavailable");
             bool moved = !(p.rect == rect);
             rect = p.rect;
+            alignRight = p.alignRight;
             if (moved) surface.release();
         }
         if (!windowValid()) {
@@ -841,7 +844,8 @@ struct TaskbarWidget::Impl {
     }
 
     // One text row: karaoke fill (fill != nullptr), shrink up to ~12 % and scroll
-    // long lines so the edge stays visible, fade the clipped side(s).
+    // long lines so the edge stays visible, fade the clipped side(s). A row that fits
+    // is anchored to the left or (alignRight) the right edge of x..x+w.
     void drawRow(const std::wstring& s, float size, DWRITE_FONT_WEIGHT weight, float x, float y, float w,
                  D2D1_COLOR_F color, const lyrics::FillSpan* fill, D2D1_COLOR_F dim) {
         auto* rt = surface.rt();
@@ -852,6 +856,7 @@ struct TaskbarWidget::Impl {
         float fx = fill ? fillX(e->carets, *fill) * k : 0.f;
         float off = fill ? lyrics::scrollOffset(tw, w, fx) : 0.f;
         bool clipped = tw > w + 0.5f;
+        if (!clipped && alignRight) x += w - tw;
         com_ptr<ID2D1Brush> mask;
         if (clipped) mask = pushFadeClip(rt, layer.get(), D2D1::RectF(x, y - 2, x + w, y + e->height * k + 2), off > 0.5f,
                                          off < tw - w - 0.5f, 14.f);
@@ -908,10 +913,12 @@ struct TaskbarWidget::Impl {
         rt->CreateSolidColorBrush(bgc, bg.put());
         rt->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(1, 4, w - 1, h - 4), 6, 6), bg.get());
 
-        float textRight = w - kPadDip;
+        // Hover buttons sit on the side away from the text anchor, so the text never moves
+        // when they appear.
+        float textLeft = kPadDip, textRight = w - kPadDip;
         bool showButtons = hover || content == "player";
         if (showButtons) {
-            float bx = w - kPadDip - 3 * kButtonDip;
+            float bx = alignRight ? kPadDip : w - kPadDip - 3 * kButtonDip;
             float cy = h / 2;
             btnPrev = D2D1::RectF(bx, cy - kButtonDip / 2, bx + kButtonDip, cy + kButtonDip / 2);
             btnPlay = D2D1::RectF(bx + kButtonDip, cy - kButtonDip / 2, bx + 2 * kButtonDip, cy + kButtonDip / 2);
@@ -921,12 +928,13 @@ struct TaskbarWidget::Impl {
             drawGlyph(L"\xE892", btnPrev, ib.get(), 13);
             drawGlyph(playing ? L"\xE769" : L"\xE768", btnPlay, ib.get(), 15);
             drawGlyph(L"\xE893", btnNext, ib.get(), 13);
-            textRight = bx - 4;
+            if (alignRight) textLeft = bx + 3 * kButtonDip + 4;
+            else textRight = bx - 4;
         } else {
             btnPrev = btnPlay = btnNext = {};
         }
 
-        float tw = std::max(20.f, textRight - kPadDip);
+        float tw = std::max(20.f, textRight - textLeft);
         int idx = currentLine();
         std::wstring line1, line2;
         bool karaoke = false;
@@ -953,8 +961,8 @@ struct TaskbarWidget::Impl {
         dim.a = 0.45f;
         lyrics::FillSpan span;
         if (karaoke) span = lyrics::fillAt(kara, playPos());
-        drawRow(line1, f1, DWRITE_FONT_WEIGHT_SEMI_BOLD, kPadDip, y, tw, fg, karaoke ? &span : nullptr, dim);
-        if (two) drawRow(line2, f2, DWRITE_FONT_WEIGHT_NORMAL, kPadDip, y + f1 * 1.3f, tw, c2, nullptr, c2);
+        drawRow(line1, f1, DWRITE_FONT_WEIGHT_SEMI_BOLD, textLeft, y, tw, fg, karaoke ? &span : nullptr, dim);
+        if (two) drawRow(line2, f2, DWRITE_FONT_WEIGHT_NORMAL, textLeft, y + f1 * 1.3f, tw, c2, nullptr, c2);
     }
 
     // ------------------------------------------------------------ input
@@ -1046,6 +1054,8 @@ void TaskbarWidget::configure(const nlohmann::json& t, bool animations, bool low
     i.enabled = t.value("enabled", true);
     i.content = t.value("content", std::string("auto"));
     i.position = t.value("position", std::string("left"));
+    i.align = t.value("align", std::string("auto"));
+    if (i.test.offscreen) i.alignRight = i.align == "right"; // no placement offscreen
     i.offset = t.value("offset", 0);
     i.widthDip = static_cast<float>(t.value("width", 360.0));
     i.fontSize = static_cast<float>(t.value("fontSize", 13.0));

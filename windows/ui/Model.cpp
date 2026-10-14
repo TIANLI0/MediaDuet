@@ -280,6 +280,7 @@ namespace mdui
         a.state = JStr(j, "state", "off");
         a.device = JStr(j, "device");
         a.error = JStr(j, "error");
+        a.errorCode = JStr(j, "errorCode");
         return a;
     }
 

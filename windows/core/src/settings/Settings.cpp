@@ -35,7 +35,7 @@ json defaults() {
   "smtcBridge": true,
   "compat": {"neteaseDesktop": true},
   "artwork": {"online": true},
-  "taskbar": {"enabled": true, "content": "auto", "position": "left", "offset": 0, "width": 360, "fontSize": 13},
+  "taskbar": {"enabled": true, "content": "auto", "position": "left", "align": "auto", "offset": 0, "width": 360, "fontSize": 13},
   "lyrics": {
     "online": true,
     "providers": ["netease", "qqmusic", "lrclib"],
@@ -166,6 +166,7 @@ json normalize(json s) {
     auto& tb = s["taskbar"];
     oneOf(tb, "content", {"auto", "lyrics", "player"}, "auto");
     oneOf(tb, "position", {"left", "right"}, "left");
+    oneOf(tb, "align", {"auto", "left", "right"}, "auto");
     clampNum(tb, "offset", -4000, 4000);
     clampNum(tb, "width", 160, 1200);
     clampNum(tb, "fontSize", 9, 24);

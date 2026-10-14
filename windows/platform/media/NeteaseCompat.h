@@ -36,6 +36,14 @@ public:
     std::optional<media::MediaSessionInfo> session() const;
     // NetEase song id of the current track (0 if unknown) for exact lyrics.
     int64_t songId() const { return songId_; }
+
+    // NetEase's own system media session (its "Windows media controls" option) carries title,
+    // artist, cover and play state but no timeline. Fills in what is missing: the duration from
+    // NetEase's local play queue and a position estimated from the time spent playing since the
+    // track changed (re-anchored on every play / pause). No-op when the session has a duration.
+    void supplement(media::MediaSessionInfo& s);
+    // True when the session's position is an estimate (compat session or supplemented).
+    bool positionEstimated(const std::string& key) const { return key == kKey || (!supKey_.empty() && key == supSession_); }
     bool execute(media::CommandAction action);
 
     static constexpr const char* kKey = "cloudmusic.exe#compat";
@@ -48,6 +56,12 @@ private:
     void detach();
     void onTitle();
     void enrich(const std::string& title, const std::string& artist, uint64_t gen);
+    struct QueueMatch {
+        int64_t id = 0, durationMs = 0;
+        std::string album, pic;
+    };
+    // Looks the track up in NetEase's local play queue (blocking file read: worker thread only).
+    static QueueMatch lookupQueue(const std::string& title, const std::string& artist);
 
     IScheduler& sched_;
     ArtworkCache& art_;
@@ -66,6 +80,13 @@ private:
     int64_t posMs_ = 0;   // accumulated audible time at posAt_
     int64_t posAt_ = 0;
     uint64_t gen_ = 0;
+    // supplement(): estimator for NetEase's own session.
+    std::string supKey_;      // title + artist of the supplemented track
+    std::string supSession_;  // its session key
+    bool supPlaying_ = false;
+    int64_t supPos_ = 0, supAt_ = 0;
+    std::optional<int64_t> supDuration_;
+    uint64_t supGen_ = 0;
     std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
 };
 

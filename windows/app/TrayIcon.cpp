@@ -19,6 +19,7 @@ enum : UINT {
     IdPrev,
     IdSettings,
     IdExit,
+    IdA2dp,
     IdModeBase = 200
 };
 const char* kModes[] = {"off", "windows_first", "android_first", "latest", "custom"};
@@ -102,6 +103,7 @@ void TrayIcon::showMenu() {
     AppendMenuW(m, MF_STRING, IdOpen, tr("open"));
     AppendMenuW(m, MF_STRING, IdCompact, tr("compact"));
     AppendMenuW(m, MF_STRING | (st.lyricsOn ? MF_CHECKED : 0), IdLyrics, tr("lyrics"));
+    if (st.a2dpAvailable) AppendMenuW(m, MF_STRING | (st.a2dpOn ? MF_CHECKED : 0), IdA2dp, tr("a2dp"));
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     UINT ctl = st.canControl ? MF_STRING : MF_STRING | MF_GRAYED;
     AppendMenuW(m, ctl, IdPlayPause, tr("playpause"));
@@ -131,6 +133,7 @@ void TrayIcon::showMenu() {
     case IdOpen: cb_.onCommand("open"); break;
     case IdCompact: cb_.onCommand("compact"); break;
     case IdLyrics: cb_.onCommand("lyrics"); break;
+    case IdA2dp: cb_.onCommand("a2dp"); break;
     case IdPlayPause: cb_.onCommand("toggle"); break;
     case IdNext: cb_.onCommand("next"); break;
     case IdPrev: cb_.onCommand("previous"); break;

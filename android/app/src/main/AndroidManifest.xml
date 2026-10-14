@@ -111,6 +111,21 @@
             </intent-filter>
         </service>
 
+        <!-- Quick Settings tile: the PC plays this phone's Bluetooth audio (audio.sink.set). -->
+        <service
+            android:name=".service.PcSpeakerTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_mc_speaker"
+            android:label="@string/tile_pc_speaker"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.TOGGLEABLE_TILE"
+                android:value="true" />
+        </service>
+
         <receiver
             android:name=".service.BootReceiver"
             android:exported="false">

@@ -116,6 +116,8 @@ void HostApp::init() {
                 settings_.save(settingsPath_);
                 overlay_->setEnabled(!overlay_->enabled());
                 markDirty();
+            } else if (c == "a2dp") {
+                setA2dp(!a2dp_->active());
             } else if (c == "toggle" || c == "next" || c == "previous") {
                 Side s;
                 if (auto* f = focused(&s))
@@ -143,6 +145,8 @@ void HostApp::init() {
             st.lyricsOn = overlay_->enabled();
             st.policyMode = settings_.get<std::string>("policy.mode", "windows_first");
             st.canControl = focused() != nullptr;
+            st.a2dpAvailable = !standalone() && (a2dp_->status().available || a2dp_->active());
+            st.a2dpOn = a2dp_->active();
             return st;
         },
         [this] {
@@ -169,7 +173,26 @@ void HostApp::init() {
     ipc_->start();
 
     smtc_ = std::make_unique<platform::SmtcBridge>(sched_, [this](CommandAction a, std::optional<int64_t> pos) {
-        if (auto* r = remote_.activeSession()) sendUserCommand(Side::Remote, r->key, a, pos, "smtc");
+        auto* r = remote_.activeSession();
+        if (!r) return;
+        // The bridged phone session is Windows' "current" media session, so play / pause that
+        // headsets fire on their own reach it: a Bluetooth headset switching over to the PC for a
+        // notification ding, or into its call profile when a game opens voice chat. Those arrive
+        // right after a stream starts or the output device changes; real key presses don't.
+        if (a == CommandAction::Pause || a == CommandAction::Play || a == CommandAction::Toggle || a == CommandAction::Stop) {
+            int64_t now = sched_.nowMs();
+            int64_t sinceSound = audio_ && audio_->lastStreamStartMs() >= 0 ? now - audio_->lastStreamStartMs() : -1;
+            int64_t sinceOutput = outputChangedAt_ >= 0 ? now - outputChangedAt_ : -1;
+            bool afterSound = sinceSound >= 0 && sinceSound < kSystemCommandWindowMs;
+            bool afterOutput = sinceOutput >= 0 && sinceOutput < kSystemCommandWindowMs;
+            if (afterSound || afterOutput) {
+                log::info("host", "ignored {} from Windows media controls {} ms after {} (headset / system, not a key press)",
+                          media::toString(a), afterSound ? sinceSound : sinceOutput,
+                          afterSound ? "a sound started on this PC" : "the output device changed");
+                return;
+            }
+        }
+        sendUserCommand(Side::Remote, r->key, a, pos, "smtc");
     });
     smtc_->init(tray_->hwnd());
 
@@ -208,6 +231,8 @@ void HostApp::init() {
 
     a2dp_ = std::make_unique<platform::A2dpSink>(sched_, [this] {
         updateSuspension();
+        sendSinkState();
+        updateTray();
         markDirty();
     });
     a2dp_->start();
@@ -215,6 +240,7 @@ void HostApp::init() {
     volume_ = std::make_unique<platform::VolumeControl>(sched_, [this](const platform::VolumeControl::State& s) {
         bool deviceChanged = s.deviceId != localVol_.deviceId;
         bool latencyChanged = s.bluetooth != localVol_.bluetooth;
+        if (deviceChanged || latencyChanged) outputChangedAt_ = sched_.nowMs();
         localVol_ = s;
         if (deviceChanged) updateSuspension();
         if (latencyChanged) {
@@ -477,6 +503,8 @@ void HostApp::onLinkUp(const std::string& peerId, bool resumed) {
     sendLocalSnapshot();
     sendVolumeState();
     sendPolicyStatus();
+    lastSinkJson_.clear();
+    sendSinkState();
     updateTray();
     markDirty();
 }
@@ -577,6 +605,16 @@ void HostApp::onEnvelope(const std::string& peerId, const proto::Envelope& e, ui
                                  e.body.value("translation", std::string()));
         return;
     }
+    if (t == proto::types::AudioSinkSet) {
+        // The phone's "play on this PC" switch (Bluetooth A2DP into Windows).
+        bool enable = e.body.value("enable", false);
+        log::info("host", "phone {} Bluetooth audio on this PC", enable ? "requested" : "stopped");
+        if (standalone_) return;
+        setA2dp(enable);
+        lastSinkJson_.clear(); // always answer, also when nothing changed
+        sendSinkState();
+        return;
+    }
     if (t == proto::types::PolicyConfig) {
         auto mode = e.body.value("mode", std::string());
         if (!mode.empty()) {
@@ -658,7 +696,10 @@ void HostApp::rebuildLocal() {
     media::MediaSnapshot combined = gsmtcSnap_;
     bool neteaseInSmtc = false;
     for (auto& s : combined.sessions)
-        if (text::toLowerAscii(s.appId).find("cloudmusic") != std::string::npos) neteaseInSmtc = true;
+        if (text::toLowerAscii(s.appId).find("cloudmusic") != std::string::npos) {
+            neteaseInSmtc = true;
+            netease_->supplement(s); // its own session has no timeline: duration + estimated position
+        }
     netease_->setSmtcPresent(neteaseInSmtc);
     if (auto n = netease_->session()) {
         bool anyPlaying = false;
@@ -867,7 +908,7 @@ void HostApp::sendUserCommand(Side side, std::optional<std::string> key, Command
         return;
     }
     if (key) arbiter_->onUserCommand(policy::Side::Android, *key, action, false);
-    log::info("host", "PC -> phone: {}", media::toString(action));
+    log::info("host", "PC -> phone: {} ({})", media::toString(action), reason);
     cm_->sendCommand(cmd, [this, action](const link::CommandOutcome& o) {
         lastCommandLatency_ = o.latencyMs;
         if (!o.ok) log::warn("host", "phone {} failed: {} {}", media::toString(action), o.code, o.message);
@@ -1090,6 +1131,18 @@ void HostApp::sendVolumeState() {
     cm_->send(proto::types::VolumeState, {{"level", localVol_.level}, {"muted", localVol_.muted}, {"steps", localVol_.steps}});
 }
 
+void HostApp::sendSinkState() {
+    if (!cm_->isUp()) return;
+    const auto& a2 = a2dp_->status();
+    json body = {{"available", a2.available}, {"state", a2.state}};
+    if (!a2.device.empty()) body["device"] = a2.device;
+    if (!a2.errorCode.empty()) body["error"] = a2.errorCode;
+    std::string s = body.dump();
+    if (s == lastSinkJson_) return;
+    lastSinkJson_ = s;
+    cm_->send(proto::types::AudioSinkState, body);
+}
+
 void HostApp::sendPolicyStatus() {
     if (!cm_->isUp()) return;
     const auto& last = arbiter_->lastAction();
@@ -1215,8 +1268,16 @@ void HostApp::cancelPairing() {
 void HostApp::setA2dp(bool enable) {
     if (enable) {
         if (loopback_->running()) setLanSend(false); // never both: audio would loop
-        std::string name = cm_->status().peerName;
-        a2dp_->enable(name);
+        auto ls = cm_->status();
+        std::string name = ls.peerName;
+        uint64_t addr = 0;
+        std::string peerId = ls.peerId;
+        if (peerId.empty() && devices_.devices().size() == 1) peerId = devices_.devices().front().id;
+        if (auto* d = devices_.find(peerId)) {
+            addr = d->btAddress;
+            if (name.empty()) name = d->name;
+        }
+        a2dp_->enable(name, addr);
     } else {
         a2dp_->disable();
     }
@@ -1479,7 +1540,7 @@ json HostApp::sessionJson(const MediaSessionInfo& s, Side side) const {
     j["policyState"] = policy::toString(ps);
     j.erase("artwork");
     j["source"] = side == Side::Remote ? "remote" : s.key == platform::NeteaseCompat::kKey ? "compat" : "smtc";
-    j["positionEstimated"] = s.key == platform::NeteaseCompat::kKey;
+    j["positionEstimated"] = netease_->positionEstimated(s.key);
     // The UI shows lyrics at position − lyricsDelayMs (the host is the single source of truth).
     j["outputLatencyMs"] = outputLatencyFor(s, side);
     j["lyricsDelayMs"] = lyricsDelayFor(s, side);
@@ -1563,7 +1624,8 @@ json HostApp::buildState() const {
     const auto* caps = cm_->peerCaps();
     bool peerRecv = caps && std::find(caps->begin(), caps->end(), proto::caps::AudioRecvPcm) != caps->end();
     json audio = {{"a2dpSink", {{"available", a2.available}, {"state", a2.state}, {"device", a2.device},
-                                {"error", a2.error.empty() ? json(nullptr) : json(a2.error)}}},
+                                {"error", a2.error.empty() ? json(nullptr) : json(a2.error)},
+                                {"errorCode", a2.errorCode.empty() ? json(nullptr) : json(a2.errorCode)}}},
                   {"lanSend", {{"available", peerRecv && cm_->audioRoute().has_value()},
                                {"state", audioOffer_ && lb.state == "off" ? std::string("connecting") : lb.state},
                                {"error", lb.error.empty() ? json(nullptr) : json(lb.error)},

@@ -51,6 +51,7 @@ namespace winrt::MediaDuetUI::implementation
         void ShowVolume(VolumeUi& v, double level, bool muted);
         void ApplyVolume(VolumeUi& v, mdui::Volume const& vol);
         void UpdateVolume();
+        void UpdateA2dpQuick();
         void RefreshAll();
         void UpdateLink();
         void UpdateConnection();
@@ -92,6 +93,7 @@ namespace winrt::MediaDuetUI::implementation
         std::optional<mdui::Session> m_session;
         bool m_dirty{ false };
         bool m_closed{ false };
+        bool m_a2dpRequested{ false };   // the quick toggle asked for it: report a failure once
         bool m_settingsShown{ false };
         bool m_cardCompact{ false };   // short window: optional card rows collapsed
         SettingsPage* m_settings{ nullptr };   // implementation of m_settingsView (owned by the XAML tree)

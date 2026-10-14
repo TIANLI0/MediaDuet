@@ -215,9 +215,10 @@ void runOverlay(md::ManualScheduler& sched, const std::wstring& dir, UINT dpi, c
 }
 
 void runTaskbar(md::ManualScheduler& sched, const std::wstring& dir, UINT dpi, bool light,
-                std::vector<int> times = {1400, 7000, 11000, 15000, 21000, 27000}) {
+                std::vector<int> times = {1400, 7000, 11000, 15000, 21000, 27000}, const char* align = "left") {
     TaskbarWidget tb(sched, {}, {true, [] { return g_now; }, dpi, light});
-    tb.configure({{"enabled", true}, {"width", 360}, {"fontSize", 13}, {"translation", false}}, true, false);
+    tb.configure({{"enabled", true}, {"width", 360}, {"fontSize", 13}, {"translation", false}, {"align", align}}, true, false);
+    bool right = std::string(align) == "right";
     md::media::MediaSessionInfo s;
     s.title = g_showcaseLrc.empty() ? "Sample Track" : "\xE6\x99\x9A\xE9\xA3\x8E\xE6\x9D\xA5\xE4\xBF\xA1"; // 晚风来信
     s.artist = g_showcaseLrc.empty() ? "MediaDuet Demo" : "\xE6\x9E\x97\xE5\xB2\xB8";                          // 林岸
@@ -235,7 +236,7 @@ void runTaskbar(md::ManualScheduler& sched, const std::wstring& dir, UINT dpi, b
             g_now = t;
             if (!tb.renderOffscreen(w, h, hover, px)) continue;
             wchar_t name[96];
-            swprintf_s(name, L"taskbar%s_%05d%s", light ? L"_light" : L"", t, hover ? L"_hover" : L"");
+            swprintf_s(name, L"taskbar%s%s_%05d%s", light ? L"_light" : L"", right ? L"_right" : L"", t, hover ? L"_hover" : L"");
             save(dir, name, light ? Bg::TaskbarLight : Bg::TaskbarDark, px, {w, h});
         }
     }
@@ -302,5 +303,6 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, LPWSTR, int) {
     }
     runTaskbar(sched, dir, dpi, false);
     runTaskbar(sched, dir, dpi, true);
+    runTaskbar(sched, dir, dpi, false, {7000, 15000}, "right");
     return 0;
 }

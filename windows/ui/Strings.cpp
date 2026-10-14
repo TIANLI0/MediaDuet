@@ -1,6 +1,8 @@
 #include "pch.h"
 #include "Strings.h"
 
+#include "Model.h"
+
 #include <winrt/Microsoft.Windows.ApplicationModel.Resources.h>
 
 #include <optional>
@@ -100,5 +102,12 @@ namespace mdui
     {
         auto pattern = Str(key);
         return Format(pattern, args);
+    }
+
+    std::wstring A2dpErrorText(std::string const& code, std::string const& fallback)
+    {
+        for (auto known : { "no_device", "ambiguous", "timeout", "denied", "failed" })
+            if (code == known) return std::wstring(Str(L"A2dpError_" + Widen(code)));
+        return fallback.empty() ? std::wstring(Str(L"A2dpError_failed")) : Widen(fallback);
     }
 }

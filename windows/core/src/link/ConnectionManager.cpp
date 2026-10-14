@@ -526,14 +526,14 @@ void ConnectionManager::onConnUp(Peer& p, Slot& s, Connection& c, const SessionC
     listener_.onStatusChanged();
 }
 
-int64_t ConnectionManager::requiredBtStability(Peer& p) {
+int64_t ConnectionManager::requiredLanStability(Peer& p) {
     int64_t now = sched_.nowMs();
-    p.btDrops.erase(std::remove_if(p.btDrops.begin(), p.btDrops.end(),
-                                   [&](int64_t t) { return now - t > kFlapWindowMs; }),
-                    p.btDrops.end());
-    // No recent Bluetooth failures (e.g. at start-up): Bluetooth wins immediately.
-    if (p.btDrops.empty()) return 0;
-    int shift = std::min<int>(static_cast<int>(p.btDrops.size()) - 1, 5);
+    p.lanDrops.erase(std::remove_if(p.lanDrops.begin(), p.lanDrops.end(),
+                                    [&](int64_t t) { return now - t > kFlapWindowMs; }),
+                     p.lanDrops.end());
+    // No recent LAN failures (e.g. at start-up): LAN wins immediately.
+    if (p.lanDrops.empty()) return 0;
+    int shift = std::min<int>(static_cast<int>(p.lanDrops.size()) - 1, 5);
     return std::min(kMaxStabilityMs, cfg_.switchBackDelayMs << shift);
 }
 
@@ -546,20 +546,23 @@ void ConnectionManager::choosePrimary(Peer& p) {
     case ConnMode::BluetoothOnly: want = bt; break;
     case ConnMode::LanOnly: want = lan; break;
     case ConnMode::Auto:
-        if (bt && p.primary == lan && lan) {
-            int64_t need = requiredBtStability(p);
-            int64_t age = sched_.nowMs() - p.bt.upSince;
+        // LAN first: Bluetooth RFCOMM adds noticeably more latency (measured on real
+        // phones), so it is the fallback; a LAN link that came back after a drop has to
+        // stay up for the switch-back delay (longer when it keeps dropping) first.
+        if (lan && p.primary == bt && bt) {
+            int64_t need = requiredLanStability(p);
+            int64_t age = sched_.nowMs() - p.lan.upSince;
             if (age >= need) {
-                want = bt;
-            } else {
                 want = lan;
+            } else {
+                want = bt;
                 std::string peerId = p.rec.id;
                 p.promote.start(need - age, [this, peerId] {
                     if (Peer* q = find(peerId)) choosePrimary(*q);
                 });
             }
         } else {
-            want = bt ? bt : lan;
+            want = lan ? lan : bt;
         }
         break;
     }
@@ -737,7 +740,7 @@ void ConnectionManager::onConnClosed(const std::string& peerId, TransportKind k,
     }
     if (code == "auth_failed") ++p->authFailures;
     if (!reason.empty() && reason != "disconnected by user") p->lastError = reason;
-    if (k == TransportKind::Bluetooth && wasUp) p->btDrops.push_back(sched_.nowMs());
+    if (k == TransportKind::Lan && wasUp) p->lanDrops.push_back(sched_.nowMs());
     if (s.peerAskedBackoff) {
         // The phone user disconnected on purpose: retry rarely (presence events still reset this).
         s.failures = 8;

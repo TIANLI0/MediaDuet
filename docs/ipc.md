@@ -62,7 +62,7 @@ Every message has a `"type"` field. Messages from the UI to the host may carry a
              "windowsAudioActive":true,"activeApps":["chrome.exe"],
              "lastAction":{"what":"pause_remote","reason":"windows_audio_active","app":"chrome.exe","atTick":123}},
   "audio": {
-    "a2dpSink": {"available":true,"state":"off","device":"OPPO Find X8 Ultra","error":null},
+    "a2dpSink": {"available":true,"state":"off","device":"OPPO Find X8 Ultra","error":null,"errorCode":null},
     "lanSend":  {"available":true,"state":"off","error":null}
   },
   "pairing": {"state":"idle","sas":null,"peerName":null,"error":null},
@@ -212,7 +212,7 @@ lyrics view for such a change; the host re-keys the current lyrics to the new
 | `device.disconnect` | `id` | Disconnect and pause auto-reconnect until `device.connect`. |
 | `connect.manual` | `host`, `port` | Remember a manual LAN endpoint for the paired phone and connect. |
 | `discover` | `enable` (bool) | Start/stop discovery (BT paired phones with the MediaDuet SDP record + DNS-SD). |
-| `audio.a2dpSink` | `enable` | Open/close Bluetooth audio receive (AudioPlaybackConnection). |
+| `audio.a2dpSink` | `enable` | Open/close Bluetooth audio receive (AudioPlaybackConnection). `state.audio.a2dpSink.errorCode` ∈ `no_device`, `ambiguous`, `timeout`, `denied`, `failed` (same codes the phone gets in `audio.sink.state`). The phone can switch it too (`audio.sink.set`), and the tray menu has a check item while a phone offers Bluetooth audio. |
 | `audio.lanSend` | `enable` | Start/stop experimental Windows → Android PCM streaming. |
 | `lyrics.overlay` | `visible` | Show/hide the desktop lyrics overlay (rendered by the host). |
 | `lyrics.offset` | `appId` (session `app.id`; default: the focused session's), `deltaMs` (int, + = lyrics later) **or** `reset: true` | Adjusts the per-app lyrics offset `lyrics.offsets[appId]` (clamped to ±5000 ms; 0 removes the entry), persists it and updates every session's `lyricsDelayMs`. Answers with `result`. |
@@ -293,6 +293,7 @@ Unknown keys are preserved. Defaults:
     "enabled": true,
     "content": "auto",
     "position": "left",
+    "align": "auto",
     "offset": 0,
     "width": 360,
     "fontSize": 13
@@ -369,11 +370,19 @@ Unknown keys are preserved. Defaults:
 * `taskbar`: Windows 11/10 taskbar widget drawn by the host inside the taskbar.
   `content` ∈ `auto` (lyrics when available, otherwise title/artist), `lyrics`,
   `player` (title + controls); `position` ∈ `left`, `right` (next to the tray);
-  `offset` shifts it in physical pixels; `width`/`fontSize` in DIPs.
+  `align` ∈ `auto` (hug the task icons), `left`, `right`: the edge of the free
+  area the widget sticks to, and the side its text is anchored to — `left` /
+  `right` stay at the steady end of the area (screen edge, Widgets, tray) while
+  the task icons change; `offset` shifts it away from that edge in physical
+  pixels; `width`/`fontSize` in DIPs.
 * `compat.neteaseDesktop`: NetEase Cloud Music for Windows support when it does
   not publish a media session (title from its window, state from its audio,
   control via its window). Such sessions carry `"source":"compat"` and
-  `"positionEstimated":true`.
+  `"positionEstimated":true`. When NetEase publishes its own media session (its
+  "Windows media controls" option) without a timeline, the host fills in the
+  duration from NetEase's local play queue and an estimated position (time
+  playing since the track changed); that session is flagged
+  `"positionEstimated":true` as well and cannot seek.
 * `policy.priorities` maps an app id (Windows exe name or AUMID, or Android
   package) to an integer priority (higher wins) for `custom` mode.
 * `policy.blacklist` / `whitelist`: Windows process names (e.g. `chrome.exe`).

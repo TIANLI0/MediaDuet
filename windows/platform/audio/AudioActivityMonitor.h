@@ -48,6 +48,11 @@ public:
     // Called (scheduler thread) when an app's volume/mute changes, with its process name.
     void setOnAppVolumeChanged(std::function<void(const std::string& process)> fn);
     bool active() const { return active_; }
+    // When a stream last started on this PC (scheduler ms, -1 = never): any app's render stream,
+    // system / notification sounds and microphone (capture) streams alike, regardless of the
+    // blacklist and of how short or quiet it is. Headsets react to such starts (switching to the
+    // PC, to the call profile) with play / pause commands of their own; see HostApp.
+    int64_t lastStreamStartMs() const;
 
     // Internal: called from COM callbacks via the scheduler.
     struct Impl;

@@ -15,6 +15,7 @@ import app.mediaduet.protocol.MediaCommand
 import app.mediaduet.protocol.MediaSessionInfo
 import app.mediaduet.protocol.MediaSnapshot
 import app.mediaduet.protocol.PolicyStatus
+import app.mediaduet.protocol.SinkState
 import app.mediaduet.protocol.VolumeState
 import app.mediaduet.util.MdLog
 import app.mediaduet.util.MonoClock
@@ -76,6 +77,19 @@ class RemoteMediaStore(
     private val _policy = MutableStateFlow<PolicyStatus?>(null)
     val policy: StateFlow<PolicyStatus?> = _policy
 
+    /** The PC's Bluetooth audio receiver (`audio.sink.state`), null until reported / unsupported. */
+    private val _sink = MutableStateFlow<SinkState?>(null)
+    val sink: StateFlow<SinkState?> = _sink
+
+    /** A switch was flipped here: shown as connecting until the PC reports back. */
+    fun onSinkRequested(enable: Boolean) {
+        _sink.update { it?.copy(state = if (enable) SinkState.CONNECTING else SinkState.OFF, error = null) }
+    }
+
+    fun onSinkState(state: SinkState) {
+        _sink.value = state
+    }
+
     /** The PC's media volume (`volume.state`), null until reported. */
     private val _volume = MutableStateFlow<VolumeState?>(null)
     val volume: StateFlow<VolumeState?> = _volume
@@ -103,6 +117,7 @@ class RemoteMediaStore(
             _state.value = null
             _policy.value = null
             _volume.value = null
+            _sink.value = null
             synchronized(this) { assemblies.clear(); requestedAt.clear(); missing.clear() }
         } else {
             _state.value = current.copy(connected = true)

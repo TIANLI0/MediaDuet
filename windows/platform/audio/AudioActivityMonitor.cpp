@@ -78,6 +78,13 @@ struct AudioActivityMonitor::Impl {
     ScopedTimer sampleTimer;
     ScopedTimer rescanTimer;
     std::set<std::string> lastApps;
+    int64_t lastStreamStart = -1;
+
+    void noteStreamStart(const Session& s) {
+        if (s.pid == GetCurrentProcessId()) return;
+        if (std::find(cfg.ignorePids.begin(), cfg.ignorePids.end(), s.pid) != cfg.ignorePids.end()) return;
+        lastStreamStart = sched.nowMs();
+    }
     bool lastComm = false;
     std::shared_ptr<bool> alive = std::make_shared<bool>(true);
     std::function<void(const std::string&)> onAppVolume;
@@ -271,6 +278,7 @@ struct AudioActivityMonitor::Impl {
             s.volume = c.try_as<ISimpleAudioVolume>();
         }
         c->GetState(&s.state);
+        if (s.state == AudioSessionStateActive) noteStreamStart(s);
         s.events = winrt::make<SessionEvents>(this, key);
         c->RegisterAudioSessionNotification(s.events.get());
         sessions[key] = std::move(s);
@@ -289,6 +297,7 @@ struct AudioActivityMonitor::Impl {
         if (st == AudioSessionStateExpired) return removeSession(key);
         auto it = sessions.find(key);
         if (it == sessions.end()) return;
+        if (st == AudioSessionStateActive && it->second.state != AudioSessionStateActive) noteStreamStart(it->second);
         it->second.state = st;
         evaluate();
     }
@@ -373,6 +382,8 @@ struct AudioActivityMonitor::Impl {
 };
 
 // ---------------------------------------------------------------------------------------------
+
+int64_t AudioActivityMonitor::lastStreamStartMs() const { return impl_ ? impl_->lastStreamStart : -1; }
 
 AudioActivityMonitor::AudioActivityMonitor(IScheduler& sched, Fn onChange)
     : impl_(std::make_unique<Impl>(sched, std::move(onChange), this)) {}

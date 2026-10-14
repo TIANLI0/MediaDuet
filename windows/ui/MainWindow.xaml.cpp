@@ -239,6 +239,11 @@ namespace winrt::MediaDuetUI::implementation
         });
 
         SourceFlyout().Opening([this](auto&&, auto&&) { BuildSourceMenu(); });
+        A2dpQuickToggle().Click([this](auto&&, auto&&) {
+            bool on = A2dpQuickToggle().IsChecked().Value();
+            m_a2dpRequested = on;
+            Controller::Get().SetA2dpSink(on);
+        });
         OverlayToggle().Click([this](auto&&, auto&&) {
             Controller::Get().SetLyricsOverlay(OverlayToggle().IsChecked().Value());
         });
@@ -608,8 +613,42 @@ namespace winrt::MediaDuetUI::implementation
         UpdateLyrics();
         auto const& st = Controller::Get().Model();
         OverlayToggle().IsChecked(st.overlayVisible);
+        UpdateA2dpQuick();
         UpdateVolume();
         UpdateTimer();
+    }
+
+    void MainWindow::UpdateA2dpQuick()
+    {
+        auto const& st = Controller::Get().Model();
+        auto const& a = st.a2dpSink;
+        bool show = st.valid && !st.standalone && (a.available || a.IsOn());
+        A2dpQuickToggle().Visibility(show ? Visibility::Visible : Visibility::Collapsed);
+        if (!show) return;
+        bool on = a.state == "on" || a.state == "connecting";
+        if (A2dpQuickToggle().IsChecked().Value() != on) A2dpQuickToggle().IsChecked(on);
+        std::wstring tip = std::wstring(Str(L"A2dpQuickTitle"));
+        constexpr wchar_t nl = L'\n';
+        if (a.state == "connecting") tip += nl + std::wstring(Str(L"AudioState_connecting"));
+        else if (a.state == "on") tip += nl + StrF(L"A2dpQuickOn", { Widen(a.device.empty() ? st.PeerDisplayName() : a.device) });
+        else tip += nl + std::wstring(Str(L"A2dpQuickHint"));
+        if (a.state == "error")
+        {
+            std::wstring why = A2dpErrorText(a.errorCode, a.error);
+            tip += nl + why;
+            if (m_a2dpRequested)
+            {
+                m_a2dpRequested = false;
+                ErrorBar().Title(Str(L"A2dpQuickFailed"));
+                ErrorBar().Message(why);
+                ErrorBar().IsOpen(true);
+            }
+        }
+        else if (a.state == "on")
+        {
+            m_a2dpRequested = false;
+        }
+        ToolTipService::SetToolTip(A2dpQuickToggle(), box_value(tip));
     }
 
     void MainWindow::UpdateLink()

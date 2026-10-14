@@ -290,6 +290,7 @@ fun LyricsDisplayPage(ui: UiContext, onBack: () -> Unit) {
     val translations by settings.showTranslations.collectAsStateWithLifecycle()
     val mirror by settings.mirrorEnabled.collectAsStateWithLifecycle()
     val online by settings.onlineLyrics.collectAsStateWithLifecycle()
+    val lyricsSize by settings.lyricsSize.collectAsStateWithLifecycle()
     val mode by settings.mode.collectAsStateWithLifecycle()
     ScreenScaffold(stringResource(R.string.settings_lyrics_header), backdrop = ui.backdrop, onBack = onBack) {
         GlassCard(ui.backdrop, Modifier.fillMaxWidth()) {
@@ -312,6 +313,9 @@ fun LyricsDisplayPage(ui: UiContext, onBack: () -> Unit) {
                 onClick = { settings.setOnlineLyrics(!online) },
                 role = Role.Switch,
             )
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
+            Spacer(Modifier.height(4.dp))
+            LyricsSizePicker(lyricsSize) { settings.setLyricsSize(it) }
         }
         LyricsTimingSettings(ui)
         if (!mode.linked) return@ScreenScaffold

@@ -51,7 +51,7 @@ Otherwise exponential back-off with ±20 % jitter (BT 2 s → 60 s, LAN 1 s → 
 ## Transport selection
 
 See [architecture.md](architecture.md#link-policy-connectionmanager). Unit tests:
-`windows/tests/test_connection_manager.cpp` (BT preferred, failover, stable
+`windows/tests/test_connection_manager.cpp` (LAN preferred in Auto, failover to Bluetooth, stable
 switch-back, flapping, exactly-once commands, resume, back-off, no adapter,
 revocation, heartbeats).
 

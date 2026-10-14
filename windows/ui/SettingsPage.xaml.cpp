@@ -238,6 +238,7 @@ namespace winrt::MediaDuetUI::implementation
         Bind(TaskbarEnabledToggle(), "taskbar.enabled", true);
         Bind(TaskbarContentCombo(), "taskbar.content", "auto");
         Bind(TaskbarPositionCombo(), "taskbar.position", "left");
+        Bind(TaskbarAlignCombo(), "taskbar.align", "auto");
         Bind(TaskbarOffsetSlider(), TaskbarOffsetValue(), "taskbar.offset", 0, 2);
         Bind(TaskbarWidthBox(), "taskbar.width", 360);
         Bind(TaskbarFontSizeBox(), "taskbar.fontSize", 13);
@@ -1348,8 +1349,9 @@ namespace winrt::MediaDuetUI::implementation
         std::wstring s = a2dp.available ? std::wstring(StrF(L"AudioStatus", { stateName(a2dp) })) : std::wstring(Str(L"A2dpUnavailable"));
         if (!a2dp.device.empty()) s += L"  \x00B7  " + Widen(a2dp.device);
         A2dpStatus().Text(s);
-        A2dpError().Message(Widen(a2dp.error));
-        A2dpError().IsOpen(!a2dp.error.empty());
+        bool a2dpFailed = a2dp.state == "error" || !a2dp.error.empty();
+        A2dpError().Message(a2dpFailed ? hstring(A2dpErrorText(a2dp.errorCode, a2dp.error)) : hstring{});
+        A2dpError().IsOpen(a2dpFailed);
 
         auto const& lan = st.lanSend;
         LanSendToggle().IsOn(lan.IsOn());

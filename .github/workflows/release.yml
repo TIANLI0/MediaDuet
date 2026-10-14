@@ -1,6 +1,6 @@
 name: Release
 
-# Push a tag like v1.3.0 (matching every version number in the repo) to build and publish:
+# Push a tag like v1.3.1 (matching every version number in the repo) to build and publish:
 #   MediaDuet-<v>-x64-setup.exe, MediaDuet-<v>-win-x64.zip, MediaDuet-<v>-android.apk
 # Android signing needs these repository secrets (Settings > Secrets and variables > Actions):
 #   ANDROID_KEYSTORE_BASE64  base64 of the release keystore (.jks)
@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing tag to (re)build, e.g. v1.3.0"
+        description: "Existing tag to (re)build, e.g. v1.3.1"
         required: true
 
 permissions:

@@ -2,6 +2,12 @@ package app.mediaduet.ui.components
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.VectorConverter
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -326,15 +332,27 @@ fun InfoRow(
     role: Role = Role.Button,
 ) {
     val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
+    // The rounded press highlight is drawn behind the content instead of clipping the row: a clip
+    // would also cut off a liquid-glass switch, whose thumb swells past its track while pressed.
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val highlight by animateFloatAsState(if (pressed) 1f else 0f, tween(if (pressed) 60 else 220), label = "rowPress")
+    val highlightColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
     Row(
         modifier
             .fillMaxWidth()
             .then(
                 if (onClick != null) {
-                    Modifier.clip(RoundedCornerShape(12.dp)).clickable(role = role) {
-                        if (role == Role.Switch) haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.ContextClick)
-                        onClick()
-                    }
+                    Modifier
+                        .drawBehind {
+                            if (highlight > 0f) {
+                                drawRoundRect(highlightColor.copy(alpha = highlightColor.alpha * highlight), cornerRadius = CornerRadius(12.dp.toPx()))
+                            }
+                        }
+                        .clickable(interaction, indication = null, role = role) {
+                            if (role == Role.Switch) haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.ContextClick)
+                            onClick()
+                        }
                 } else Modifier,
             )
             .heightIn(min = 56.dp)

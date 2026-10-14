@@ -1,7 +1,6 @@
 package app.mediaduet.ui
 
 import android.graphics.Bitmap
-import android.os.Build
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -16,7 +15,6 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -44,25 +42,21 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
-import androidx.compose.ui.graphics.FilterQuality
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.core.graphics.scale
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import app.mediaduet.R
 import app.mediaduet.service.Engine
 import app.mediaduet.service.PermissionChecks
 import app.mediaduet.service.PermissionSnapshot
 import app.mediaduet.ui.components.AppIcons
+import app.mediaduet.ui.components.FlowingArtwork
 import app.mediaduet.ui.screens.AboutPage
 import app.mediaduet.ui.screens.ArbitrationPage
 import app.mediaduet.ui.screens.AudioPage
@@ -198,7 +192,10 @@ fun MediaDuetRoot(engine: Engine, requestedPage: MutableState<String?>) {
         Box(Modifier.fillMaxSize().background(glass.background)) {
             // Everything inside this box is what the mini player, sheets and dialogs refract.
             Box(Modifier.fillMaxSize().layerBackdrop(overlayBackdrop)) {
-                AmbientBackground(background, Modifier.fillMaxSize().layerBackdrop(pageBackdrop))
+                // Flows only behind Now Playing while something plays: Settings and dialogs keep a
+                // still background (the glass there would otherwise re-render every frame).
+                val flowing = !reduced && nav.section == Section.NOW && playerView?.playing == true
+                AmbientBackground(background, flowing, Modifier.fillMaxSize().layerBackdrop(pageBackdrop))
                 AnimatedContent(
                     targetState = nav.section,
                     transitionSpec = {
@@ -287,28 +284,18 @@ fun MediaDuetRoot(engine: Engine, requestedPage: MutableState<String?>) {
 }
 
 /**
- * The backdrop layer: the current artwork scaled to fill and heavily blurred with a flat scrim,
- * or a solid neutral colour. No gradients.
+ * The backdrop layer: the current artwork as a slowly flowing, heavily blurred colour field
+ * ([FlowingArtwork]) under a flat scrim, or a solid neutral colour. No gradients.
  */
 @Composable
-private fun AmbientBackground(artwork: Bitmap?, modifier: Modifier) {
+private fun AmbientBackground(artwork: Bitmap?, flowing: Boolean, modifier: Modifier) {
     val glass = LocalGlass.current
-    Crossfade(targetState = artwork, animationSpec = tween(600), modifier = modifier, label = "bg") { art ->
+    Crossfade(targetState = artwork, animationSpec = tween(900), modifier = modifier, label = "bg") { art ->
         if (art == null) {
             Box(Modifier.fillMaxSize().background(glass.background))
         } else {
-            val blurSupported = Build.VERSION.SDK_INT >= 31
-            // A tiny copy is cheap to blur; below API 31 bilinear upscaling alone softens it.
-            val small = remember(art) { art.scale(if (blurSupported) 64 else 20, if (blurSupported) 64 else 20).asImageBitmap() }
             Box(Modifier.fillMaxSize().background(glass.background)) {
-                Image(
-                    small, null,
-                    Modifier
-                        .fillMaxSize()
-                        .then(if (blurSupported) Modifier.blur(72.dp) else Modifier),
-                    contentScale = ContentScale.Crop,
-                    filterQuality = FilterQuality.Low,
-                )
+                FlowingArtwork(art, animate = flowing, modifier = Modifier.fillMaxSize())
                 Box(Modifier.fillMaxSize().background(glass.scrim))
             }
         }

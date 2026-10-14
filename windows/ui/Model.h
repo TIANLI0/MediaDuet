@@ -184,6 +184,7 @@ namespace mdui
         std::string state{ "off" };
         std::string device;
         std::string error;
+        std::string errorCode;   // a2dpSink: no_device | ambiguous | timeout | denied | failed
         bool IsOn() const { return !state.empty() && state != "off"; }
     };
 

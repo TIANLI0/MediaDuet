@@ -23,6 +23,7 @@ import app.mediaduet.protocol.MediaCommand
 import app.mediaduet.protocol.MediaSnapshot
 import app.mediaduet.protocol.MsgType
 import app.mediaduet.protocol.PolicyStatus
+import app.mediaduet.protocol.SinkState
 import app.mediaduet.protocol.StrLimit
 import app.mediaduet.protocol.VolumeSet
 import app.mediaduet.protocol.VolumeState
@@ -71,6 +72,8 @@ interface LinkHost {
     fun onLyrics(peerId: String, lyrics: LyricsPush)
     fun onLyricsNone(peerId: String, trackId: String)
     fun onPolicyStatus(peerId: String, status: PolicyStatus)
+    /** The PC's Bluetooth audio receiver changed (`audio.sink.state`). */
+    fun onSinkState(peerId: String, state: SinkState) = Unit
     suspend fun onAudioOffer(peerId: String, offer: AudioOffer, baseKey: ByteArray): JsonObject
     fun onAudioStop(peerId: String, streamId: String, reason: String)
 
@@ -435,6 +438,7 @@ class LinkManager(
             MsgType.LYRICS_PUSH -> host.onLyrics(peerId, LyricsPush.parse(env.body))
             MsgType.LYRICS_NONE -> host.onLyricsNone(peerId, env.body.requireString("trackId", 64))
             MsgType.POLICY_STATUS -> host.onPolicyStatus(peerId, PolicyStatus.parse(env.body))
+            MsgType.AUDIO_SINK_STATE -> host.onSinkState(peerId, SinkState.parse(env.body))
             MsgType.AUDIO_OFFER -> {
                 val offer = AudioOffer.parse(env.body)
                 val base = conn.sessionKeys?.keyC2s ?: throw BadMessageException("no keys")
@@ -608,6 +612,16 @@ class LinkManager(
             session.artworkRequests[env.id] = ref.hash
             if (session.artworkRequests.size > 64) session.artworkRequests.remove(session.artworkRequests.keys.min())
         }
+    }
+
+    /**
+     * Asks the PC to start / stop playing this phone's Bluetooth audio (§8.2 audio.sink.set); the
+     * PC answers with `audio.sink.state`.
+     */
+    suspend fun sendSinkSet(enable: Boolean): Boolean = withContext(dispatcher) {
+        val session = currentSession() ?: return@withContext false
+        if (Caps.AUDIO_A2DP_SINK !in session.peerCaps) return@withContext false
+        send(session, null, MsgType.AUDIO_SINK_SET, buildJsonObject { put("enable", enable) }) != null
     }
 
     /** Asks the Windows arbitration engine to change mode (§8.2 policy.config). */

@@ -170,6 +170,8 @@ fun rememberLyricsClock(
 private val LyricStyle = TextStyle(fontSize = 27.sp, lineHeight = 35.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.2).sp)
 private val TranslationStyle = TextStyle(fontSize = 17.sp, lineHeight = 23.sp, fontWeight = FontWeight.Medium)
 
+private fun TextStyle.scaled(k: Float) = if (k == 1f) this else copy(fontSize = fontSize * k, lineHeight = lineHeight * k)
+
 /** Opacity of the not-yet-sung part of the current line (inside a fully opaque line). */
 private const val UNSUNG_ALPHA = 0.42f
 
@@ -202,6 +204,8 @@ fun SyncedLyrics(
     bottomFade: androidx.compose.ui.unit.Dp = 96.dp,
     /** Space at the bottom covered by floating controls (the "back to current" pill sits above it). */
     bottomObscured: androidx.compose.ui.unit.Dp = 0.dp,
+    /** Text size (LyricsSize.scale). */
+    textScale: Float = 1f,
 ) {
     val reduced = rememberReducedMotion()
     val rows = remember(lyrics) { LyricRows.build(lyrics) }
@@ -262,14 +266,15 @@ fun SyncedLyrics(
         LazyColumn(
             Modifier
                 .fillMaxSize()
-                // Alpha mask (not decoration): lines fade out at the top and bottom edges.
+                // Alpha mask (not decoration): lines dissolve at the top (under the header) and the
+                // bottom (under the floating controls) instead of being cut off.
                 .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
                 .drawWithContent {
                     drawContent()
-                    val top = 40.dp.toPx()
+                    val top = (size.height * 0.16f).coerceIn(56.dp.toPx(), 120.dp.toPx())
                     val bottom = bottomFade.toPx().coerceAtMost(size.height * 0.6f)
                     drawRect(
-                        Brush.verticalGradient(0f to Color.Transparent, 1f to Color.Black, startY = 0f, endY = top),
+                        Brush.verticalGradient(0f to Color.Transparent, 0.35f to Color.Black.copy(alpha = 0.35f), 1f to Color.Black, startY = 0f, endY = top),
                         size = Size(size.width, top),
                         blendMode = BlendMode.DstIn,
                     )
@@ -299,6 +304,7 @@ fun SyncedLyrics(
                         flash = i == flashIndex,
                         position = position,
                         showTranslation = showTranslations,
+                        textScale = textScale,
                         onClick = onSeek?.let { seek ->
                             {
                                 haptics.performHapticFeedback(HapticFeedbackType.Confirm)
@@ -335,9 +341,12 @@ private fun LyricLineItem(
     flash: Boolean,
     position: State<Long>,
     showTranslation: Boolean,
+    textScale: Float,
     onClick: (() -> Unit)?,
 ) {
     val color = MaterialTheme.colorScheme.onSurface
+    val lyricStyle = remember(textScale) { LyricStyle.scaled(textScale) }
+    val translationStyle = remember(textScale) { TranslationStyle.scaled(textScale) }
     val targetAlpha = when {
         isActive -> 1f
         browsing -> 0.5f
@@ -349,11 +358,12 @@ private fun LyricLineItem(
         if (reduced) snap() else spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow),
         label = "lyricScale",
     )
-    // Depth-of-field: a light blur growing with distance (API 31+, off while browsing).
-    val blurTarget = if (Build.VERSION.SDK_INT < 31 || reduced || browsing || isActive) 0f else min(distance, 4) * 0.7f
+    // Depth of field (AMLL / Apple Music): the blur grows with the distance from the current line
+    // (API 31+; off while browsing so every line can be read).
+    val blurTarget = if (Build.VERSION.SDK_INT < 31 || reduced || browsing || isActive) 0f else min(distance, 4) * 1.3f
     val blurDp by animateFloatAsState(blurTarget, tween(360), label = "lyricBlur")
     var layout by remember(row.line.text) { mutableStateOf<TextLayoutResult?>(null) }
-    val feather = with(LocalDensity.current) { LyricStyle.fontSize.toPx() * 0.5f }
+    val feather = with(LocalDensity.current) { lyricStyle.fontSize.toPx() * 0.5f }
     Column(
         Modifier
             .fillMaxWidth()
@@ -373,7 +383,7 @@ private fun LyricLineItem(
     ) {
         Text(
             row.line.text,
-            style = LyricStyle,
+            style = lyricStyle,
             color = color,
             onTextLayout = { layout = it },
             modifier = if (!isActive) Modifier else Modifier
@@ -408,7 +418,7 @@ private fun LyricLineItem(
         val tr = row.translation
         if (tr != null && showTranslation) {
             Spacer(Modifier.height(4.dp))
-            Text(tr, style = TranslationStyle, color = color.copy(alpha = if (isActive) 0.72f else 0.9f))
+            Text(tr, style = translationStyle, color = color.copy(alpha = if (isActive) 0.72f else 0.9f))
         }
     }
 }

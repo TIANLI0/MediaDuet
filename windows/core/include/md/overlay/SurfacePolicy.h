@@ -55,6 +55,14 @@ struct Rect {
 // (never below the minimum); offset is clamped to the gap. Nothing fits →
 // "no_space".
 //
+// Alignment ("auto" | "left" | "right") picks the gap edge the widget hugs and
+// the side its text is anchored to, so that the visible text stays put while the
+// gap changes (apps opened / closed, tray icons added):
+//   auto  = toward the task icons (the edge of the gap next to the group),
+//   left  = the gap's left edge (screen edge / Widgets on the left, the icons on the right),
+//   right = the gap's right edge (Start / icons on the left, the tray on the right).
+// Offset always moves the widget away from the edge it hugs.
+//
 //   Windows 11, centred:      [widgets]   gap L   [Start search tasks…]   gap R   [tray]
 //   Windows 11, left aligned: [Start search tasks…]   gap R   [widgets][tray]  (L too small → R)
 //   Windows 10:               [Start][search][task view][buttons… |band end]   gap R   [tray]
@@ -73,6 +81,7 @@ struct TaskbarGeometry {
 struct TaskbarPlacement {
     bool ok = false;
     Rect rect;
+    bool alignRight = false; // text (and the widget) anchored to the right edge of the gap
     std::string reason; // when !ok: no_taskbar, autohide, vertical_taskbar, taskbar_not_ready, no_space
     bool fellBack = false; // placed on the other side than requested (diagnostics)
 };
@@ -80,10 +89,11 @@ struct TaskbarPlacement {
 inline constexpr float kTaskbarWidgetMinDip = 140.f;
 inline constexpr float kTaskbarWidgetPadDip = 8.f;
 
-// position = "left" | "right" (see above); offset in physical pixels; width in DIPs.
-// Vertical (left/right docked) taskbars are not supported → "vertical_taskbar".
+// position = "left" | "right", align = "auto" | "left" | "right" (see above); offset in
+// physical pixels; width in DIPs. Vertical (left/right docked) taskbars are not
+// supported → "vertical_taskbar".
 TaskbarPlacement placeTaskbarWidget(const TaskbarGeometry& g, const std::string& position, int offset,
-                                    float widthDip);
+                                    float widthDip, const std::string& align = "auto");
 
 // Show/hide decision of the taskbar widget.
 struct TaskbarInputs {

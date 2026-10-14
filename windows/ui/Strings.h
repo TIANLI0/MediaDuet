@@ -18,4 +18,7 @@ namespace mdui
     // Replaces {0}, {1}, ... with the given arguments.
     std::wstring StrF(std::wstring_view key, std::initializer_list<std::wstring_view> args);
     std::wstring Format(std::wstring_view pattern, std::initializer_list<std::wstring_view> args);
+    // Bluetooth audio receive (A2DP sink) failure, localized from the host's errorCode; falls back
+    // to the host's own text for codes this UI does not know.
+    std::wstring A2dpErrorText(std::string const& code, std::string const& fallback);
 }

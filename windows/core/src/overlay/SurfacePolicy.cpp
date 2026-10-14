@@ -21,7 +21,7 @@ struct Span {
 } // namespace
 
 TaskbarPlacement placeTaskbarWidget(const TaskbarGeometry& g, const std::string& position, int offset,
-                                    float widthDip) {
+                                    float widthDip, const std::string& align) {
     TaskbarPlacement p;
     const Rect& tb = g.tray;
     if (tb.empty()) {
@@ -120,9 +120,12 @@ TaskbarPlacement placeTaskbarWidget(const TaskbarGeometry& g, const std::string&
         if (avail < need) continue;
         long w = std::min(want, avail);
         long off = std::clamp<long>(offset, 0, avail - w);
-        long x = c.right ? c.gap.l + pad + off : c.gap.r - pad - w - off; // both hug the icons
+        // A gap right of the icons has them on its left edge: "auto" hugs the icons.
+        bool hugRight = align == "right" ? true : align == "left" ? false : !c.right;
+        long x = hugRight ? c.gap.r - pad - w - off : c.gap.l + pad + off;
         p.ok = true;
         p.fellBack = c.right != preferRight;
+        p.alignRight = hugRight;
         p.rect = {x, tb.top, x + w, tb.bottom};
         return p;
     }

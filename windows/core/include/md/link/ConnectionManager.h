@@ -59,8 +59,8 @@ struct LinkStatus {
     std::vector<std::string> peerCaps;
 };
 
-// Client-side link policy (spec §1, §7, §11): Bluetooth first, LAN fallback,
-// stable switch-back, exponential back-off with jitter, heartbeats, de-dup.
+// Client-side link policy (spec §1, §7, §11): Auto = LAN first (lower latency),
+// Bluetooth as a hot standby / fallback, stable switch-back, exponential back-off with jitter, heartbeats, de-dup.
 class ConnectionManager {
 public:
     struct Listener {
@@ -177,7 +177,7 @@ private:
         };
         std::map<std::string, EpInfo> eps; // by LanEndpoint::str()
         int64_t announceResetAt = -1;      // DNS-SD (re-)announcement reset the back-off (rate limited)
-        std::vector<int64_t> btDrops;
+        std::vector<int64_t> lanDrops;
         ScopedTimer promote;
         int64_t rttMs = -1;
         std::vector<std::string> caps;
@@ -211,7 +211,7 @@ private:
     void setPrimary(Peer& p, Connection* c);
     void armHeartbeat(Peer& p, Slot& s);
     int64_t pingInterval(const Peer& p, const Slot& s) const;
-    int64_t requiredBtStability(Peer& p);
+    int64_t requiredLanStability(Peer& p);
     bool otherPeerActive(const Peer& p) const;
     Connection* connById(Peer& p, uint64_t id);
 

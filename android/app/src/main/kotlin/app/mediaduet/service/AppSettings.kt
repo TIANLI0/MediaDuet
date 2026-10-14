@@ -50,6 +50,15 @@ class AppSettings(context: Context) {
         _translations.value = enabled
     }
 
+    private val _lyricsSize = MutableStateFlow(LyricsSize.fromKey(prefs.getString(KEY_LYRICS_SIZE, null)))
+    /** Text size of the synced lyrics (Now Playing lyrics mode). */
+    val lyricsSize: StateFlow<LyricsSize> = _lyricsSize
+
+    fun setLyricsSize(size: LyricsSize) {
+        prefs.edit { putString(KEY_LYRICS_SIZE, size.key) }
+        _lyricsSize.value = size
+    }
+
     private val _autoLatency = MutableStateFlow(prefs.getBoolean(KEY_LATENCY_AUTO, true))
     /** Delay lyrics by the playing device's output latency (Bluetooth) automatically. */
     val lyricsAutoLatency: StateFlow<Boolean> = _autoLatency
@@ -151,6 +160,7 @@ class AppSettings(context: Context) {
         const val KEY_MIRROR = "mirror_session"
         const val KEY_AUDIO = "audio_receive"
         const val KEY_TRANSLATIONS = "lyrics_translations"
+        const val KEY_LYRICS_SIZE = "lyrics.size"
         const val KEY_TARGET = "player_target"
         const val KEY_LATENCY_AUTO = "lyrics.latency.auto"
         const val KEY_LATENCY_BT = "lyrics.latency.bluetoothMs"
@@ -158,6 +168,17 @@ class AppSettings(context: Context) {
         const val KEY_ONLINE_LYRICS = "lyrics.online"
         const val KEY_MODE = "work_mode"
         const val KEY_VERSION_DISMISSED = "version_warning_dismissed"
+    }
+}
+
+/** Synced lyrics text size: a scale on the lyrics style (translations scale along). */
+enum class LyricsSize(val key: String, val scale: Float) {
+    SMALL("small", 0.84f),
+    STANDARD("standard", 1f),
+    LARGE("large", 1.18f);
+
+    companion object {
+        fun fromKey(key: String?) = entries.firstOrNull { it.key == key } ?: STANDARD
     }
 }
 

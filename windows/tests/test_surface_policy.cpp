@@ -45,6 +45,47 @@ TEST_CASE("taskbar placement: Windows 11 centred, left and right of the icons") 
     CHECK(placeTaskbarWidget(g, "right", 50, 360).rect.left == 1178);
 }
 
+TEST_CASE("taskbar placement: alignment picks the edge of the gap the widget hugs") {
+    auto g = win11();
+    // auto: toward the icons (left gap → its right edge, right gap → its left edge).
+    auto l = placeTaskbarWidget(g, "left", 0, 360);
+    CHECK(l.alignRight);
+    CHECK_FALSE(placeTaskbarWidget(g, "right", 0, 360).alignRight);
+    // left gap 160..800 (widgets .. Start): "left" hugs the widgets button.
+    auto ll = placeTaskbarWidget(g, "left", 0, 360, "left");
+    REQUIRE(ll.ok);
+    CHECK_FALSE(ll.alignRight);
+    CHECK(ll.rect == Rect{168, 1032, 528, 1080});
+    CHECK(placeTaskbarWidget(g, "left", 40, 360, "left").rect.left == 208); // offset moves away from that edge
+    CHECK(placeTaskbarWidget(g, "left", 0, 360, "right").rect == l.rect);
+    // right gap 1120..1700 (icons .. tray): "right" hugs the tray.
+    auto rr = placeTaskbarWidget(g, "right", 0, 360, "right");
+    REQUIRE(rr.ok);
+    CHECK(rr.alignRight);
+    CHECK(rr.rect == Rect{1332, 1032, 1692, 1080});
+    CHECK(placeTaskbarWidget(g, "right", 40, 360, "right").rect.right == 1652);
+
+    // More apps open (the centred group grows): an edge-aligned widget keeps its anchor.
+    auto busy = g;
+    busy.group.push_back(bx(1120, 1300));
+    busy.group.push_back(bx(700, 800));
+    auto rr2 = placeTaskbarWidget(busy, "right", 0, 360, "right");
+    REQUIRE(rr2.ok);
+    CHECK(rr2.rect.right == rr.rect.right);
+    CHECK(placeTaskbarWidget(busy, "left", 0, 360, "left").rect.left == ll.rect.left);
+    // The default (icons) moves with the group instead.
+    CHECK(placeTaskbarWidget(busy, "right", 0, 360).rect.left == 1308);
+
+    // Not enough room on the preferred side: the fallback gap keeps the chosen alignment.
+    auto full = g;
+    full.group.push_back(bx(1120, 1600));
+    auto fb = placeTaskbarWidget(full, "right", 0, 360, "right");
+    REQUIRE(fb.ok);
+    CHECK(fb.fellBack);
+    CHECK(fb.alignRight);
+    CHECK(fb.rect == l.rect);
+}
+
 TEST_CASE("taskbar placement: offset is clamped to the free gap") {
     auto g = win11();
     // left gap 160..800: inner 168..792, 360 wide → offset at most 264

@@ -299,7 +299,7 @@
   <data name="AudioState_on" xml:space="preserve"><value>On</value></data>
   <data name="AudioState_streaming" xml:space="preserve"><value>Streaming</value></data>
   <data name="AudioState_error" xml:space="preserve"><value>Error</value></data>
-  <data name="A2dpUnavailable" xml:space="preserve"><value>Not available on this PC (requires Windows 10 version 2004 or later and a Bluetooth adapter).</value></data>
+  <data name="A2dpUnavailable" xml:space="preserve"><value>No Bluetooth audio source found: pair the phone with this PC in Windows Settings › Bluetooth &amp; devices (requires Windows 10 version 2004 or later).</value></data>
   <data name="LanSendUnavailable" xml:space="preserve"><value>Not available: the phone must be connected over the local network.</value></data>
   <data name="DiagCpu" xml:space="preserve"><value>CPU (background service)</value></data>
   <data name="DiagWorkingSet" xml:space="preserve"><value>Working set</value></data>
@@ -413,7 +413,7 @@
   <data name="TaskbarPositionLeft.Content" xml:space="preserve"><value>Left side of the taskbar</value></data>
   <data name="TaskbarPositionRight.Content" xml:space="preserve"><value>Right, next to the notification area</value></data>
   <data name="SetTaskbarOffsetTitle.Text" xml:space="preserve"><value>Offset</value></data>
-  <data name="SetTaskbarOffsetDesc.Text" xml:space="preserve"><value>Moves the widget along the taskbar.</value></data>
+  <data name="SetTaskbarOffsetDesc.Text" xml:space="preserve"><value>Moves the widget away from the edge it is aligned to.</value></data>
   <data name="SetTaskbarWidthTitle.Text" xml:space="preserve"><value>Width</value></data>
   <data name="SetTaskbarFontSizeTitle.Text" xml:space="preserve"><value>Font size</value></data>
   <data name="CompatIntro.Text" xml:space="preserve"><value>Support for players that do not publish their playback to Windows.</value></data>
@@ -485,4 +485,19 @@
   <data name="TaskbarReason_taskbar_not_ready" xml:space="preserve"><value>waiting for the taskbar (tries again automatically)</value></data>
   <data name="TaskbarReason_no_taskbar" xml:space="preserve"><value>no taskbar found yet (tries again automatically)</value></data>
   <data name="TaskbarReason_unavailable" xml:space="preserve"><value>temporarily unavailable (tries again automatically)</value></data>
+  <data name="SetTaskbarAlignTitle.Text" xml:space="preserve"><value>Alignment</value></data>
+  <data name="SetTaskbarAlignDesc.Text" xml:space="preserve"><value>Which edge of its free area the widget sticks to; the lyrics are aligned to that side too. Opening and closing apps changes the taskbar: Left and Right stay at the steady end of the area (screen edge, Widgets or the notification area), so the lyrics do not move with the icons; Auto keeps them next to the taskbar icons.</value></data>
+  <data name="TaskbarAlignAuto.Content" xml:space="preserve"><value>Auto (next to the taskbar icons)</value></data>
+  <data name="TaskbarAlignLeft.Content" xml:space="preserve"><value>Left</value></data>
+  <data name="TaskbarAlignRight.Content" xml:space="preserve"><value>Right</value></data>
+  <data name="A2dpQuickToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Play phone audio on this PC (Bluetooth)</value></data>
+  <data name="A2dpQuickTitle" xml:space="preserve"><value>Play phone audio on this PC (Bluetooth)</value></data>
+  <data name="A2dpQuickHint" xml:space="preserve"><value>Click to play the phone's sound through this PC's speakers.</value></data>
+  <data name="A2dpQuickOn" xml:space="preserve"><value>Playing audio from {0}</value></data>
+  <data name="A2dpQuickFailed" xml:space="preserve"><value>Could not receive the phone's audio over Bluetooth</value></data>
+  <data name="A2dpError_no_device" xml:space="preserve"><value>The phone is not paired with this PC over Bluetooth yet. Add it in Windows Settings › Bluetooth &amp; devices first.</value></data>
+  <data name="A2dpError_ambiguous" xml:space="preserve"><value>Several phones could connect, so it is unclear which one to receive. Connect the phone in MediaDuet first.</value></data>
+  <data name="A2dpError_timeout" xml:space="preserve"><value>The phone did not respond. Make sure its Bluetooth is on and it is nearby, then try again.</value></data>
+  <data name="A2dpError_denied" xml:space="preserve"><value>Windows refused the Bluetooth audio connection.</value></data>
+  <data name="A2dpError_failed" xml:space="preserve"><value>The Bluetooth audio connection failed. Please try again.</value></data>
 </root>

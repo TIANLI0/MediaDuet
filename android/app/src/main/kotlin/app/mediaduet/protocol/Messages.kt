@@ -35,6 +35,8 @@ object MsgType {
     const val AUDIO_OFFER = "audio.offer"
     const val AUDIO_ANSWER = "audio.answer"
     const val AUDIO_STOP = "audio.stop"
+    const val AUDIO_SINK_STATE = "audio.sink.state"
+    const val AUDIO_SINK_SET = "audio.sink.set"
     const val BYE = "bye"
     const val VOLUME_STATE = "volume.state"
     const val VOLUME_SET = "volume.set"
@@ -49,6 +51,8 @@ object Caps {
     const val POLICY_CLIENT = "policy.client"
     const val AUDIO_RECV_PCM = "audio.recv.pcm"
     const val AUDIO_SEND_PCM = "audio.send.pcm"
+    /** The PC can play this phone's Bluetooth (A2DP) audio: `audio.sink.state` / `audio.sink.set`. */
+    const val AUDIO_A2DP_SINK = "audio.a2dp_sink"
     const val VOLUME = "volume"
 }
 
@@ -351,6 +355,35 @@ data class PolicyStatus(
                 lastAction = last,
             )
         }
+    }
+}
+
+/**
+ * The PC's Bluetooth audio receiver (`audio.sink.state`, §8.2): Windows playing this phone's A2DP
+ * audio through its own speakers. [available]: this phone is a paired Bluetooth audio source of
+ * the PC. [error] is a code (`no_device`, `ambiguous`, `timeout`, `denied`, `failed`).
+ */
+data class SinkState(
+    val available: Boolean,
+    val state: String,
+    val device: String?,
+    val error: String?,
+) {
+    /** On or on its way: the switch shows "on". */
+    val active: Boolean get() = state == ON || state == CONNECTING
+
+    companion object {
+        const val OFF = "off"
+        const val CONNECTING = "connecting"
+        const val ON = "on"
+        const val ERROR = "error"
+
+        fun parse(o: JsonObject) = SinkState(
+            available = o.optBool("available") ?: false,
+            state = o.optString("state", 16) ?: OFF,
+            device = o.optString("device", StrLimit.DEVICE_NAME)?.ifEmpty { null },
+            error = o.optString("error", StrLimit.MISC)?.ifEmpty { null },
+        )
     }
 }
 

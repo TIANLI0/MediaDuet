@@ -104,6 +104,11 @@ private:
 
     // audio
     void setA2dp(bool enable);
+    void sendSinkState();
+    // Media-control commands this soon after a stream start / output change come from headsets.
+    static constexpr int64_t kSystemCommandWindowMs = 2500;
+    int64_t outputChangedAt_ = -1;
+    std::string lastSinkJson_;
     void setLanSend(bool enable);
 
     // UI / IPC

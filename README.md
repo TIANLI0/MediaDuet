@@ -15,7 +15,7 @@ Windows 与 Android 之间的轻量双向媒体控制与智能播放协调</p>
 ### 它能做什么
 
 - **双向控制**：在电脑上看到并控制手机正在播放的音乐（网易云、QQ 音乐、Spotify…），也能在手机上控制电脑上的播放器。
-- **蓝牙优先，局域网回退**：蓝牙 RFCOMM 为首选控制链路；同一 Wi-Fi 下自动发现并作为备份。断线无缝切换，蓝牙稳定后再切回，同一指令绝不执行两次。
+- **局域网优先，蓝牙兜底**：同一 Wi-Fi 下自动发现并作为首选控制链路（延迟更低）；蓝牙 RFCOMM 作为热备份。断线无缝切换，局域网稳定后再切回，同一指令绝不执行两次。
 - **智能播放仲裁**：耳机同时连着两台设备时，电脑开始放视频/游戏声音会自动暂停手机（也可设为手机优先、最新优先或按应用自定义优先级）。区分“你暂停的”和“程序暂停的”，不会擅自恢复你暂停的音乐，也不会双向打架。通话时总是优先。
 - **原生集成**：手机正在播放的歌曲出现在 Windows 系统媒体浮窗/键盘媒体键里；Windows 媒体出现在手机 App 中。
 - **精美界面**：Windows 端 WinUI 3 媒体卡片、悬停才显示控制的迷你播放器、可置顶、可点击穿透的桌面歌词（描边字、双行交替/居中、长句横向滚动、渐进式逐字/逐行填充）；Android 端 Kyant0 液态玻璃、无底部导航栏的全高“正在播放”主页（设置从右上角进入）、类 Apple Music 的播放器与歌词一体界面。
@@ -72,7 +72,7 @@ Windows 与 Android 之间的轻量双向媒体控制与智能播放协调</p>
 ### What it does
 
 - **Two-way control**: see and control your phone's music (NetEase Cloud Music, QQ Music, Spotify, …) from Windows, and Windows players from the phone.
-- **Bluetooth first, LAN fallback**: RFCOMM is the preferred control link; on the same Wi-Fi the phone is discovered automatically as a backup. Seamless failover, stable switch-back, and at-most-once command execution.
+- **LAN first, Bluetooth fallback**: on the same Wi-Fi the phone is discovered automatically and used as the control link (lower latency); Bluetooth RFCOMM stays connected as a hot standby. Seamless failover, stable switch-back, and at-most-once command execution.
 - **Playback arbitration**: with one headset on both devices, PC video/game audio pauses the phone (or phone-first, latest-wins, custom per-app priorities). User pauses are never undone, policy pauses are attributed so the devices never fight, calls always win.
 - **Native integration**: phone media appears in the Windows media flyout and media keys; Windows media appears on the phone.
 - **Polished UI**: WinUI 3 media card, hover-only mini player, always-on-top, click-through desktop lyrics (outlined text, two-line alternate or centred layout, scrolling long lines, progressive word/line fill) on Windows; Kyant0 liquid glass, a full-height Now Playing home without a tab bar (settings from the top-right) and an Apple-Music-style integrated player/lyrics screen on Android.

@@ -410,6 +410,12 @@
                         </Flyout>
                     </Button.Flyout>
                 </Button>
+                <!-- Quick switch: this PC plays the phone's Bluetooth audio (A2DP sink); only when the
+                     phone is a paired Bluetooth audio source of this PC. -->
+                <ToggleButton x:Name="A2dpQuickToggle" x:Uid="A2dpQuickToggle" Style="{StaticResource IconToggleButtonStyle}"
+                              Visibility="Collapsed">
+                    <FontIcon FontSize="16" Glyph="&#xE702;" />
+                </ToggleButton>
                 <ToggleButton x:Name="OverlayToggle" x:Uid="OverlayToggle" Style="{StaticResource IconToggleButtonStyle}">
                     <FontIcon FontSize="16" Glyph="&#xE7F0;" />
                 </ToggleButton>

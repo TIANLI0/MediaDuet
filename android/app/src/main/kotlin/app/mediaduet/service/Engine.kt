@@ -38,6 +38,7 @@ import app.mediaduet.protocol.LyricsPush
 import app.mediaduet.protocol.MediaCommand
 import app.mediaduet.protocol.MediaSnapshot
 import app.mediaduet.protocol.PolicyStatus
+import app.mediaduet.protocol.SinkState
 import app.mediaduet.lyrics.LyricsRepository
 import app.mediaduet.media.TargetChoice
 import app.mediaduet.remote.MirrorSessionController
@@ -372,6 +373,17 @@ class Engine private constructor(private val app: Context) : LinkHost {
     override fun onLyricsNone(peerId: String, trackId: String) =
         lyrics.onPcNone(trackId, remote.sessionForTrack(trackId)?.let(LyricsRepository::songOf))
     override fun onPolicyStatus(peerId: String, status: PolicyStatus) = remote.onPolicyStatus(status)
+    override fun onSinkState(peerId: String, state: SinkState) = remote.onSinkState(state)
+
+    /**
+     * "Play on the PC": asks the PC to receive this phone's Bluetooth audio (Windows A2DP sink).
+     * Returns false when no PC that supports it is connected.
+     */
+    suspend fun setPcSpeaker(enable: Boolean): Boolean {
+        val sent = link.sendSinkSet(enable)
+        if (sent) remote.onSinkRequested(enable)
+        return sent
+    }
     override suspend fun onAudioOffer(peerId: String, offer: AudioOffer, baseKey: ByteArray): JsonObject =
         withContext(Dispatchers.IO) { audio.handleOffer(peerId, offer, baseKey) }
 

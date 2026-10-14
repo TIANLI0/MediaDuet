@@ -62,78 +62,89 @@ struct World {
 
 } // namespace
 
-TEST_CASE("Bluetooth is preferred when both transports are available") {
+TEST_CASE("Auto prefers LAN when both transports are available; Bluetooth stays a hot standby") {
     World w;
     w.s.advance(1000);
     CHECK(w.rec.ups == 1);
-    CHECK(w.primary() == TransportKind::Bluetooth);
-    CHECK(w.cm->status().secondary == TransportKind::Lan);
+    CHECK(w.primary() == TransportKind::Lan);
+    CHECK(w.cm->status().secondary == TransportKind::Bluetooth);
     // The server sends unsolicited messages on the primary the client designated.
     REQUIRE(w.srv.primaryConn());
-    CHECK(w.srv.primaryConn()->t->kind() == TransportKind::Bluetooth);
+    CHECK(w.srv.primaryConn()->t->kind() == TransportKind::Lan);
 }
 
-TEST_CASE("failover to LAN, then stable switch-back to Bluetooth") {
+TEST_CASE("Auto without LAN uses Bluetooth and moves to LAN as soon as it appears") {
+    World w(link::ConnMode::Auto, false, false);
+    w.start();
+    w.s.advance(1000);
+    REQUIRE(w.primary() == TransportKind::Bluetooth);
+    // The phone joins the PC's Wi-Fi: no LAN drop happened yet, so no stability wait.
+    w.cm->onLanEndpoint(w.srv.info.id, {"192.0.2.10", 47321, "mdns"}, true);
+    w.s.advance(1000);
+    CHECK(w.primary() == TransportKind::Lan);
+    CHECK(w.rec.ups == 1);
+}
+
+TEST_CASE("failover to Bluetooth, then stable switch-back to LAN") {
     World w;
     w.cm->setSwitchBackDelay(10'000);
     w.s.advance(1000);
-    REQUIRE(w.primary() == TransportKind::Bluetooth);
+    REQUIRE(w.primary() == TransportKind::Lan);
 
-    w.fac.btReachable = false;
-    w.srv.kill(TransportKind::Bluetooth);
+    w.fac.lanReachable = false;
+    w.srv.kill(TransportKind::Lan);
     w.s.advance(100);
-    CHECK(w.primary() == TransportKind::Lan);
-    CHECK(w.rec.downs == 0); // LAN kept the session alive: no visible outage
-    CHECK(w.srv.primaryConn()->t->kind() == TransportKind::Lan);
-
-    // Bluetooth comes back; it must be stable for the switch-back delay first.
-    w.fac.btReachable = true;
-    w.cm->onPeerBluetoothPresence(w.srv.info.id, true);
-    w.s.advance(1000);
-    CHECK(w.srv.liveConns(TransportKind::Bluetooth) == 1);
-    CHECK(w.primary() == TransportKind::Lan);
-    w.s.advance(9'500);
     CHECK(w.primary() == TransportKind::Bluetooth);
+    CHECK(w.rec.downs == 0); // Bluetooth kept the session alive: no visible outage
+    CHECK(w.srv.primaryConn()->t->kind() == TransportKind::Bluetooth);
+
+    // The network comes back; LAN must be stable for the switch-back delay first.
+    w.fac.lanReachable = true;
+    w.cm->onNetworkChanged();
+    w.s.advance(1000);
+    CHECK(w.srv.liveConns(TransportKind::Lan) == 1);
+    CHECK(w.primary() == TransportKind::Bluetooth);
+    w.s.advance(9'500);
+    CHECK(w.primary() == TransportKind::Lan);
     CHECK(w.rec.ups == 1);
 }
 
-TEST_CASE("a flapping Bluetooth link needs longer to be trusted again") {
+TEST_CASE("a flapping LAN link needs longer to be trusted again") {
     World w;
     w.cm->setSwitchBackDelay(10'000);
     w.s.advance(1000);
     for (int i = 0; i < 2; ++i) {
-        w.srv.kill(TransportKind::Bluetooth);
+        w.srv.kill(TransportKind::Lan);
         w.s.advance(100);
-        CHECK(w.primary() == TransportKind::Lan);
-        w.cm->onPeerBluetoothPresence(w.srv.info.id, false);
-        w.cm->onPeerBluetoothPresence(w.srv.info.id, true);
-        w.s.advance(1000); // BT reconnected
+        CHECK(w.primary() == TransportKind::Bluetooth);
+        w.cm->onNetworkChanged();
+        w.s.advance(1000); // LAN reconnected
     }
     // Two drops -> 20 s stability required.
     w.s.advance(12'000);
-    CHECK(w.primary() == TransportKind::Lan);
-    w.s.advance(10'000);
     CHECK(w.primary() == TransportKind::Bluetooth);
+    w.s.advance(10'000);
+    CHECK(w.primary() == TransportKind::Lan);
 }
 
 TEST_CASE("commands in flight are re-sent after failover and executed exactly once") {
     World w;
     w.s.advance(1000);
-    REQUIRE(w.primary() == TransportKind::Bluetooth);
+    REQUIRE(w.primary() == TransportKind::Lan);
     int results = 0;
     bool ok = false;
     media::MediaCommand cmd;
     cmd.action = media::CommandAction::Pause;
-    // Kill BT right after sending, before the server processes it: the bytes are lost.
+    // Kill LAN right after sending, before the server processes it: the bytes are lost.
     uint64_t id = w.cm->sendCommand(cmd, [&](const link::CommandOutcome& o) {
         ++results;
         ok = o.ok;
     });
     REQUIRE(id != 0);
-    w.fac.btReachable = false;
-    w.srv.kill(TransportKind::Bluetooth);
+    w.fac.lanReachable = false;
+    w.srv.kill(TransportKind::Lan);
     w.s.advance(500);
-    CHECK(w.primary() == TransportKind::Lan);
+    CHECK(w.primary() == TransportKind::Bluetooth);
     CHECK(results == 1);
     CHECK(ok);
     CHECK(w.srv.executions[id] == 1);

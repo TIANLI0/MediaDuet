@@ -329,6 +329,8 @@ HANDSHAKE frames; everything else in SECURE/CONTROL records.
 | `audio.offer` | both | `AudioOffer` (§9) |
 | `audio.answer` | both | `{ok, port?, error?}` with `re` |
 | `audio.stop` | both | `{streamId, reason}` |
+| `audio.sink.state` | C→S | `{available: bool, state: "off"\|"connecting"\|"on"\|"error", device?: string, error?: string}` — the client's Bluetooth audio receiver (Windows plays the phone's A2DP audio, cap `audio.a2dp_sink`); sent after `session.ready` and on every change. `available`: the phone is a bonded A2DP source of this PC. `error` codes: `no_device` (the phone is not paired with the PC over Bluetooth / offers no A2DP), `ambiguous`, `timeout` (the phone did not accept the audio connection), `denied`, `failed` |
+| `audio.sink.set` | S→C | `{enable: bool}` — asks the client to start / stop receiving the phone's Bluetooth audio (requires cap `audio.a2dp_sink`); answered with `audio.sink.state`. Receiving Bluetooth audio and PC→phone PCM streaming (§9) are mutually exclusive: enabling one stops the other |
 | `bye` | both | `{reason}` — orderly disconnect (user disconnect, app exit) |
 
 `error.code` values: `not_paired`, `auth_failed`, `version_unsupported`,

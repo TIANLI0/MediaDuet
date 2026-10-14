@@ -25,6 +25,9 @@ import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.EnterExitState
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.SharedTransitionScope
@@ -123,6 +126,8 @@ import app.mediaduet.protocol.Action
 import app.mediaduet.protocol.CommandResult
 import app.mediaduet.protocol.ErrorCode
 import app.mediaduet.protocol.MediaSessionInfo
+import app.mediaduet.protocol.SinkState
+import app.mediaduet.service.LyricsSize
 import app.mediaduet.protocol.VolumeSet
 import app.mediaduet.remote.LyricsDelay
 import app.mediaduet.remote.LyricsState
@@ -173,6 +178,7 @@ private class PlayerParts(
     /** The phone is still looking for lyrics for this track. */
     val searching: Boolean,
     val translations: Boolean,
+    val lyricsSize: LyricsSize,
     val reduced: Boolean,
     val canSeek: Boolean,
 ) {
@@ -199,6 +205,7 @@ fun PlayerScreen(ui: UiContext) {
     val lyricsMap by engine.lyrics.entries.collectAsStateWithLifecycle()
     val pending by engine.lyrics.pending.collectAsStateWithLifecycle()
     val translations by engine.settings.showTranslations.collectAsStateWithLifecycle()
+    val lyricsSize by engine.settings.lyricsSize.collectAsStateWithLifecycle()
     val autoLatency by engine.settings.lyricsAutoLatency.collectAsStateWithLifecycle()
     val offsets by engine.settings.lyricOffsets.collectAsStateWithLifecycle()
     val reduced = rememberReducedMotion()
@@ -314,6 +321,7 @@ fun PlayerScreen(ui: UiContext) {
                 lyrics = lyrics,
                 searching = searching,
                 translations = translations,
+                lyricsSize = lyricsSize,
                 reduced = reduced,
                 canSeek = view.canControl && Action.SEEK in info.actions && (info.durationMs ?: 0) > 0,
             )
@@ -447,7 +455,7 @@ private fun LandscapeLyrics(p: PlayerParts, m: Morph) {
                     LyricsBody(p, Modifier.fillMaxSize(), bottomFade = 72.dp, bottomObscured = 0.dp)
                 }
                 if (hasLyricsOptions(p)) {
-                    OptionsButton(p, optionsOpen, Modifier.align(Alignment.TopEnd).padding(top = 8.dp)) { optionsOpen = !optionsOpen }
+                    OptionsButton(p, m, optionsOpen, Modifier.align(Alignment.TopEnd).padding(top = 8.dp)) { optionsOpen = !optionsOpen }
                 }
                 LyricsOptions(p, optionsOpen, Modifier.align(Alignment.TopEnd).padding(top = 60.dp)) { optionsOpen = false }
             }
@@ -588,17 +596,38 @@ private fun LyricsHeader(p: PlayerParts, m: Morph, optionsOpen: Boolean, onOptio
         }
         if (hasLyricsOptions(p)) {
             Spacer(Modifier.width(8.dp))
-            OptionsButton(p, optionsOpen, Modifier, onOptions)
+            OptionsButton(p, m, optionsOpen, Modifier, onOptions)
         }
     }
 }
 
-private fun hasLyricsOptions(p: PlayerParts): Boolean =
-    p.lyrics?.lyrics?.hasTranslations == true || p.lyrics?.synced == true
+private fun hasLyricsOptions(p: PlayerParts): Boolean = p.lyrics?.synced == true
 
-/** One small glass button for the lyrics options (translation, timing) instead of a row of buttons. */
+/**
+ * One small glass button for the lyrics options (translation, timing) instead of a row of buttons.
+ *
+ * Liquid glass must never be drawn half transparent: under the mode cross-fade's alpha its blurred
+ * shadow and lens composite into a dark smudge for a few frames. So the button exists only while
+ * lyrics mode is settled — it leaves at once when the mode starts to change and pops in with a
+ * scale-only spring once the cross-fade is over. Its space is kept, so the title never reflows.
+ */
 @Composable
-private fun OptionsButton(p: PlayerParts, open: Boolean, modifier: Modifier, onClick: () -> Unit) {
+private fun OptionsButton(p: PlayerParts, m: Morph, open: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    val modeTransition = m.visibility.transition
+    val settled = modeTransition.currentState == EnterExitState.Visible && modeTransition.targetState == EnterExitState.Visible
+    Box(modifier.size(40.dp)) {
+        AnimatedVisibility(
+            visible = settled,
+            enter = if (p.reduced) EnterTransition.None else scaleIn(spring(dampingRatio = 0.6f, stiffness = 500f), initialScale = 0.5f),
+            exit = ExitTransition.None,
+        ) {
+            OptionsGlassButton(p, open, onClick)
+        }
+    }
+}
+
+@Composable
+private fun OptionsGlassButton(p: PlayerParts, open: Boolean, onClick: () -> Unit) {
     val haptics = LocalHapticFeedback.current
     GlassIconButton(
         AppIcons.More,
@@ -608,7 +637,7 @@ private fun OptionsButton(p: PlayerParts, open: Boolean, modifier: Modifier, onC
             onClick()
         },
         p.ui.backdrop,
-        modifier,
+        Modifier,
         size = 40.dp,
         iconSize = 20.dp,
         active = open || p.timing.offsetMs != 0,
@@ -625,6 +654,7 @@ private fun LyricsBody(p: PlayerParts, modifier: Modifier, bottomFade: androidx.
             synced != null && !synced.isEmpty -> SyncedLyrics(
                 synced, p.lyricsPosition, if (p.canSeek) p.controls.seek else null, p.ui.backdrop, Modifier.fillMaxSize(),
                 showTranslations = p.translations, bottomFade = bottomFade, bottomObscured = bottomObscured,
+                textScale = p.lyricsSize.scale,
             )
             else -> PlainLyrics(
                 shown.plain,
@@ -705,7 +735,62 @@ private fun LyricsOptions(p: PlayerParts, open: Boolean, modifier: Modifier, onD
                 if (p.lyrics.lyrics?.hasTranslations == true) {
                     HorizontalDivider(Modifier.padding(start = 36.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
                 }
+                LyricsSizePicker(p.lyricsSize) {
+                    touch++
+                    settings.setLyricsSize(it)
+                }
+                HorizontalDivider(Modifier.padding(start = 36.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
                 OffsetStepper(p.timing) { touch++ }
+            }
+        }
+    }
+}
+
+/** Lyrics text size: three steps (small · standard · large) as one segmented pill. */
+@Composable
+fun LyricsSizePicker(current: LyricsSize, onPick: (LyricsSize) -> Unit) {
+    val glass = LocalGlass.current
+    val haptics = LocalHapticFeedback.current
+    Row(Modifier.fillMaxWidth().heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(AppIcons.TextSize, null, Modifier.size(20.dp))
+        Spacer(Modifier.width(16.dp))
+        Text(stringResource(R.string.lyrics_size), style = MaterialTheme.typography.bodyLarge)
+    }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(bottom = 6.dp)
+            .clip(RoundedCornerShape(50))
+            .background(glass.fill)
+            .padding(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        for ((size, label, sp) in listOf(
+            Triple(LyricsSize.SMALL, R.string.lyrics_size_small, 13),
+            Triple(LyricsSize.STANDARD, R.string.lyrics_size_standard, 15),
+            Triple(LyricsSize.LARGE, R.string.lyrics_size_large, 18),
+        )) {
+            val selected = size == current
+            Box(
+                Modifier
+                    .weight(1f)
+                    .heightIn(min = 36.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(if (selected) glass.controlActive else Color.Transparent)
+                    .clickable(role = Role.RadioButton) {
+                        if (!selected) {
+                            haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
+                            onPick(size)
+                        }
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    stringResource(label),
+                    fontSize = sp.sp,
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (selected) glass.accent else MaterialTheme.colorScheme.onSurface,
+                )
             }
         }
     }
@@ -1046,11 +1131,13 @@ private fun ActionRow(ui: UiContext, view: PlayerView?, lyricsAvailable: Boolean
             LyricsToggle(ui, lyricsAvailable, morph)
         }
         // Centre: where the playback is (icon + caption, like Apple Music's AirPlay row).
-        val caption = when {
+        val sink by ui.engine.remote.sink.collectAsStateWithLifecycle()
+        val base = when {
             view == null -> stringResource(R.string.source_title)
             view.automatic -> stringResource(R.string.target_auto_caption, deviceLabel(view))
             else -> deviceLabel(view)
         }
+        val caption = if (sink?.state == SinkState.ON) stringResource(R.string.pc_speaker_caption, base) else base
         Column(
             Modifier
                 .weight(2f)
@@ -1336,6 +1423,7 @@ private fun TargetSheet(ui: UiContext) {
     val resolved by engine.target.collectAsStateWithLifecycle()
     val link by engine.link.status.collectAsStateWithLifecycle()
     val policy by engine.remote.policy.collectAsStateWithLifecycle()
+    val sink by engine.remote.sink.collectAsStateWithLifecycle()
     val mode by engine.settings.mode.collectAsStateWithLifecycle()
     val reduced = rememberReducedMotion()
     val glass = LocalGlass.current
@@ -1367,6 +1455,10 @@ private fun TargetSheet(ui: UiContext) {
             ) {
                 Text(stringResource(R.string.source_title), style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(8.dp))
+                // Sound output first: one switch sends this phone's audio to the PC's speakers.
+                if (mode.linked && link.current != null && remote?.connected == true) {
+                    sink?.let { PcSpeakerRow(ui, it, link.current?.peer?.name ?: stringResource(R.string.pc_generic)) }
+                }
                 fun pick(c: TargetChoice) {
                     haptics.performHapticFeedback(HapticFeedbackType.Confirm)
                     engine.settings.setTarget(c)
@@ -1423,6 +1515,54 @@ private fun TargetSheet(ui: UiContext) {
         }
     }
 }
+
+/**
+ * "Play on PC": the PC receives this phone's Bluetooth audio (Windows A2DP sink, `audio.sink.set`).
+ * A switch with the live state underneath; when the phone is not a paired Bluetooth audio source
+ * of the PC the row explains what to do instead of offering a switch that cannot work.
+ */
+@Composable
+private fun PcSpeakerRow(ui: UiContext, sink: SinkState, pcName: String) {
+    val scope = rememberCoroutineScope()
+    val glass = LocalGlass.current
+    val failText = stringResource(R.string.error_not_connected)
+    val set: (Boolean) -> Unit = { on ->
+        scope.launch { if (!ui.engine.setPcSpeaker(on)) ui.toast(failText) }
+    }
+    val usable = sink.available || sink.active
+    val subtitle = when {
+        sink.state == SinkState.CONNECTING -> stringResource(R.string.pc_speaker_connecting)
+        sink.state == SinkState.ON -> stringResource(R.string.pc_speaker_on, pcName)
+        sink.state == SinkState.ERROR -> pcSpeakerError(sink.error)
+        !sink.available -> stringResource(R.string.pc_speaker_unpaired)
+        else -> stringResource(R.string.pc_speaker_text, pcName)
+    }
+    InfoRow(
+        stringResource(R.string.pc_speaker_title),
+        subtitle = subtitle,
+        leading = {
+            Icon(AppIcons.Speaker, null, Modifier.size(22.dp), tint = if (sink.state == SinkState.ON) glass.accent else MaterialTheme.colorScheme.onSurfaceVariant)
+        },
+        trailing = if (usable) {
+            { LiquidToggle({ sink.active }, set, ui.backdrop, contentDescription = stringResource(R.string.pc_speaker_title)) }
+        } else null,
+        onClick = if (usable) ({ set(!sink.active) }) else null,
+        role = Role.Switch,
+    )
+    SheetDivider()
+}
+
+/** `audio.sink.state` error codes → text (unknown codes: [R.string.pc_speaker_error_failed]). */
+val PC_SPEAKER_ERRORS = mapOf(
+    "no_device" to R.string.pc_speaker_unpaired,
+    "ambiguous" to R.string.pc_speaker_error_ambiguous,
+    "timeout" to R.string.pc_speaker_error_timeout,
+    "denied" to R.string.pc_speaker_error_denied,
+    "failed" to R.string.pc_speaker_error_failed,
+)
+
+@Composable
+private fun pcSpeakerError(code: String?): String = stringResource(PC_SPEAKER_ERRORS[code] ?: R.string.pc_speaker_error_failed)
 
 @Composable
 private fun SheetDivider() =

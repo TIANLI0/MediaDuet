@@ -67,13 +67,14 @@ compiled into the product.
 ## Link policy (ConnectionManager)
 
 * Windows is always the client (no inbound firewall rules); Android is the server.
-* Auto mode keeps Bluetooth as **primary** and LAN as **secondary** when both are
-  up. Bulk artwork prefers the LAN connection.
+* Auto mode keeps **LAN as primary** and Bluetooth as a hot-standby **secondary**
+  when both are up (Bluetooth RFCOMM measured noticeably slower on real phones).
+  Bulk artwork prefers the LAN connection.
 * On primary loss the secondary is promoted immediately; un-answered commands
   younger than 5 s are re-sent with the same id (the peer's de-dup window ensures
   at-most-once execution).
-* Switch-back to Bluetooth is immediate if Bluetooth never failed recently; after
-  failures it requires `switchBackDelay × 2^(drops−1)` (≤ 5 min) of stability.
+* Switch-back to LAN is immediate if LAN never dropped recently; after drops it
+  requires `switchBackDelay × 2^(drops−1)` (≤ 5 min) of stability.
 * Reconnect back-off: BT 2 s → 60 s, LAN 1 s → 30 s, ±20 % jitter, reset by real
   events (adapter on, phone ACL connected, DNS-SD found or re-announced, network
   changed, user). A link that lived ≥ 30 s reconnects after ~1 s.

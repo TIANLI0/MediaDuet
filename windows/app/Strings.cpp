@@ -22,6 +22,7 @@ const std::map<std::string_view, Entry>& table() {
         {"open", {L"Open MediaDuet", L"打开 MediaDuet"}},
         {"compact", {L"Mini player", L"迷你播放器"}},
         {"lyrics", {L"Desktop lyrics", L"桌面歌词"}},
+        {"a2dp", {L"Play phone audio on this PC", L"用电脑播放手机声音"}},
         {"playpause", {L"Play / Pause", L"播放 / 暂停"}},
         {"next", {L"Next", L"下一首"}},
         {"previous", {L"Previous", L"上一首"}},

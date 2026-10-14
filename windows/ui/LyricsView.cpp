@@ -26,6 +26,7 @@ namespace mdui
         constexpr int kResumeMs = 4000;             // manual scrolling pauses following this long
         constexpr double kPlainPadding = 16.0;
         constexpr int kRevealStepMs = 34;           // staggered fade-in of new lyrics
+        constexpr double kDragSlop = 8.0;           // touch / pen travel before a drag counts as scrolling
 
         // Follow: lines further below the current one take a little longer (wave); the current line
         // and everything above it move together. Wheel: short.
@@ -96,21 +97,44 @@ namespace mdui
             int delta = props.MouseWheelDelta();
             if (delta == 0) return;
             e.Handled(true);
+            double target = ClampOffset(m_offset - delta * 0.75);
+            if (std::abs(target - m_offset) < 0.5) return;   // already at the end: nothing scrolls
             PauseFollow();
-            ApplyOffset(ClampOffset(m_offset - delta * 0.75), Mode::Wheel);
+            ApplyOffset(target, Mode::Wheel);
+            UpdateFollowButton();
         });
+        // Touch / pen drag scrolling. The mouse scrolls with the wheel only: a click (with the
+        // slight jitter of a real click) must never pause following or show the follow button.
         viewport.ManipulationMode(ManipulationModes::TranslateY | ManipulationModes::TranslateInertia);
-        m_manipStartToken = viewport.ManipulationStarted([this, alive](auto&&, auto&&) {
-            if (*alive && !m_lines.empty()) PauseFollow();
+        m_manipStartToken = viewport.ManipulationStarted([this, alive](auto&&, ManipulationStartedRoutedEventArgs const& e) {
+            if (!*alive) return;
+            m_dragging = false;
+            m_dragTravel = 0;
+            if (e.PointerDeviceType() == winrt::Microsoft::UI::Input::PointerDeviceType::Mouse || m_lines.empty())
+            {
+                e.Complete();
+                return;
+            }
+            m_dragging = true;
         });
         m_manipDeltaToken = viewport.ManipulationDelta([this, alive](auto&&, ManipulationDeltaRoutedEventArgs const& e) {
-            if (!*alive || m_lines.empty()) return;
-            ApplyOffset(ClampOffset(m_offset - e.Delta().Translation.Y), Mode::Direct);
+            if (!*alive || !m_dragging || m_lines.empty()) return;
+            double dy = e.Delta().Translation.Y;
+            if (!m_followPaused)
+            {
+                m_dragTravel += std::abs(dy);
+                if (m_dragTravel < kDragSlop) return;   // a tap, not a drag
+                PauseFollow();
+            }
+            ApplyOffset(ClampOffset(m_offset - dy), Mode::Direct);
+            UpdateFollowButton();
             m_resumeTimer.Stop();
             m_resumeTimer.Start();
         });
         m_manipDoneToken = viewport.ManipulationCompleted([this, alive](auto&&, auto&&) {
-            if (*alive && m_followPaused)
+            if (!*alive) return;
+            m_dragging = false;
+            if (m_followPaused)
             {
                 m_resumeTimer.Stop();
                 m_resumeTimer.Start();
@@ -124,6 +148,21 @@ namespace mdui
             if (*alive) ApplyColors();
         });
         followButton.Visibility(Visibility::Collapsed);
+    }
+
+    double LyricsView::EdgeFactor(int index) const
+    {
+        // Fades a line out as its centre approaches the top / bottom edge of the viewport (at the
+        // target scroll position; the opacity transition runs alongside the scroll).
+        if (m_height <= 0) return 1.0;
+        auto root = m_lines[index]->Root();
+        double y = root.ActualOffset().y + root.ActualHeight() / 2 - m_offset;
+        auto ramp = [](double x) {
+            x = std::clamp(x, 0.0, 1.0);
+            return x * x * (3 - 2 * x);
+        };
+        double top = m_height * 0.12, bottom = m_height * 0.18;
+        return ramp(y / top) * ramp((m_height - y) / bottom);
     }
 
     void LyricsView::Detach()
@@ -370,6 +409,7 @@ namespace mdui
                 scale = d == 0 ? 1.0f : kInactiveScale;
             }
             if (!m_revealed[i]) opacity = 0.0;
+            else opacity *= EdgeFactor(i);
             if (std::abs(root.Opacity() - opacity) > 1e-3) root.Opacity(opacity);
             if (root.Scale().x != scale) root.Scale({ scale, scale, 1.0f });
         }
@@ -401,6 +441,7 @@ namespace mdui
             if (index >= 0 && (changed || !m_lines[index]->IsActive())) m_lines[index]->SetActive(true);
             ApplyLineStates();
             if (m_placed && changed) Follow(fresh ? Mode::Direct : Mode::Follow);
+            if (m_followPaused) UpdateFollowButton();
         }
         if (index >= 0)
         {
@@ -449,6 +490,7 @@ namespace mdui
             auto current = root.Translation();
             if (std::abs(current.y - y) > 0.01f) root.Translation({ 0, y, 0 });
         }
+        if (m_placed) ApplyLineStates();   // the edge fade follows the new position
     }
 
     void LyricsView::Follow(Mode mode)
@@ -465,7 +507,15 @@ namespace mdui
         m_followPaused = true;
         m_resumeTimer.Stop();
         m_resumeTimer.Start();
-        if (m_synced && m_followButton.Visibility() != Visibility::Visible) m_followButton.Visibility(Visibility::Visible);
+    }
+
+    void LyricsView::UpdateFollowButton()
+    {
+        // Only while the current line is really out of its place (scrolled at least about a line
+        // away); a scroll that ends where following would put it needs no "back" button.
+        bool away = m_synced && m_followPaused && m_active >= 0 && std::abs(m_offset - TargetFor(m_active)) > m_fontSize * 1.5;
+        auto want = away ? Visibility::Visible : Visibility::Collapsed;
+        if (m_followButton.Visibility() != want) m_followButton.Visibility(want);
     }
 
     void LyricsView::ResumeFollow()

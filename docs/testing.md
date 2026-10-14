@@ -20,7 +20,7 @@ validation, snapshot/command validation, position extrapolation, LRC
 (multi-stamp, offset, enhanced word timing, garbage), lyric matching, settings
 (merge/validation/atomic save), handshake (pairing accept/reject/disabled,
 session, not_paired, wrong key, tampered MAC, timeout), link session (dedup,
-timeouts, re-send, reset), connection manager (BT preferred, failover, stable
+timeouts, re-send, reset), connection manager (LAN preferred in Auto, failover to BT, stable
 switch-back, flapping BT, exactly-once commands across failover, duplicate
 delivery on two transports, resume vs new session, LAN-only/BT-only, exponential
 back-off + presence reset, no adapter, revocation, user disconnect, silent-link
@@ -100,6 +100,8 @@ The Android agent ran the same flows on **Android 17 (API 37)** with
 | E42 | Android: lyrics without a PC (phone looks up NetEase / QQ Music / LRCLIB itself) | ✅ API 37 emulator, fixture track 晴天 / 周杰伦: 63 synced lines from QQ Music, no PC connected |
 | E43 | Android round 5: MingCute icons, liquid-glass controls, compact lyrics dock + options popover, landscape player / lyrics, work mode (first-run choice, standalone), developer card | ✅ headless API 37 emulator, light/dark, en/zh-CN, portrait/landscape; 139 JVM tests, lint clean |
 | E44 | Windows: HarmonyOS Sans lyrics, work mode, version check, taskbar placement (Win10 / Win11 left-aligned), online covers | ✅ core 127/127, WinUI logic tests, off-screen render harness; taskbar layouts and the cover upgrade covered by unit tests only (no live Windows 10 / left-aligned taskbar here) |
+| E45 | 2026-10-15: lyrics click no longer shows "back to current line" (mouse never scrolls the lyrics); taskbar alignment auto/left/right; Auto prefers LAN; "Play on PC" (Windows A2DP sink) from the main window, tray, phone source sheet and an Android Quick Settings tile (`audio.sink.set` / `audio.sink.state`); Android flowing artwork background; ⋯ glass smudge during the lyrics cross-fade; liquid switches clipped while pressed | ✅ core 129/129, Android 141/141 + lint, taskbar frames offscreen (`taskbar_right_*`), WinUI render harness, headless API 37 emulator (background motion measured between frames, lyrics-mode transition recorded frame by frame, pressed switch captured). A2DP sink against a real phone / the sheet row with a live host: pending on hardware |
+| E46 | 2026-10-15 (2): WinUI lyrics edge fade (a progressive blur was tried and removed again at the user's request); Android lyrics size (small / default / large), stronger distance blur and top dissolve; NetEase's own SMTC session without a timeline gets the queue-file duration + an estimated position; play / pause from Windows media controls within 2.5 s of a stream start or output change is ignored (user log: `PC -> phone: pause` from headsets while arbitration was off); Android icons as vector drawables (`ic_mc_*`) | ✅ core 129/129, WinUI render harness (fade captured), Android build / tests / lint, headless emulator. NetEase supplement and the SMTC guard need the user's NetEase + headset to confirm |
 
 ### Measured resource use (Windows 11, 20 logical CPUs, Release x64)
 

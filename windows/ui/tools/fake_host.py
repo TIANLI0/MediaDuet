@@ -320,7 +320,7 @@ class FakeHost:
                          "connected": True, "transport": "bt", "lastSeen": int(time.time() * 1000)}]
         self.connection_status = "connected"
         # App versions (DeviceInfo.app): this PC and the phone (--phone-version, e.g. 1.1.0 -> mismatch warning).
-        self.self_app = "1.3.0"
+        self.self_app = "1.3.1"
         for d in self.devices:
             d["app"] = args.phone_version
             d["versionMatch"] = version_match(self.self_app, args.phone_version)
@@ -851,7 +851,7 @@ def main():
     p.add_argument("--theme", choices=["system", "light", "dark"])
     p.add_argument("--scenario", default="playing",
                    choices=["playing", "idle", "nopeer", "firstrun", "standalone", "pairing", "stale-pairing", "compat"])
-    p.add_argument("--phone-version", default="1.3.0", help="the phone's app version (e.g. 1.1.0: version warning)")
+    p.add_argument("--phone-version", default="1.3.1", help="the phone's app version (e.g. 1.1.0: version warning)")
     p.add_argument("--no-lyrics", action="store_true")
     p.add_argument("--lyrics-loading-ms", type=int, default=0,
                    help="answer 'loading' first and send the lyrics after this many ms (layout hold test)")

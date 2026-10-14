@@ -20,21 +20,23 @@ public:
         bool available = false; // at least one eligible (paired A2DP source) device
         std::string state = "off"; // off | connecting | on | error
         std::string device;
-        std::string error;
+        std::string error;     // human readable (log / UI)
+        std::string errorCode; // no_device | ambiguous | timeout | denied | failed (protocol audio.sink.state)
     };
     A2dpSink(IScheduler& sched, std::function<void()> changed);
     ~A2dpSink();
 
     void start();
-    // Opens the connection to the eligible device whose name matches `deviceName`
-    // (falls back to the only eligible device).
-    void enable(const std::string& deviceName);
+    // Opens the connection to the eligible device with Bluetooth address `btAddress`
+    // (0 = unknown) or whose name matches `deviceName`; falls back to the only
+    // eligible device.
+    void enable(const std::string& deviceName, uint64_t btAddress = 0);
     void disable();
     const Status& status() const { return st_; }
     bool active() const { return st_.state == "on" || st_.state == "connecting"; }
 
 private:
-    void setState(std::string state, std::string error = {});
+    void setState(std::string state, std::string error = {}, std::string code = {});
 
     IScheduler& sched_;
     std::function<void()> changed_;

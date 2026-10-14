@@ -787,6 +787,21 @@
                             <Border Style="{StaticResource CardStyle}">
                                 <Grid>
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE8E3;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetTaskbarAlignTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="SetTaskbarAlignDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                    <ComboBox x:Name="TaskbarAlignCombo" Grid.Column="2" MinWidth="200" VerticalAlignment="Center">
+                                        <ComboBoxItem x:Uid="TaskbarAlignAuto" Tag="auto" />
+                                        <ComboBoxItem x:Uid="TaskbarAlignLeft" Tag="left" />
+                                        <ComboBoxItem x:Uid="TaskbarAlignRight" Tag="right" />
+                                    </ComboBox>
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                     <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE7C2;" />
                                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                         <TextBlock x:Uid="SetTaskbarOffsetTitle" Style="{StaticResource CardTitleStyle}" />

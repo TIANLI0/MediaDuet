@@ -293,7 +293,7 @@
     <string name="volume_fixed">The volume of this device is fixed by the system.</string>
     <string name="target_auto_caption">Auto · %1$s</string>
     <string name="target_auto">Automatic</string>
-    <string name="target_auto_text">Follows whatever started playing most recently, on the PC or this phone</string>
+    <string name="target_auto_text">Follows whatever started playing most recently</string>
 
     <!-- Round 3: interaction -->
     <string name="pill_pc_disconnected">PC not connected · Tap to connect</string>
@@ -376,4 +376,23 @@
     <string name="about_email_chooser">Send email</string>
     <string name="about_developer_name" translatable="false">tianli</string>
     <string name="about_developer_email" translatable="false">wutianli@tianli0.top</string>
+
+    <!-- Play on PC (Windows receives the phone’s Bluetooth audio) -->
+    <string name="pc_speaker_title">Play on PC</string>
+    <string name="pc_speaker_text">Plays this phone’s sound through the speakers of “%1$s” over Bluetooth</string>
+    <string name="pc_speaker_connecting">Connecting…</string>
+    <string name="pc_speaker_on">Playing through “%1$s”</string>
+    <string name="pc_speaker_unpaired">Add this phone in the PC’s Bluetooth settings first</string>
+    <string name="pc_speaker_error_ambiguous">Several phones are paired with the PC; it cannot tell which one to use</string>
+    <string name="pc_speaker_error_timeout">The Bluetooth audio connection timed out. Check that Bluetooth is on and try again</string>
+    <string name="pc_speaker_error_denied">Windows refused the Bluetooth audio connection</string>
+    <string name="pc_speaker_error_failed">The Bluetooth audio connection failed. Please try again</string>
+    <string name="pc_speaker_caption">%1$s · on PC</string>
+    <string name="tile_pc_speaker">PC speaker</string>
+    <string name="tile_pc_unavailable">PC not connected</string>
+    <string name="tile_pc_unsupported">Pair Bluetooth on the PC</string>
+    <string name="lyrics_size">Lyrics size</string>
+    <string name="lyrics_size_small">Small</string>
+    <string name="lyrics_size_standard">Default</string>
+    <string name="lyrics_size_large">Large</string>
 </resources>

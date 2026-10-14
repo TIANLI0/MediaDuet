@@ -13,8 +13,10 @@
 // * Font size and spacing scale with the viewport height (26 -> 34 epx).
 // * New lyrics fade in line by line (short stagger); FadeOut() dims the old lines while the next
 //   track's lyrics are loading.
-// * Mouse wheel / touch scrolling pauses following for 4 s and shows a "back to the current line"
-//   button; clicking a line seeks there (when the session supports seeking).
+// * Mouse wheel / touch (or pen) dragging pauses following for 4 s; a "back to the current line"
+//   button appears only while the current line is scrolled out of its place. Mouse clicks never
+//   scroll (the mouse uses the wheel); clicking a line seeks there (when the session can seek).
+// * Lines fade out toward the top / bottom edge (no half-cut line at full strength).
 // * Plain (unsynced) lyrics are a static, scrollable list.
 // Everything here runs on the UI thread from the window's frame clock; nothing runs while paused.
 #pragma once
@@ -66,6 +68,8 @@ namespace mdui
         void ApplyOffset(double offset, Mode mode);
         void Follow(Mode mode);
         void PauseFollow();
+        void UpdateFollowButton();
+        double EdgeFactor(int index) const;
         void OnViewportSize(double width, double height);
         void Place();
         void RevealStep();
@@ -105,5 +109,7 @@ namespace mdui
         double m_fontSize{ 26 };
         bool m_placed{ false };          // initial position applied (needs layout)
         bool m_followPaused{ false };
+        bool m_dragging{ false };        // touch / pen manipulation in progress
+        double m_dragTravel{ 0 };        // its travel before following pauses
     };
 }

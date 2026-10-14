@@ -161,43 +161,96 @@ void NeteaseCompat::onTitle() {
     if (!title.empty()) enrich(title, artist, gen);
 }
 
+NeteaseCompat::QueueMatch NeteaseCompat::lookupQueue(const std::string& title, const std::string& artist) {
+    QueueMatch m;
+    try {
+        std::ifstream in(queueFile(), std::ios::binary);
+        std::stringstream ss;
+        ss << in.rdbuf();
+        auto j = nlohmann::json::parse(ss.str(), nullptr, false);
+        if (!j.is_object() || !j.contains("list") || !j["list"].is_array()) return m;
+        for (auto& e : j["list"]) {
+            if (!e.is_object() || !e.contains("track") || !e["track"].is_object()) continue;
+            auto& tr = e["track"];
+            if (tr.value("name", std::string()) != title) continue;
+            std::string names;
+            if (tr.contains("artists") && tr["artists"].is_array())
+                for (auto& a : tr["artists"])
+                    if (a.is_object()) names += (names.empty() ? "" : "/") + a.value("name", std::string());
+            // Artist separators differ between the window title, SMTC ("A/B", "A, B") and the queue.
+            if (!artist.empty() && !names.empty() && names != artist && names.find(artist) == std::string::npos &&
+                artist.find(names) == std::string::npos) {
+                auto first = names.substr(0, names.find('/'));
+                if (artist.find(first) == std::string::npos) continue;
+            }
+            try {
+                m.id = std::stoll(tr.value("id", std::string("0")));
+            } catch (...) {
+            }
+            if (tr.contains("duration") && tr["duration"].is_number()) m.durationMs = tr["duration"].get<int64_t>();
+            if (tr.contains("album") && tr["album"].is_object()) {
+                m.album = tr["album"].value("name", std::string());
+                m.pic = tr["album"].value("picUrl", std::string());
+            }
+            break;
+        }
+    } catch (...) {
+    }
+    return m;
+}
+
+void NeteaseCompat::supplement(media::MediaSessionInfo& s) {
+    if (!enabled_) return; // Settings > Compatibility > NetEase Cloud Music
+    if (s.durationMs && *s.durationMs > 0) {
+        if (s.key == supSession_) supKey_.clear(); // NetEase reports a timeline after all
+        return;
+    }
+    int64_t now = sched_.nowMs();
+    std::string id = s.title + '\x1f' + s.artist;
+    bool playing = s.isPlaying();
+    if (id != supKey_ || s.key != supSession_) {
+        // New track (or first sight): it starts from the beginning as far as we can tell.
+        supKey_ = id;
+        supSession_ = s.key;
+        supPlaying_ = playing;
+        supPos_ = 0;
+        supAt_ = now;
+        supDuration_.reset();
+        uint64_t gen = ++supGen_;
+        if (!s.title.empty()) {
+            std::weak_ptr<bool> alive = alive_;
+            [](NeteaseCompat* self, std::weak_ptr<bool> alive, std::string title, std::string artist,
+               uint64_t gen) -> fire_and_forget {
+                co_await resume_background();
+                auto m = lookupQueue(title, artist);
+                self->sched_.post([self, alive, gen, m] {
+                    if (alive.expired() || gen != self->supGen_ || m.durationMs <= 0) return;
+                    self->supDuration_ = m.durationMs;
+                    log::debug("netease", "duration from the play queue: {} ms", m.durationMs);
+                    if (self->changed_) self->changed_();
+                });
+            }(this, alive, s.title, s.artist, gen);
+        }
+    } else if (playing != supPlaying_) {
+        if (supPlaying_) supPos_ += now - supAt_; // the playing stretch that just ended
+        supAt_ = now;
+        supPlaying_ = playing;
+    }
+    s.durationMs = supDuration_;
+    int64_t pos = supPos_;
+    if (supDuration_) pos = std::min(pos, *supDuration_);
+    s.positionMs = pos;
+    s.positionAtMs = supAt_;
+}
+
 void NeteaseCompat::enrich(const std::string& title, const std::string& artist, uint64_t gen) {
     std::weak_ptr<bool> alive = alive_;
     [](NeteaseCompat* self, std::weak_ptr<bool> alive, std::string title, std::string artist,
        uint64_t gen) -> fire_and_forget {
         co_await resume_background();
-        int64_t id = 0, dur = 0;
-        std::string album, pic;
-        try {
-            std::ifstream in(queueFile(), std::ios::binary);
-            std::stringstream ss;
-            ss << in.rdbuf();
-            auto j = nlohmann::json::parse(ss.str(), nullptr, false);
-            if (j.is_object() && j.contains("list") && j["list"].is_array()) {
-                for (auto& e : j["list"]) {
-                    if (!e.is_object() || !e.contains("track") || !e["track"].is_object()) continue;
-                    auto& tr = e["track"];
-                    if (tr.value("name", std::string()) != title) continue;
-                    std::string names;
-                    if (tr.contains("artists") && tr["artists"].is_array())
-                        for (auto& a : tr["artists"]) names += (names.empty() ? "" : "/") + a.value("name", std::string());
-                    if (!artist.empty() && names != artist && names.find(artist) == std::string::npos &&
-                        artist.find(names) == std::string::npos)
-                        continue;
-                    try {
-                        id = std::stoll(tr.value("id", std::string("0")));
-                    } catch (...) {
-                    }
-                    dur = tr.value("duration", int64_t(0));
-                    if (tr.contains("album") && tr["album"].is_object()) {
-                        album = tr["album"].value("name", std::string());
-                        pic = tr["album"].value("picUrl", std::string());
-                    }
-                    break;
-                }
-            }
-        } catch (...) {
-        }
+        auto match = lookupQueue(title, artist);
+        int64_t id = match.id, dur = match.durationMs;
+        std::string album = match.album, pic = match.pic;
         std::optional<media::ArtworkRef> art;
         if (!pic.empty() && pic.rfind("http", 0) == 0) {
             try {

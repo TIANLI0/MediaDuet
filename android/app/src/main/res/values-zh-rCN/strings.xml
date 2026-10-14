@@ -268,7 +268,7 @@
     <string name="volume_fixed">此设备的音量由系统固定，无法调整。</string>
     <string name="target_auto_caption">自动 · %1$s</string>
     <string name="target_auto">自动</string>
-    <string name="target_auto_text">跟随最近开始播放的一方（电脑或手机）</string>
+    <string name="target_auto_text">跟随最近开始播放的一方</string>
 
     <!-- Round 3: interaction -->
     <string name="pill_pc_disconnected">电脑未连接 · 点按连接</string>
@@ -348,4 +348,23 @@
     <string name="about_developer">开发者</string>
     <string name="about_email">邮箱</string>
     <string name="about_email_chooser">发送邮件</string>
+
+    <!-- Play on PC (Windows receives the phone’s Bluetooth audio) -->
+    <string name="pc_speaker_title">在电脑上播放</string>
+    <string name="pc_speaker_text">通过蓝牙用“%1$s”的扬声器播放手机声音</string>
+    <string name="pc_speaker_connecting">正在连接…</string>
+    <string name="pc_speaker_on">正在通过“%1$s”播放</string>
+    <string name="pc_speaker_unpaired">需要先在电脑的蓝牙设置中添加这部手机</string>
+    <string name="pc_speaker_error_ambiguous">电脑上有多部手机，无法确定使用哪一部</string>
+    <string name="pc_speaker_error_timeout">蓝牙音频连接超时，请确认手机蓝牙已开启后重试</string>
+    <string name="pc_speaker_error_denied">Windows 拒绝了蓝牙音频连接</string>
+    <string name="pc_speaker_error_failed">蓝牙音频连接失败，请重试</string>
+    <string name="pc_speaker_caption">%1$s · 电脑播放</string>
+    <string name="tile_pc_speaker">电脑扬声器</string>
+    <string name="tile_pc_unavailable">电脑未连接</string>
+    <string name="tile_pc_unsupported">需要在电脑上配对蓝牙</string>
+    <string name="lyrics_size">歌词字号</string>
+    <string name="lyrics_size_small">小</string>
+    <string name="lyrics_size_standard">标准</string>
+    <string name="lyrics_size_large">大</string>
 </resources>
