@@ -413,7 +413,7 @@
   <data name="TaskbarPositionLeft.Content" xml:space="preserve"><value>Left side of the taskbar</value></data>
   <data name="TaskbarPositionRight.Content" xml:space="preserve"><value>Right, next to the notification area</value></data>
   <data name="SetTaskbarOffsetTitle.Text" xml:space="preserve"><value>Offset</value></data>
-  <data name="SetTaskbarOffsetDesc.Text" xml:space="preserve"><value>Moves the widget away from the edge it is aligned to.</value></data>
+  <data name="SetTaskbarOffsetDesc.Text" xml:space="preserve"><value>Moves the widget away from the edge it is aligned to (0–3000 px; drag or type a value).</value></data>
   <data name="SetTaskbarWidthTitle.Text" xml:space="preserve"><value>Width</value></data>
   <data name="SetTaskbarFontSizeTitle.Text" xml:space="preserve"><value>Font size</value></data>
   <data name="CompatIntro.Text" xml:space="preserve"><value>Support for players that do not publish their playback to Windows.</value></data>
@@ -504,4 +504,5 @@
   <data name="QueueButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Up next</value></data>
   <data name="QueueTitle.Text" xml:space="preserve"><value>Up next</value></data>
   <data name="QueueCount" xml:space="preserve"><value>{0} songs</value></data>
+  <data name="TaskbarOffsetBox.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Offset in pixels (0–3000); you can type a value</value></data>
 </root>

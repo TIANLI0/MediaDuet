@@ -808,9 +808,12 @@
                                         <TextBlock x:Uid="SetTaskbarOffsetDesc" Style="{StaticResource CardDescriptionStyle}" />
                                     </StackPanel>
                                     <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                                        <Slider x:Name="TaskbarOffsetSlider" Width="200" Minimum="-800" Maximum="800" StepFrequency="1"
+                                        <Slider x:Name="TaskbarOffsetSlider" Width="200" Minimum="0" Maximum="3000" StepFrequency="1"
                                                 SmallChange="4" LargeChange="40" IsThumbToolTipEnabled="False" VerticalAlignment="Center" />
-                                        <TextBlock x:Name="TaskbarOffsetValue" Width="56" VerticalAlignment="Center" Style="{StaticResource CardDescriptionStyle}" />
+                                        <TextBlock x:Name="TaskbarOffsetValue" Visibility="Collapsed" />
+                                        <NumberBox x:Name="TaskbarOffsetBox" x:Uid="TaskbarOffsetBox" Width="120" Minimum="0" Maximum="3000"
+                                                   SmallChange="10" LargeChange="100" SpinButtonPlacementMode="Compact"
+                                                   ValidationMode="InvalidInputOverwritten" VerticalAlignment="Center" />
                                     </StackPanel>
                                 </Grid>
                             </Border>

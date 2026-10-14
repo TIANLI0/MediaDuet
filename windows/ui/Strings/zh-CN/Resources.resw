@@ -413,7 +413,7 @@
   <data name="TaskbarPositionLeft.Content" xml:space="preserve"><value>任务栏左侧</value></data>
   <data name="TaskbarPositionRight.Content" xml:space="preserve"><value>右侧，靠近通知区域</value></data>
   <data name="SetTaskbarOffsetTitle.Text" xml:space="preserve"><value>偏移</value></data>
-  <data name="SetTaskbarOffsetDesc.Text" xml:space="preserve"><value>从贴靠的一侧向内移动组件。</value></data>
+  <data name="SetTaskbarOffsetDesc.Text" xml:space="preserve"><value>从贴靠的一侧向内移动组件（0–3000 像素，可拖动或直接输入）。</value></data>
   <data name="SetTaskbarWidthTitle.Text" xml:space="preserve"><value>宽度</value></data>
   <data name="SetTaskbarFontSizeTitle.Text" xml:space="preserve"><value>字号</value></data>
   <data name="CompatIntro.Text" xml:space="preserve"><value>支持不向 Windows 发布播放信息的播放器。</value></data>
@@ -504,4 +504,5 @@
   <data name="QueueButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>接下来播放</value></data>
   <data name="QueueTitle.Text" xml:space="preserve"><value>接下来播放</value></data>
   <data name="QueueCount" xml:space="preserve"><value>{0} 首</value></data>
+  <data name="TaskbarOffsetBox.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>偏移（像素，0–3000），可直接输入</value></data>
 </root>

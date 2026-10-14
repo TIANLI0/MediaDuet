@@ -6,6 +6,7 @@
 
 #include "Controller.h"
 #include "PlaybackClock.h"
+#include "RenderTest.h"
 #include "Strings.h"
 #include "Version.h"
 
@@ -240,21 +241,19 @@ namespace winrt::MediaDuetUI::implementation
         Bind(TaskbarPositionCombo(), "taskbar.position", "left");
         Bind(TaskbarAlignCombo(), "taskbar.align", "auto");
         Bind(TaskbarOffsetSlider(), TaskbarOffsetValue(), "taskbar.offset", 0, 2);
+        Bind(TaskbarOffsetBox(), "taskbar.offset", 0);   // typed values; the slider follows
         Bind(TaskbarWidthBox(), "taskbar.width", 360);
         Bind(TaskbarFontSizeBox(), "taskbar.fontSize", 13);
         Bind(NeteaseDesktopToggle(), "compat.neteaseDesktop", true);
 
-        // WinUI's built-in "On"/"Off" labels follow the OS language, not our language setting.
-        for (auto const& toggle : { AnimationsToggle(), LowPowerToggle(), MainOnTopToggle(), CompactOnTopToggle(), CompactSnapToggle(),
+        // Every switch: knob at the right edge, our own "On"/"Off" label (MediaDuet's language) left
+        // of it. Rebuilt once the page is loaded (the XAML parents are not wired up before that).
+        m_alignedToggles = { AnimationsToggle(), LowPowerToggle(), MainOnTopToggle(), CompactOnTopToggle(), CompactSnapToggle(),
                  AutostartToggle(), AutoResumeToggle(), PauseForCallsToggle(), OnlineLyricsToggle(), OverlayShowToggle(),
                  OverlayLockToggle(), OverlayClickThroughToggle(), OverlayAutoHideToggle(), OverlayKaraokeToggle(),
                  OverlayTwoLinesToggle(), SmtcToggle(), A2dpToggle(), LanSendToggle(), DiagnosticsToggle(),
                  HeadsetAssistToggle(), TaskbarEnabledToggle(), NeteaseDesktopToggle(), TranslationToggle(), OverlayTopmostToggle(),
-                 OverlayHideFullscreenToggle(), LatencyAutoToggle(), ArtworkOnlineToggle() })
-        {
-            toggle.OnContent(box_value(Str(L"On")));
-            toggle.OffContent(box_value(Str(L"Off")));
-        }
+                 OverlayHideFullscreenToggle(), LatencyAutoToggle(), ArtworkOnlineToggle() };
 
         // ---- Commands that are not settings
         OverlayShowToggle().Toggled([this](auto&&, auto&&) {
@@ -399,6 +398,8 @@ namespace winrt::MediaDuetUI::implementation
         Root().Loaded([weak = get_weak()](auto&&, auto&&) {
             auto self = weak.get();
             if (!self || self->m_closed) return;
+            for (auto const& t : self->m_alignedToggles) self->RightAlignToggle(t);
+            self->m_alignedToggles.clear();
             // Screen-reader names from the card titles (their x:Uid text is in place once loaded).
             for (auto const& b : self->m_toggles) NameFromCard(b.control);
             for (auto const& b : self->m_numbers) NameFromCard(b.control);
@@ -412,6 +413,58 @@ namespace winrt::MediaDuetUI::implementation
         });
 
         RefreshAll();
+    }
+
+    // Windows-Settings-style switch: the "On"/"Off" text sits left of the knob and the knob ends at
+    // the card's right edge, in line with the combo boxes and number boxes. (WinUI draws its text
+    // right of the knob, which leaves the knob ~100 px left of every other control.) The label is
+    // ours, so it also follows MediaDuet's language instead of the OS language. The wrapper is a
+    // Grid, not a StackPanel, so NameFromCard still names the switch after the card title.
+    void SettingsPage::RightAlignToggle(ToggleSwitch const& toggle)
+    {
+        auto parent = toggle.Parent().try_as<Panel>();
+        uint32_t index = 0;
+        if (!parent || !parent.Children().IndexOf(toggle, index)) return;
+        Grid row;
+        row.ColumnSpacing(10);
+        row.HorizontalAlignment(HorizontalAlignment::Right);
+        row.VerticalAlignment(VerticalAlignment::Center);
+        for (int i = 0; i < 2; ++i)
+        {
+            ColumnDefinition c;
+            c.Width(GridLength{ 1, GridUnitType::Auto });
+            row.ColumnDefinitions().Append(c);
+        }
+        Grid::SetColumn(row, Grid::GetColumn(toggle));
+        Grid::SetRow(row, Grid::GetRow(toggle));
+        Grid::SetColumnSpan(row, Grid::GetColumnSpan(toggle));
+        TextBlock state;
+        state.VerticalAlignment(VerticalAlignment::Center);
+        // TryLookup: a missing key must never throw out of the constructor.
+        auto key = box_value(L"ValueTextStyle");
+        auto style = Resources().TryLookup(key);
+        if (!style) style = Application::Current().Resources().TryLookup(key);
+        if (auto st = style.try_as<Microsoft::UI::Xaml::Style>()) state.Style(st);
+        parent.Children().RemoveAt(index);
+        row.Children().Append(state);
+        Grid::SetColumn(toggle, 1);
+        Grid::SetRow(toggle, 0);
+        Grid::SetColumnSpan(toggle, 1);
+        // No built-in content: the template then only keeps its knob plus a fixed gap after it.
+        toggle.OnContent(box_value(hstring{}));
+        toggle.OffContent(box_value(hstring{}));
+        toggle.MinWidth(0);
+        toggle.Margin(Thickness{ 0, 0, -12, 0 });
+        toggle.VerticalAlignment(VerticalAlignment::Center);
+        row.Children().Append(toggle);
+        parent.Children().InsertAt(index, row);
+        auto update = [state, toggle] {
+            state.Text(toggle.IsOn() ? Str(L"On") : Str(L"Off"));
+            state.Opacity(toggle.IsEnabled() ? 1.0 : 0.45);
+        };
+        update();
+        toggle.Toggled([update](auto&&, auto&&) { update(); });
+        toggle.IsEnabledChanged([update](auto&&, auto&&) { update(); });
     }
 
     // ---- Bindings ----------------------------------------------------------------------------
@@ -1666,8 +1719,8 @@ namespace winrt::MediaDuetUI::implementation
 
             ToggleSwitch toggle;
             toggle.IsOn(on);
-            toggle.OnContent(nullptr);
-            toggle.OffContent(nullptr);
+            toggle.OnContent(box_value(hstring{}));
+            toggle.OffContent(box_value(hstring{}));
             toggle.MinWidth(0);
             toggle.VerticalAlignment(VerticalAlignment::Center);
             auto name = Str(L"Provider_" + Widen(id));

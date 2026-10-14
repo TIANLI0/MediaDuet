@@ -36,6 +36,8 @@ namespace winrt::MediaDuetUI::implementation
         };
 
         void Bind(Microsoft::UI::Xaml::Controls::ToggleSwitch const& c, std::string path, bool def);
+        void RightAlignToggle(Microsoft::UI::Xaml::Controls::ToggleSwitch const& toggle);
+        std::vector<Microsoft::UI::Xaml::Controls::ToggleSwitch> m_alignedToggles;   // reworked on Loaded
         void Bind(Microsoft::UI::Xaml::Controls::NumberBox const& c, std::string path, double def);
         void Bind(Microsoft::UI::Xaml::Controls::ComboBox const& c, std::string path, std::string def);
         void Bind(Microsoft::UI::Xaml::Controls::RadioButtons const& c, std::string path, std::string def);
