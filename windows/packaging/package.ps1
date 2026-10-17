@@ -96,10 +96,10 @@ Compress-Archive -Path (Join-Path $dist '*') -DestinationPath $zip
 "Zip:    $zip ({0:N1} MB)" -f ((Get-Item $zip).Length / 1MB)
 
 # Installer (NSIS 3), if available.
-$nsis = Get-Command makensis.exe -ErrorAction SilentlyContinue
-if (-not $nsis -and (Test-Path "${env:ProgramFiles(x86)}\NSIS\Bin\makensis.exe")) { $nsis = Get-Item "${env:ProgramFiles(x86)}\NSIS\Bin\makensis.exe" }
+$nsis = (Get-Command makensis.exe -ErrorAction SilentlyContinue).Source
+if (-not $nsis -and (Test-Path "${env:ProgramFiles(x86)}\NSIS\Bin\makensis.exe")) { $nsis = "${env:ProgramFiles(x86)}\NSIS\Bin\makensis.exe" }
 if ($nsis) {
-    & $nsis.Source /V2 /INPUTCHARSET UTF8 "/DVERSION=$Version" "/DARCH=$Arch" (Join-Path $PSScriptRoot 'installer.nsi')
+    & $nsis /V2 /INPUTCHARSET UTF8 "/DVERSION=$Version" "/DARCH=$Arch" (Join-Path $PSScriptRoot 'installer.nsi')
     if ($LASTEXITCODE) { throw 'NSIS failed' }
     "Setup:  " + (Join-Path $root "dist\MediaDuet-$Version-$Arch-setup.exe")
 } else {
