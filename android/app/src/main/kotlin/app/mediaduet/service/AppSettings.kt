@@ -153,6 +153,25 @@ class AppSettings(context: Context) {
         _audioReceive.value = enabled
     }
 
+    private val _autoUpdateCheck = MutableStateFlow(prefs.getBoolean(KEY_UPDATE_AUTO, true))
+    /** Look for a new MediaDuet version on GitHub once a day (Settings > About). */
+    val autoUpdateCheck: StateFlow<Boolean> = _autoUpdateCheck
+
+    fun setAutoUpdateCheck(enabled: Boolean) {
+        prefs.edit { putBoolean(KEY_UPDATE_AUTO, enabled) }
+        _autoUpdateCheck.value = enabled
+    }
+
+    /** Wall time (ms) of the last update check that got an answer. */
+    var lastUpdateCheckMs: Long
+        get() = prefs.getLong(KEY_UPDATE_CHECKED, 0)
+        set(v) = prefs.edit { putLong(KEY_UPDATE_CHECKED, v) }
+
+    /** The newest version the user was already told about (one notification per version). */
+    var updateNotified: String
+        get() = prefs.getString(KEY_UPDATE_NOTIFIED, "") ?: ""
+        set(v) = prefs.edit { putString(KEY_UPDATE_NOTIFIED, v) }
+
     private companion object {
         const val KEY_DEVICE_ID = "device_id"
         const val KEY_NAME = "device_name"
@@ -168,6 +187,9 @@ class AppSettings(context: Context) {
         const val KEY_ONLINE_LYRICS = "lyrics.online"
         const val KEY_MODE = "work_mode"
         const val KEY_VERSION_DISMISSED = "version_warning_dismissed"
+        const val KEY_UPDATE_AUTO = "update.auto"
+        const val KEY_UPDATE_CHECKED = "update.checkedAt"
+        const val KEY_UPDATE_NOTIFIED = "update.notified"
     }
 }
 

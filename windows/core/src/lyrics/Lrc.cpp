@@ -336,21 +336,63 @@ bool isInstrumentalNotice(const Lyrics& l) {
     return false;
 }
 
-size_t mergeTranslation(Lyrics& base, const Lyrics& tr, int64_t tol) {
+namespace {
+// Text identity for aligning a line across two versions of one lyric: no whitespace, ASCII lower case.
+std::string lineKey(std::string_view s) {
+    std::string out;
+    for (unsigned char c : s) {
+        if (c == ' ' || c == '\t' || c == '\r' || c == '\n') continue;
+        out += static_cast<char>(c < 0x80 ? std::tolower(c) : c);
+    }
+    return out;
+}
+
+Line* nearest(Lyrics& l, int64_t t, int64_t tol) {
+    Line* best = nullptr;
+    int64_t bestDiff = tol + 1;
+    for (auto& x : l.lines) {
+        int64_t d = std::llabs(x.t - t);
+        if (d < bestDiff) {
+            bestDiff = d;
+            best = &x;
+        }
+    }
+    return best;
+}
+} // namespace
+
+size_t mergeTranslation(Lyrics& base, const Lyrics& tr, int64_t tol, const Lyrics* timedLike) {
     if (!base.synced || !tr.synced) return 0;
     size_t n = 0;
     for (auto& t : tr.lines) {
         std::string text = text::trim(t.text);
         if (text.empty() || text == "//") continue;
         Line* best = nullptr;
-        int64_t bestDiff = tol + 1;
-        for (auto& l : base.lines) {
-            int64_t d = std::llabs(l.t - t.t);
-            if (d < bestDiff) {
-                bestDiff = d;
-                best = &l;
+        if (timedLike && timedLike->synced) {
+            // The translation's own line (same timestamp) in the LRC, then that text in `base`.
+            const Line* via = nullptr;
+            int64_t viaDiff = tol + 1;
+            for (auto& v : timedLike->lines) {
+                int64_t d = std::llabs(v.t - t.t);
+                if (d < viaDiff) {
+                    viaDiff = d;
+                    via = &v;
+                }
+            }
+            if (via && !lineKey(via->text).empty()) {
+                std::string key = lineKey(via->text);
+                int64_t bestDiff = 15'000 + 1; // the same line, not a repeat of it far away
+                for (auto& l : base.lines) {
+                    int64_t d = std::llabs(l.t - via->t);
+                    if (d < bestDiff && lineKey(l.text) == key) {
+                        bestDiff = d;
+                        best = &l;
+                    }
+                }
+                if (!best) best = nearest(base, via->t, std::max<int64_t>(tol, 2000));
             }
         }
+        if (!best) best = nearest(base, t.t, tol);
         if (!best || best->text.empty() || text == best->text) continue;
         if (best->translation.empty()) ++n;
         best->translation = text;
@@ -370,7 +412,7 @@ std::string translationLrc(const Lyrics& l) {
     std::string out;
     for (auto& line : l.lines)
         if (!line.translation.empty()) out += "[" + stamp(line.t) + "]" + line.translation + "\n";
-    return out;
+    return out.empty() ? out : std::string(kTranslationMark) + "\n" + out;
 }
 
 static std::string stamp(int64_t ms) {

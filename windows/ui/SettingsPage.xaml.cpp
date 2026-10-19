@@ -245,6 +245,7 @@ namespace winrt::MediaDuetUI::implementation
         Bind(TaskbarWidthBox(), "taskbar.width", 360);
         Bind(TaskbarFontSizeBox(), "taskbar.fontSize", 13);
         Bind(NeteaseDesktopToggle(), "compat.neteaseDesktop", true);
+        Bind(UpdateAutoToggle(), "update.auto", true);
 
         // Every switch: knob at the right edge, our own "On"/"Off" label (MediaDuet's language) left
         // of it. Rebuilt once the page is loaded (the XAML parents are not wired up before that).
@@ -253,7 +254,7 @@ namespace winrt::MediaDuetUI::implementation
                  OverlayLockToggle(), OverlayClickThroughToggle(), OverlayAutoHideToggle(), OverlayKaraokeToggle(),
                  OverlayTwoLinesToggle(), SmtcToggle(), A2dpToggle(), LanSendToggle(), DiagnosticsToggle(),
                  HeadsetAssistToggle(), TaskbarEnabledToggle(), NeteaseDesktopToggle(), TranslationToggle(), OverlayTopmostToggle(),
-                 OverlayHideFullscreenToggle(), LatencyAutoToggle(), ArtworkOnlineToggle() };
+                 OverlayHideFullscreenToggle(), LatencyAutoToggle(), ArtworkOnlineToggle(), UpdateAutoToggle() };
 
         // ---- Commands that are not settings
         OverlayShowToggle().Toggled([this](auto&&, auto&&) {
@@ -274,6 +275,16 @@ namespace winrt::MediaDuetUI::implementation
             UpdateDiagnostics();
         });
         QuitHostButton().Click([](auto&&, auto&&) { Controller::Get().ExitHost(); });
+        UpdateButton().Click([](auto&&, auto&&) {
+            auto const& u = Controller::Get().Model().update;
+            if (u.phase == "available" || (u.phase == "error" && !u.latest.empty() && u.latest != u.current)) Controller::Get().InstallUpdate();
+            else Controller::Get().CheckUpdate();
+        });
+        UpdateNotesLink().Click([](auto&&, auto&&) {
+            auto const& u = Controller::Get().Model().update;
+            std::wstring url = Widen(u.page.empty() ? std::string("https://github.com/TIANLI0/MediaDuet/releases/latest") : u.page);
+            if (url.rfind(L"https://", 0) == 0) ShellExecuteW(nullptr, L"open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        });
         StartHostButton().Click([this](auto&&, auto&&) {
             Controller::Get().LaunchHost();
             UpdateHostBar();
@@ -1493,6 +1504,48 @@ namespace winrt::MediaDuetUI::implementation
             if (phone.empty()) phone = st.devices.empty() ? std::wstring(Str(L"NoPhonePaired")) : std::wstring(Str(L"DeviceVersionUnknown"));
         }
         PhoneVersionValue().Text(phone);
+        UpdateSoftwareUpdate();
+    }
+
+    void SettingsPage::UpdateSoftwareUpdate()
+    {
+        auto& c = Controller::Get();
+        auto const& u = c.Model().update;
+        bool host = c.Link() == HostLink::Connected && u.valid;
+        std::wstring latest = Widen(u.latest), current = Widen(u.current.empty() ? std::string(MDUI_VERSION_STRING) : u.current);
+        bool newer = !u.latest.empty() && u.latest != u.current;
+        std::wstring title, detail, button(Str(L"UpdateCheckButton"));
+        bool busy = false, progress = false;
+        if (!host) { title = Str(L"UpdateTitle"); detail = Str(L"NotConnected"); }
+        else if (u.phase == "checking") { title = Str(L"UpdateChecking"); busy = true; }
+        else if (u.phase == "available") { title = StrF(L"UpdateAvailable", { latest }); detail = StrF(L"UpdateAvailableDetail", { current }); button = Str(L"UpdateInstallButton"); }
+        else if (u.phase == "downloading")
+        {
+            title = StrF(L"UpdateDownloading", { latest });
+            wchar_t pct[16];
+            swprintf_s(pct, L"%d%%", static_cast<int>(u.progress * 100 + 0.5));
+            detail = pct;
+            busy = progress = true;
+        }
+        else if (u.phase == "installing") { title = StrF(L"UpdateInstalling", { latest }); detail = Str(L"UpdateInstallingDetail"); busy = true; }
+        else if (u.phase == "current") { title = Str(L"UpdateCurrent"); detail = StrF(L"UpdateCurrentDetail", { current }); }
+        else if (u.phase == "error")
+        {
+            title = Str(L"UpdateFailed");
+            std::wstring key = L"UpdateErr_" + Widen(u.error.empty() ? std::string("network") : u.error);
+            detail = Str(key);
+            if (detail.empty() || detail == key) detail = StrF(L"UpdateErrOther", { Widen(u.error) });
+            if (newer) button = Str(L"UpdateRetryButton");
+        }
+        else { title = Str(L"UpdateTitle"); detail = StrF(L"UpdateCurrentDetail", { current }); }
+        UpdateTitle().Text(title);
+        UpdateDetail().Text(detail);
+        UpdateDetail().Visibility(detail.empty() ? Visibility::Collapsed : Visibility::Visible);
+        UpdateProgress().Visibility(progress ? Visibility::Visible : Visibility::Collapsed);
+        UpdateProgress().Value(u.progress);
+        UpdateNotesLink().Visibility(host && newer ? Visibility::Visible : Visibility::Collapsed);
+        UpdateButton().Content(box_value(button));
+        UpdateButton().IsEnabled(host && !busy);
     }
 
     // ---- Pairing -----------------------------------------------------------------------------

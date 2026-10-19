@@ -466,7 +466,52 @@ namespace mdui
         if (auto v = JPath(s.settings, "lyrics.overlay.visible"); v && v->is_boolean()) persisted = v->get<bool>();
         s.overlayVisible = JBool(JObj(j, "lyricsOverlay"), "visible", persisted);
         s.diagnosticsEnabled = JBool(JObj(j, "diagnostics"), "enabled", false);
+
+        auto const& h = JObj(j, "handoff");
+        auto const& apps = JObj(h, "apps");
+        for (auto const& a : JArr(apps, "local"))
+            if (a.is_string()) s.handoff.localApps.push_back(a.get<std::string>());
+        for (auto const& a : JArr(apps, "remote"))
+            if (a.is_string()) s.handoff.remoteApps.push_back(a.get<std::string>());
+        auto const& active = JObj(h, "active");
+        if (!active.empty())
+        {
+            s.handoff.active = true;
+            s.handoff.to = JStr(active, "to");
+            s.handoff.app = JStr(active, "app");
+            s.handoff.title = JStr(active, "title");
+            s.handoff.waitingForTap = JBool(active, "waitingForTap", false);
+        }
+        if (auto u = j.find("update"); u != j.end()) s.update = ParseUpdate(*u);
         return s;
+    }
+
+    Update ParseUpdate(json const& u)
+    {
+        Update up;
+        if (!u.is_object()) return up;
+        up.valid = true;
+        up.phase = JStr(u, "phase", "idle");
+        up.current = JStr(u, "current");
+        up.latest = JStr(u, "latest");
+        up.page = JStr(u, "page");
+        up.error = JStr(u, "error");
+        up.progress = JDbl(u, "progress", 0);
+        up.autoCheck = JBool(u, "auto", true);
+        up.portable = JBool(u, "portable", false);
+        return up;
+    }
+
+    HandoffOutcome ParseHandoffOutcome(json const& j)
+    {
+        HandoffOutcome o;
+        o.ok = JBool(j, "ok", false);
+        o.state = JStr(j, "state");
+        o.error = JStr(JObj(j, "error"), "code");
+        o.to = JStr(j, "to");
+        o.app = JStr(j, "app");
+        o.title = JStr(j, "title");
+        return o;
     }
 
     Session const* State::Find(Side side, std::string_view key) const

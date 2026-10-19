@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(MediaDuet VERSION 1.4.1 LANGUAGES CXX)
+project(MediaDuet VERSION 1.5.0 LANGUAGES CXX)
 
 if(NOT MSVC)
   message(FATAL_ERROR "MediaDuet for Windows requires MSVC (C++/WinRT, Windows SDK).")
@@ -46,6 +46,8 @@ add_library(md_core STATIC
   core/src/link/ConnectionManager.cpp
   core/src/link/DedupWindow.cpp
   core/src/policy/PlaybackArbiter.cpp
+  core/src/handoff/Handoff.cpp
+  core/src/update/Update.cpp
   core/src/media/MediaTypes.cpp
   core/src/media/ArtworkPolicy.cpp
   core/src/lyrics/Lrc.cpp
@@ -78,11 +80,14 @@ add_library(md_platform STATIC
   platform/media/Artwork.cpp
   platform/media/ArtworkLookup.cpp
   platform/media/NeteaseCompat.cpp
+  platform/media/HandoffLauncher.cpp
+  platform/update/Updater.cpp
   platform/audio/AudioActivityMonitor.cpp
   platform/audio/A2dpSink.cpp
   platform/audio/LoopbackSender.cpp
   platform/audio/VolumeControl.cpp
   platform/lyrics/LyricsService.cpp
+  platform/lyrics/Catalog.cpp
   platform/overlay/OverlayCommon.cpp
   platform/overlay/LyricsOverlay.cpp
   platform/overlay/TaskbarWidget.cpp
@@ -105,6 +110,7 @@ add_executable(MediaDuet WIN32
   app/Autostart.cpp
   app/Strings.cpp
   app/Diagnostics.cpp
+  app/HandoffHost.cpp
   app/resources/MediaDuet.rc
 )
 target_link_libraries(MediaDuet PRIVATE md_platform)
@@ -133,6 +139,11 @@ add_executable(MediaDuetTestPlayer WIN32 tools/test_smtc_player/test_smtc_player
 target_link_libraries(MediaDuetTestPlayer PRIVATE windowsapp ole32 user32 shell32)
 md_configure(MediaDuetTestPlayer)
 
+# Developer tool: real update check + download + checksum, never installs (not shipped).
+add_executable(MediaDuetUpdateCheck tools/update_check/update_check.cpp)
+target_link_libraries(MediaDuetUpdateCheck PRIVATE md_platform)
+md_configure(MediaDuetUpdateCheck)
+
 # Developer tool: measures lyrics hit rate (not shipped).
 add_executable(MediaDuetLyricsTest tools/lyrics_test/lyrics_test.cpp)
 target_link_libraries(MediaDuetLyricsTest PRIVATE md_platform)
@@ -158,6 +169,8 @@ if(MD_BUILD_TESTS)
     tests/test_karaoke.cpp
     tests/test_lyrics_clock.cpp
     tests/test_surface_policy.cpp
+    tests/test_handoff.cpp
+    tests/test_update.cpp
   )
   target_link_libraries(md_tests PRIVATE md_core)
   target_compile_definitions(md_tests PRIVATE

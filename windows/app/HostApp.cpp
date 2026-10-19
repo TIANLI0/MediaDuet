@@ -29,7 +29,7 @@ constexpr size_t kChunk = 32 * 1024;
 std::vector<std::string> baseCaps() {
     return {proto::caps::MediaSource, proto::caps::MediaControl, proto::caps::Artwork, proto::caps::Lyrics,
             proto::caps::PolicyHost,  proto::caps::SmtcBridge,   proto::caps::AudioA2dpSink,
-            proto::caps::AudioSendPcm, proto::caps::Volume};
+            proto::caps::AudioSendPcm, proto::caps::Volume, proto::caps::Handoff};
 }
 
 std::string osVersion() {
@@ -128,6 +128,10 @@ void HostApp::init() {
                 applySettings();
             } else if (c == "exit") {
                 exitApp();
+            } else if (c == "update") {
+                // Settings > About shows the progress and any error.
+                if (updater_) updater_->install();
+                openUi("settings");
             }
         },
         [this] {
@@ -147,6 +151,11 @@ void HostApp::init() {
             st.canControl = focused() != nullptr;
             st.a2dpAvailable = !standalone() && (a2dp_->status().available || a2dp_->active());
             st.a2dpOn = a2dp_->active();
+            if (updater_ && updater_->phase() == platform::Updater::Phase::Available) {
+                wchar_t buf[96];
+                swprintf_s(buf, tr("update"), text::toWide(updater_->latest()).c_str());
+                st.update = buf;
+            }
             return st;
         },
         [this] {
@@ -263,6 +272,25 @@ void HostApp::init() {
 
     lyrics_ = std::make_unique<platform::LyricsService>(sched_, platform::cacheDir() / L"lyrics",
                                                         [this](const platform::LyricsService::Result& r) { onLyrics(r); });
+    updater_ = std::make_unique<platform::Updater>(sched_, dir / L"updates", MD_VERSION,
+                                                   platform::Updater::Callbacks{[this] { markDirty(); }, [this] { exitApp(); }});
+    handoff_ = std::make_unique<HandoffHost>(
+        sched_, HandoffHost::Callbacks{
+                    [this]() -> const media::MediaSnapshot& { return local_; },
+                    [this]() -> const media::MediaSnapshot& { return remote_; },
+                    [this](handoff::Device d, const std::string& key, CommandAction a, std::optional<int64_t> pos) {
+                        sendUserCommand(d == handoff::Device::Pc ? Side::Local : Side::Remote, key, a, pos, "handoff");
+                    },
+                    [this](const std::string& key, int64_t pos) { return netease_->seek(key, pos); },
+                    [this](const std::string& key) { return netease_->positionEstimated(key); },
+                    [this] { return !standalone_ && cm_->isUp() && peerHasCap(proto::caps::Handoff); },
+                    [this](const char* type, json body, std::optional<uint64_t> re) { return cm_->send(type, std::move(body), re); },
+                    [this] { return cm_->status().rttMs; },
+                    [this] { markDirty(); },
+                    [this](const handoff::Outcome& o) {
+                        if (ipc_ && ipc_->connected())
+                            ipc_->send(json{{"type", "handoff"}, {"outcome", handoff::toJson(o)}}.dump(-1, ' ', false, json::error_handler_t::replace));
+                    }});
     overlay_ = std::make_unique<platform::LyricsOverlay>(
         sched_, platform::LyricsOverlay::Callbacks{
                     [this](int x, int y) {
@@ -369,6 +397,8 @@ void HostApp::shutdown() {
     smtc_.reset();
     dnssd_.reset();
     bt_.reset();
+    handoff_.reset();
+    updater_.reset();
     cm_.reset();
     gsmtc_.reset();
     audio_.reset();
@@ -464,6 +494,7 @@ void HostApp::applySettings() {
     updateOverlayPlayback();
     sendLocalSnapshot();
 
+    updater_->setAutoCheck(settings_.get<bool>("update.auto", true));
     diagnostics_ = settings_.get<bool>("diagnostics", false);
     if (diagnostics_ && !diagTimer_.active()) tickDiagnostics();
     if (!diagnostics_) diagTimer_.cancel();
@@ -515,6 +546,7 @@ void HostApp::onLinkUp(const std::string& peerId, bool resumed) {
     sendPolicyStatus();
     lastSinkJson_.clear();
     sendSinkState();
+    if (handoff_) handoff_->onLinkUp();
     updateTray();
     markDirty();
 }
@@ -530,6 +562,7 @@ void HostApp::onLinkDown(const std::string& peerId) {
     incomingArt_.clear();
     if (loopback_->running()) loopback_->stop("link down");
     audioOffer_.reset();
+    if (handoff_) handoff_->onLinkDown();
     updateSmtc();
     updateFocus();
     updateTray();
@@ -563,6 +596,7 @@ void HostApp::onPeerEndpoints(const std::string&, const std::vector<link::LanEnd
 void HostApp::onEnvelope(const std::string& peerId, const proto::Envelope& e, uint64_t connId) {
     const auto& t = e.type;
     if (t == proto::types::MediaSnapshot) return onRemoteSnapshot(e);
+    if (handoff_ && handoff_->onEnvelope(e)) return;
     if (t == proto::types::MediaCommand) return executeRemoteCommand(e, connId);
     if (t == proto::types::ArtworkGet) return serveArtwork(e, connId);
     if (t == proto::types::VolumeState) {
@@ -753,7 +787,13 @@ void HostApp::onLocalSnapshot(const media::MediaSnapshot& snap) {
     cm_->setMediaActive(anyPlaying);
     sendLocalSnapshot();
     updateFocus();
+    if (handoff_) handoff_->onLocalSnapshot();
     markDirty();
+}
+
+bool HostApp::peerHasCap(const char* cap) const {
+    const auto* caps = cm_->peerCaps();
+    return caps && std::find(caps->begin(), caps->end(), cap) != caps->end();
 }
 
 std::string HostApp::processFor(const MediaSessionInfo& s) const {
@@ -1427,6 +1467,29 @@ void HostApp::handleIpc(const std::string& line) {
             sendUserCommand(side, key, *act, pos, "ui", std::move(custom), queueId);
             return result(true);
         }
+        if (type == "handoff.start") {
+            // Continue the session on the other device (docs/ipc.md); answered when it is done.
+            auto from = m.value("side", std::string("remote")) == "local" ? handoff::Device::Pc : handoff::Device::Phone;
+            std::string key = m.value("key", std::string());
+            std::optional<handoff::App> app;
+            if (m.contains("app") && m["app"].is_string()) app = handoff::appFromString(m["app"].get<std::string>());
+            json rid = m.contains("rid") ? m["rid"] : json(nullptr);
+            handoff_->start(from, key, app, [this, rid](const handoff::Outcome& o) {
+                if (rid.is_null() || !ipc_ || !ipc_->connected()) return;
+                json r = {{"type", "result"}, {"rid", rid}, {"ok", o.ok}};
+                if (!o.ok) r["error"] = o.error;
+                ipc_->send(r.dump());
+            });
+            return;
+        }
+        if (type == "update.check") {
+            updater_->check(true);
+            return result(true);
+        }
+        if (type == "update.install") {
+            updater_->install();
+            return result(true);
+        }
         if (type == "focus.set") {
             if (m.value("auto", false) || !m.contains("key") || m["key"].is_null()) {
                 focusAuto_ = true;
@@ -1751,6 +1814,8 @@ json HostApp::buildState() const {
                                     {"error", remoteVolError_.empty() ? json(nullptr) : json(remoteVolError_)}}}}},
             {"audioOutputLatency", {{"bluetooth", localVol_.bluetooth}, {"ms", localOutputLatencyMs()}}},
             {"settings", settings_.data()},
+            {"handoff", handoff_ ? handoff_->stateJson() : json(nullptr)},
+            {"update", updater_ ? updater_->status() : json(nullptr)},
             {"diagnostics", {{"enabled", diagnostics_}}}};
 }
 

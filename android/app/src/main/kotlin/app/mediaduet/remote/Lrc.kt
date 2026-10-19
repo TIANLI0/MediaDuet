@@ -41,11 +41,35 @@ data class Lyrics(val lines: List<LyricLine>) {
  * Attaches a separately delivered translation LRC (NetEase tlyric / QQ trans) to the original
  * lines: each non-empty translated line that is not "//" goes to the original line with the
  * nearest timestamp within ±[TOLERANCE_MS], unless it is identical to the original text.
+ *
+ * [timedLike]: the lyrics whose timestamps the translation follows when [original] is timed
+ * differently (NetEase: tlyric follows the plain LRC, not the word-timed yrc, whose line starts
+ * often differ by more than the tolerance). A translation then goes to the original line with
+ * the same text as its LRC line (the nearest one), else to the line nearest in time. Mirrors the
+ * host's `lyrics::mergeTranslation`.
  */
 object TranslationMerge {
     const val TOLERANCE_MS = 600L
+    /** A repeated line far away is another occurrence, not this one. */
+    private const val SAME_LINE_MS = 15_000L
+    private const val VIA_FALLBACK_MS = 2_000L
 
-    fun merge(original: Lyrics, translationLrc: String): Lyrics {
+    private fun key(s: String) = buildString { for (c in s) if (!c.isWhitespace()) append(if (c.code < 0x80) c.lowercaseChar() else c) }
+
+    private fun nearest(lines: List<LyricLine>, t: Long, tol: Long): Int {
+        var best = -1
+        var bestDistance = tol + 1
+        for ((i, line) in lines.withIndex()) {
+            val d = kotlin.math.abs(line.timeMs - t)
+            if (d < bestDistance) {
+                bestDistance = d
+                best = i
+            }
+        }
+        return best
+    }
+
+    fun merge(original: Lyrics, translationLrc: String, timedLike: Lyrics? = null): Lyrics {
         if (original.isEmpty) return original
         val translated = LrcParser.parse(translationLrc).lines
         val out = original.lines.toMutableList()
@@ -53,17 +77,25 @@ object TranslationMerge {
             val text = t.text.trim()
             if (text.isEmpty() || text == "//") continue
             var best = -1
-            var bestDistance = Long.MAX_VALUE
-            for ((i, line) in out.withIndex()) {
-                val d = kotlin.math.abs(line.timeMs - t.timeMs)
-                if (d < bestDistance) {
-                    bestDistance = d
-                    best = i
+            if (timedLike != null && !timedLike.isEmpty) {
+                val via = timedLike.lines.getOrNull(nearest(timedLike.lines, t.timeMs, TOLERANCE_MS))
+                val k = via?.let { key(it.text) }.orEmpty()
+                if (via != null && k.isNotEmpty()) {
+                    var d = SAME_LINE_MS + 1
+                    for ((i, line) in out.withIndex()) {
+                        val dist = kotlin.math.abs(line.timeMs - via.timeMs)
+                        if (dist < d && key(line.text) == k) {
+                            d = dist
+                            best = i
+                        }
+                    }
+                    if (best < 0) best = nearest(out, via.timeMs, maxOf(TOLERANCE_MS, VIA_FALLBACK_MS))
                 }
             }
-            if (best < 0 || bestDistance > TOLERANCE_MS) continue
+            if (best < 0) best = nearest(out, t.timeMs, TOLERANCE_MS)
+            if (best < 0) continue
             val line = out[best]
-            if (text == line.text.trim()) continue
+            if (line.text.isEmpty() || text == line.text.trim()) continue
             out[best] = line.copy(translation = text)
         }
         return Lyrics(out)

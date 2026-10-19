@@ -505,4 +505,58 @@
   <data name="QueueTitle.Text" xml:space="preserve"><value>Up next</value></data>
   <data name="QueueCount" xml:space="preserve"><value>{0} songs</value></data>
   <data name="TaskbarOffsetBox.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Offset in pixels (0–3000); you can type a value</value></data>
+  <data name="HandoffButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Continue on the other device</value></data>
+  <data name="HandoffButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Continue on the other device</value></data>
+  <data name="HandoffToPhone" xml:space="preserve"><value>Continue on your phone</value></data>
+  <data name="HandoffToPc" xml:space="preserve"><value>Continue on this PC</value></data>
+  <data name="HandoffIn" xml:space="preserve"><value>Continue in {0}</value></data>
+  <data name="HandoffHint" xml:space="preserve"><value>Picks up where you are; this side pauses</value></data>
+  <data name="HandoffAppNetease" xml:space="preserve"><value>NetEase Cloud Music</value></data>
+  <data name="HandoffAppQqmusic" xml:space="preserve"><value>QQ Music</value></data>
+  <data name="HandoffAppSpotify" xml:space="preserve"><value>Spotify</value></data>
+  <data name="HandoffWorking" xml:space="preserve"><value>Continuing "{2}" on {0} in {1}…</value></data>
+  <data name="HandoffTap" xml:space="preserve"><value>Tap the MediaDuet notification on your phone to continue "{1}" in {0}</value></data>
+  <data name="HandoffPlaying" xml:space="preserve"><value>"{0}" continues on {1} in {2}</value></data>
+  <data name="HandoffOpened" xml:space="preserve"><value>"{2}" is open in {1} on {0}; start it there</value></data>
+  <data name="HandoffFailed" xml:space="preserve"><value>Could not continue on {0}</value></data>
+  <data name="HandoffErrAppUnavailable" xml:space="preserve"><value>{1} is not available on {0}</value></data>
+  <data name="HandoffErrNotFound" xml:space="preserve"><value>{0} does not have this song</value></data>
+  <data name="HandoffErrNetwork" xml:space="preserve"><value>The song lookup failed (network); try again later</value></data>
+  <data name="HandoffErrTimeout" xml:space="preserve"><value>{0} did not start the song</value></data>
+  <data name="HandoffErrLinkLost" xml:space="preserve"><value>The connection to the phone was lost</value></data>
+  <data name="HandoffErrBusy" xml:space="preserve"><value>The previous handoff is still running</value></data>
+  <data name="HandoffErrNoSession" xml:space="preserve"><value>That player has closed</value></data>
+  <data name="HandoffErrLaunch" xml:space="preserve"><value>Could not open {0}</value></data>
+  <data name="HandoffErrOther" xml:space="preserve"><value>Handoff failed ({0})</value></data>
+  <data name="HandoffDevicePhone" xml:space="preserve"><value>your phone</value></data>
+  <data name="HandoffDevicePc" xml:space="preserve"><value>this PC</value></data>
+  <data name="HdrUpdate.Text" xml:space="preserve"><value>Software update</value></data>
+  <data name="UpdateNotesLink.Content" xml:space="preserve"><value>What's new</value></data>
+  <data name="SetUpdateAutoTitle.Text" xml:space="preserve"><value>Check for updates automatically</value></data>
+  <data name="SetUpdateAutoDesc.Text" xml:space="preserve"><value>Looks for a new version on GitHub once a day (only the version request is sent, nothing personal)</value></data>
+  <data name="UpdateCheckButton" xml:space="preserve"><value>Check now</value></data>
+  <data name="UpdateInstallButton" xml:space="preserve"><value>Update</value></data>
+  <data name="UpdateRetryButton" xml:space="preserve"><value>Retry</value></data>
+  <data name="UpdateTitle" xml:space="preserve"><value>MediaDuet</value></data>
+  <data name="UpdateChecking" xml:space="preserve"><value>Checking for updates…</value></data>
+  <data name="UpdateAvailable" xml:space="preserve"><value>Version {0} is available</value></data>
+  <data name="UpdateAvailableDetail" xml:space="preserve"><value>You have {0}. Updating downloads, verifies and installs the new version; MediaDuet then restarts</value></data>
+  <data name="UpdateDownloading" xml:space="preserve"><value>Downloading {0}</value></data>
+  <data name="UpdateInstalling" xml:space="preserve"><value>Installing {0}</value></data>
+  <data name="UpdateInstallingDetail" xml:space="preserve"><value>MediaDuet exits and starts again when the installation is done</value></data>
+  <data name="UpdateCurrent" xml:space="preserve"><value>MediaDuet is up to date</value></data>
+  <data name="UpdateCurrentDetail" xml:space="preserve"><value>Version {0}</value></data>
+  <data name="UpdateFailed" xml:space="preserve"><value>Update failed</value></data>
+  <data name="UpdateErr_network" xml:space="preserve"><value>Could not reach GitHub. Check the network and try again</value></data>
+  <data name="UpdateErr_no_release" xml:space="preserve"><value>No release was found</value></data>
+  <data name="UpdateErr_no_asset" xml:space="preserve"><value>This release has no Windows file for this copy; download it from the release page</value></data>
+  <data name="UpdateErr_no_checksum" xml:space="preserve"><value>This release has no checksum, so it was not installed</value></data>
+  <data name="UpdateErr_checksum" xml:space="preserve"><value>The download did not match its checksum and was not installed (try again)</value></data>
+  <data name="UpdateErr_write" xml:space="preserve"><value>Could not save the download</value></data>
+  <data name="UpdateErr_not_writable" xml:space="preserve"><value>MediaDuet's folder is read-only; download the new version from the release page</value></data>
+  <data name="UpdateErr_launch" xml:space="preserve"><value>Could not start the installer</value></data>
+  <data name="UpdateErrOther" xml:space="preserve"><value>Something went wrong ({0})</value></data>
+  <data name="UpdateBarButton.Content" xml:space="preserve"><value>Update</value></data>
+  <data name="UpdateBarTitle" xml:space="preserve"><value>MediaDuet {0} is out</value></data>
+  <data name="UpdateBarMessage" xml:space="preserve"><value>Download and install it with one click; MediaDuet restarts afterwards.</value></data>
 </root>

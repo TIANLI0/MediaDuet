@@ -23,7 +23,7 @@ namespace mdui
 
     enum class WindowKind { Main, Compact };
     enum class HostLink { Connecting, Connected, NotRunning };
-    enum class Event { State, Lyrics, Diagnostics, Link, Appearance };
+    enum class Event { State, Lyrics, Diagnostics, Link, Appearance, Handoff };
 
     struct LaunchOptions
     {
@@ -81,6 +81,14 @@ namespace mdui
         // The player's own button / a queue entry of a phone session.
         void PressCustomAction(Side side, std::string const& key, std::string const& id);
         void PlayQueueItem(Side side, std::string const& key, int64_t queueId);
+        // handoff.start: continue session `key` of `side` on the other device, in `app`
+        // (netease | qqmusic | spotify; empty = the host picks). The end arrives as Event::Handoff.
+        void StartHandoff(Side side, std::string const& key, std::string const& app);
+        // Software update: look now / download, verify and install the available version.
+        void CheckUpdate() { Send({ { "type", "update.check" } }); }
+        void InstallUpdate() { Send({ { "type", "update.install" } }); }
+        // The last handoff that ended (valid after Event::Handoff).
+        HandoffOutcome const& LastHandoff() const { return m_handoff; }
         // Play queue of a session (remote sessions only), null when it has none.
         Queue const* QueueFor(Side side, std::string const& key) const;
         void SetFocus(std::optional<Side> side, std::string const& key, bool automatic);
@@ -165,6 +173,7 @@ namespace mdui
         std::map<int64_t, PendingRequest> m_pending;
         Volume m_hostRemoteVolume;   // last phone volume reported by the host (rollback target)
         bool m_remoteVolumeRestricted{ false };
+        HandoffOutcome m_handoff;
 
         winrt::Microsoft::UI::Xaml::Window m_main{ nullptr };
         winrt::Microsoft::UI::Xaml::Window m_compact{ nullptr };

@@ -60,6 +60,19 @@ struct QueueHint {
     bool operator==(const QueueHint&) const = default;
 };
 
+// The current track's ids in music catalogues, when the player exposes them (spec §8.3
+// `ids`): NetEase song id (decimal), QQ Music song mid, Spotify track id. Used by handoff.
+struct CatalogIds {
+    std::string netease;
+    std::string qqmusic;
+    std::string spotify;
+    bool empty() const { return netease.empty() && qqmusic.empty() && spotify.empty(); }
+    bool operator==(const CatalogIds&) const = default;
+};
+json toJson(const CatalogIds& ids);
+// Lenient: invalid entries (not 1..64 ASCII letters / digits) are dropped.
+CatalogIds catalogIdsFromJson(const json& j);
+
 struct QueueEntry {
     int64_t id = 0;
     std::string title;
@@ -103,6 +116,7 @@ struct MediaSessionInfo {
     std::optional<int> outputLatencyMs;
     std::vector<CustomAction> customActions;
     std::optional<QueueHint> queue;
+    CatalogIds ids;
 
     // Local monotonic time (ms) at which positionMs was valid. Not serialised.
     int64_t positionAtMs = 0;

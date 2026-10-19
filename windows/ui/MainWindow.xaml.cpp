@@ -108,6 +108,16 @@ namespace winrt::MediaDuetUI::implementation
         m_playHoldTimer.Tick([weak = get_weak()](auto&&, auto&&) {
             if (auto self = weak.get(); self && !self->m_closed) self->RefreshAll();
         });
+        // A successful handoff result closes by itself.
+        m_handoffBarTimer = DispatcherQueue().CreateTimer();
+        m_handoffBarTimer.IsRepeating(false);
+        m_handoffBarTimer.Interval(std::chrono::seconds(6));
+        m_handoffBarTimer.Tick([weak = get_weak()](auto&&, auto&&) {
+            auto self = weak.get();
+            if (!self || self->m_closed || !self->m_handoffResultShown) return;
+            self->m_handoffResultShown = false;
+            self->HandoffBar().IsOpen(false);
+        });
         // Keyboard seeking (slider arrows, Left/Right) is coalesced: one seek after the keys settle.
         m_keySeekTimer = DispatcherQueue().CreateTimer();
         m_keySeekTimer.IsRepeating(false);
@@ -240,6 +250,17 @@ namespace winrt::MediaDuetUI::implementation
         });
 
         SourceFlyout().Opening([this](auto&&, auto&&) { BuildSourceMenu(); });
+        HandoffFlyout().Opening([this](auto&&, auto&&) { BuildHandoffMenu(); });
+        UpdateBarButton().Click([this](auto&&, auto&&) {
+            Controller::Get().InstallUpdate();
+            Controller::Get().ShowSettings(L"about");
+        });
+        UpdateBar().CloseButtonClick([](auto&&, auto&&) {
+            // "Not now": not shown again for this version (Settings > About still offers it).
+            auto const& u = Controller::Get().Model().update;
+            if (!u.latest.empty()) Controller::Get().SetSetting("ui.updateDismissed", u.latest);
+        });
+        HandoffBar().Closed([this](auto&&, auto&&) { m_handoffResultShown = false; });
         // The player's own buttons / its play queue (phone sessions).
         QueueFlyout().Opening([this](auto&&, auto&&) { FillQueue(); });
         QueueList().ItemClick([this](auto&&, ItemClickEventArgs const& e) {
@@ -310,6 +331,9 @@ namespace winrt::MediaDuetUI::implementation
         }));
         m_tokens.push_back(c.Subscribe(Event::Appearance, [weak] {
             if (auto self = weak.get()) self->ApplyAppearance();
+        }));
+        m_tokens.push_back(c.Subscribe(Event::Handoff, [weak] {
+            if (auto self = weak.get(); self && !self->m_closed) self->ShowHandoffOutcome();
         }));
         m_tokens.push_back(c.SubscribeResults([weak](bool ok, std::string const& error, std::string const& type) {
             auto self = weak.get();
@@ -620,12 +644,14 @@ namespace winrt::MediaDuetUI::implementation
         UpdateCard();
         UpdateWelcome();
         UpdateVersionBar();
+        UpdateUpdateBar();
         UpdatePolicy();
         UpdateLyrics();
         auto const& st = Controller::Get().Model();
         OverlayToggle().IsChecked(st.overlayVisible);
         UpdateA2dpQuick();
         UpdateVolume();
+        UpdateHandoffBar();
         UpdateTimer();
     }
 
@@ -683,7 +709,18 @@ namespace winrt::MediaDuetUI::implementation
         bool hasActions = s && !s->customActions.empty();
         bool hasQueue = s && s->queueCount > 0 && queue && !queue->items.empty();
         QueueButton().Visibility(hasQueue ? Visibility::Visible : Visibility::Collapsed);
-        ExtrasRow().Visibility(hasActions || hasQueue ? Visibility::Visible : Visibility::Collapsed);
+        bool handoff = CanHandoff(s);
+        HandoffButton().Visibility(handoff ? Visibility::Visible : Visibility::Collapsed);
+        if (handoff)
+        {
+            bool toPhone = s->side == Side::Local;
+            HandoffIcon().Glyph(toPhone ? L"\xE8EA" : L"\xE977");
+            auto tip = Str(toPhone ? L"HandoffToPhone" : L"HandoffToPc");
+            ToolTipService::SetToolTip(HandoffButton(), box_value(tip));
+            Microsoft::UI::Xaml::Automation::AutomationProperties::SetName(HandoffButton(), tip);
+            HandoffButton().IsEnabled(!Controller::Get().Model().handoff.active);
+        }
+        ExtrasRow().Visibility(hasActions || hasQueue || handoff ? Visibility::Visible : Visibility::Collapsed);
         if (QueueFlyout().IsOpen()) FillQueue();
     }
 
@@ -1052,6 +1089,20 @@ namespace winrt::MediaDuetUI::implementation
             VersionBar().Message(StrF(L"VersionMismatchMessage", { Widen(peer.app), Widen(pc) }));
         }
         VersionBar().IsOpen(mismatch && !dismissed);
+    }
+
+    void MainWindow::UpdateUpdateBar()
+    {
+        auto const& st = Controller::Get().Model();
+        auto const& u = st.update;
+        bool show = u.valid && u.phase == "available" && !u.latest.empty() &&
+                    st.Setting("ui.updateDismissed", std::string()) != u.latest && !VersionBar().IsOpen();
+        if (show)
+        {
+            UpdateBar().Title(StrF(L"UpdateBarTitle", { Widen(u.latest) }));
+            UpdateBar().Message(Str(L"UpdateBarMessage"));
+        }
+        if (UpdateBar().IsOpen() != show) UpdateBar().IsOpen(show);
     }
 
     void MainWindow::UpdatePolicy()
@@ -1666,5 +1717,132 @@ namespace winrt::MediaDuetUI::implementation
         ErrorBar().Title(Str(L"CommandFailed"));
         ErrorBar().Message(error.empty() ? hstring{} : hstring(Widen(error)));
         ErrorBar().IsOpen(true);
+    }
+
+    // ---- Handoff ---------------------------------------------------------------------------
+
+    namespace
+    {
+        std::wstring HandoffAppName(std::string const& app)
+        {
+            if (app == "netease") return std::wstring(Str(L"HandoffAppNetease"));
+            if (app == "qqmusic") return std::wstring(Str(L"HandoffAppQqmusic"));
+            if (app == "spotify") return std::wstring(Str(L"HandoffAppSpotify"));
+            return Widen(app);
+        }
+
+        std::wstring HandoffDeviceName(std::string const& to)
+        {
+            return std::wstring(Str(to == "phone" ? L"HandoffDevicePhone" : L"HandoffDevicePc"));
+        }
+
+        // The music app a session belongs to (same rule as the host: md::handoff::appOfSession).
+        std::string HandoffAppOf(std::string const& appId)
+        {
+            std::string id;
+            for (char ch : appId) id += static_cast<char>(ch >= 'A' && ch <= 'Z' ? ch - 'A' + 'a' : ch);
+            if (id.find("cloudmusic") != std::string::npos) return "netease";
+            if (id.find("qqmusic") != std::string::npos) return "qqmusic";
+            if (id.find("spotify") != std::string::npos) return "spotify";
+            return {};
+        }
+    }
+
+    bool MainWindow::CanHandoff(Session const* s) const
+    {
+        auto const& st = Controller::Get().Model();
+        if (!s || st.standalone || s->title.empty() || st.connection.status != "connected") return false;
+        auto const& apps = s->side == Side::Local ? st.handoff.remoteApps : st.handoff.localApps;
+        return !apps.empty();
+    }
+
+    void MainWindow::BuildHandoffMenu()
+    {
+        auto items = HandoffFlyout().Items();
+        items.Clear();
+        auto const* s = m_session ? &*m_session : nullptr;
+        if (!CanHandoff(s)) return;
+        auto const& st = Controller::Get().Model();
+        bool toPhone = s->side == Side::Local;
+        auto apps = toPhone ? st.handoff.remoteApps : st.handoff.localApps;
+        // The source's own app first when the other device has it.
+        auto own = HandoffAppOf(s->appId);
+        if (auto it = std::find(apps.begin(), apps.end(), own); it != apps.end()) std::rotate(apps.begin(), it, it + 1);
+
+        MenuFlyoutItem header;
+        header.Text(Str(toPhone ? L"HandoffToPhone" : L"HandoffToPc"));
+        header.IsEnabled(false);
+        items.Append(header);
+        items.Append(MenuFlyoutSeparator());
+        Side side = s->side;
+        std::string key = s->key;
+        for (auto const& app : apps)
+        {
+            MenuFlyoutItem item;
+            item.Text(StrF(L"HandoffIn", { HandoffAppName(app) }));
+            ToolTipService::SetToolTip(item, box_value(Str(L"HandoffHint")));
+            FontIcon icon;
+            icon.Glyph(toPhone ? L"\xE8EA" : L"\xE977");
+            item.Icon(icon);
+            item.Click([side, key, app](auto&&, auto&&) { Controller::Get().StartHandoff(side, key, app); });
+            items.Append(item);
+        }
+    }
+
+    void MainWindow::UpdateHandoffBar()
+    {
+        auto const& h = Controller::Get().Model().handoff;
+        if (h.active)
+        {
+            m_handoffResultShown = false;
+            m_handoffBarTimer.Stop();
+            auto device = HandoffDeviceName(h.to), app = HandoffAppName(h.app), title = Widen(h.title);
+            HandoffBar().Severity(InfoBarSeverity::Informational);
+            HandoffBar().Title(L"");
+            HandoffBar().Message(h.waitingForTap ? StrF(L"HandoffTap", { app, title }) : StrF(L"HandoffWorking", { device, app, title }));
+            HandoffBar().IsOpen(true);
+        }
+        else if (!m_handoffResultShown && HandoffBar().IsOpen())
+        {
+            HandoffBar().IsOpen(false);
+        }
+    }
+
+    void MainWindow::ShowHandoffOutcome()
+    {
+        auto const& o = Controller::Get().LastHandoff();
+        auto device = HandoffDeviceName(o.to), app = HandoffAppName(o.app), title = Widen(o.title);
+        m_handoffResultShown = true;
+        m_handoffBarTimer.Stop();
+        HandoffBar().Title(L"");
+        if (o.ok && o.state == "playing")
+        {
+            HandoffBar().Severity(InfoBarSeverity::Success);
+            HandoffBar().Message(StrF(L"HandoffPlaying", { title, device, app }));
+            m_handoffBarTimer.Start();
+        }
+        else if (o.ok)
+        {
+            HandoffBar().Severity(InfoBarSeverity::Informational);
+            HandoffBar().Message(StrF(L"HandoffOpened", { device, app, title }));
+        }
+        else
+        {
+            std::wstring why;
+            if (o.error == "app_unavailable") why = StrF(L"HandoffErrAppUnavailable", { device, app });
+            else if (o.error == "not_found") why = StrF(L"HandoffErrNotFound", { app });
+            else if (o.error == "network") why = Str(L"HandoffErrNetwork");
+            else if (o.error == "timeout") why = StrF(L"HandoffErrTimeout", { app });
+            else if (o.error == "link_lost") why = Str(L"HandoffErrLinkLost");
+            else if (o.error == "busy") why = Str(L"HandoffErrBusy");
+            else if (o.error == "no_session") why = Str(L"HandoffErrNoSession");
+            else if (o.error == "launch_failed") why = StrF(L"HandoffErrLaunch", { app });
+            else why = StrF(L"HandoffErrOther", { Widen(o.error) });
+            HandoffBar().Severity(InfoBarSeverity::Warning);
+            HandoffBar().Title(StrF(L"HandoffFailed", { device }));
+            HandoffBar().Message(why);
+        }
+        HandoffBar().IsOpen(true);
+        UpdateExtras();
     }
 }

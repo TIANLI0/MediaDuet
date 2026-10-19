@@ -251,6 +251,7 @@ class MediaSessionMonitor(
             lastChangeMs = t.lastChangeMs,
             customActions = customActions,
             queue = queueHint,
+            mediaId = text(MediaMetadata.METADATA_KEY_MEDIA_ID),
         )
     }
 
@@ -331,6 +332,34 @@ class MediaSessionMonitor(
         _lastCommand.value = LastCommand(target.key, command.action, command.origin, System.currentTimeMillis())
         MdLog.i(TAG, "executed ${command.action} on ${target.key} (origin ${command.origin})")
         return CommandResult.OK
+    }
+
+    /** PlaybackState actions of [packageName]'s most recent session, or null when it has none. Main thread. */
+    fun actionsOf(packageName: String): Long? =
+        tracked.values.filter { it.controller.packageName == packageName }.maxByOrNull { it.lastChangeMs }
+            ?.let { (it.lastState ?: runCatching { it.controller.playbackState }.getOrNull())?.actions ?: 0L }
+
+    /**
+     * Handoff without an activity: asks [packageName]'s session to play [uri] (playFromUri) or a
+     * search (playFromSearch). False when it has no session that supports it. Main thread.
+     */
+    fun playFrom(packageName: String, uri: android.net.Uri?, query: String?, extras: android.os.Bundle): Boolean {
+        val t = tracked.values.filter { it.controller.packageName == packageName }.maxByOrNull { it.lastChangeMs } ?: return false
+        val actions = (t.lastState ?: runCatching { t.controller.playbackState }.getOrNull())?.actions ?: 0L
+        val controls = t.controller.transportControls
+        return when {
+            uri != null && actions and PlaybackState.ACTION_PLAY_FROM_URI != 0L -> {
+                controls.playFromUri(uri, extras)
+                MdLog.i(TAG, "playFromUri on ${t.key}")
+                true
+            }
+            query != null && actions and PlaybackState.ACTION_PLAY_FROM_SEARCH != 0L -> {
+                controls.playFromSearch(query, extras)
+                MdLog.i(TAG, "playFromSearch on ${t.key}")
+                true
+            }
+            else -> false
+        }
     }
 
     /**

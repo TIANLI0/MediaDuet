@@ -4,6 +4,7 @@
 #include "md/util/Text.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 
 namespace md::media {
@@ -88,7 +89,7 @@ bool MediaSessionInfo::equivalent(const MediaSessionInfo& o, int64_t tol) const 
         appVolume.has_value() != o.appVolume.has_value() || appMuted != o.appMuted ||
         (appVolume && std::abs(*appVolume - *o.appVolume) > 0.005f) ||
         outputLatencyMs.value_or(0) != o.outputLatencyMs.value_or(0) || customActions != o.customActions ||
-        queue != o.queue)
+        queue != o.queue || ids != o.ids)
         return false;
     if (positionMs.has_value() != o.positionMs.has_value()) return false;
     if (!positionMs) return true;
@@ -179,7 +180,34 @@ json toWire(const MediaSessionInfo& s, int64_t nowMs) {
         j["queue"] = {{"count", s.queue->count}, {"rev", s.queue->rev}};
         if (s.queue->activeId) j["queue"]["activeId"] = *s.queue->activeId;
     }
+    if (!s.ids.empty()) j["ids"] = toJson(s.ids);
     return j;
+}
+
+json toJson(const CatalogIds& ids) {
+    json j = json::object();
+    if (!ids.netease.empty()) j["netease"] = ids.netease;
+    if (!ids.qqmusic.empty()) j["qqmusic"] = ids.qqmusic;
+    if (!ids.spotify.empty()) j["spotify"] = ids.spotify;
+    return j;
+}
+
+CatalogIds catalogIdsFromJson(const json& j) {
+    CatalogIds ids;
+    if (!j.is_object()) return ids;
+    auto get = [&](const char* k) -> std::string {
+        auto it = j.find(k);
+        if (it == j.end() || !it->is_string()) return {};
+        const auto& v = it->get_ref<const std::string&>();
+        if (v.empty() || v.size() > 64) return {};
+        for (char c : v)
+            if (!std::isalnum(static_cast<unsigned char>(c))) return {};
+        return v;
+    };
+    ids.netease = get("netease");
+    ids.qqmusic = get("qqmusic");
+    ids.spotify = get("spotify");
+    return ids;
 }
 
 namespace {
@@ -358,6 +386,7 @@ std::optional<MediaSessionInfo> sessionFromWire(const json& j, int64_t receivedA
             s.queue = h;
         }
     }
+    if (auto ids = j.find("ids"); ids != j.end()) s.ids = catalogIdsFromJson(*ids);
     sanitize(s);
     if (s.trackId.empty()) s.updateTrackId();
     if (s.positionMs && s.status == PlaybackStatus::Playing)

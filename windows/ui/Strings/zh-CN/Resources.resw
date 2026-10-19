@@ -505,4 +505,58 @@
   <data name="QueueTitle.Text" xml:space="preserve"><value>接下来播放</value></data>
   <data name="QueueCount" xml:space="preserve"><value>{0} 首</value></data>
   <data name="TaskbarOffsetBox.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>偏移（像素，0–3000），可直接输入</value></data>
+  <data name="HandoffButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>在另一台设备上继续</value></data>
+  <data name="HandoffButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>在另一台设备上继续</value></data>
+  <data name="HandoffToPhone" xml:space="preserve"><value>在手机上继续</value></data>
+  <data name="HandoffToPc" xml:space="preserve"><value>在电脑上继续</value></data>
+  <data name="HandoffIn" xml:space="preserve"><value>用 {0} 继续</value></data>
+  <data name="HandoffHint" xml:space="preserve"><value>从当前进度接着播放，这里随后暂停</value></data>
+  <data name="HandoffAppNetease" xml:space="preserve"><value>网易云音乐</value></data>
+  <data name="HandoffAppQqmusic" xml:space="preserve"><value>QQ 音乐</value></data>
+  <data name="HandoffAppSpotify" xml:space="preserve"><value>Spotify</value></data>
+  <data name="HandoffWorking" xml:space="preserve"><value>正在{0}上用{1}继续「{2}」…</value></data>
+  <data name="HandoffTap" xml:space="preserve"><value>请在手机上轻触 MediaDuet 的通知，在{0}中继续播放「{1}」</value></data>
+  <data name="HandoffPlaying" xml:space="preserve"><value>「{0}」已在{1}的{2}中继续播放</value></data>
+  <data name="HandoffOpened" xml:space="preserve"><value>已在{0}的{1}中打开「{2}」，请在那里开始播放</value></data>
+  <data name="HandoffFailed" xml:space="preserve"><value>无法在{0}上继续播放</value></data>
+  <data name="HandoffErrAppUnavailable" xml:space="preserve"><value>{0}上没有可用的{1}</value></data>
+  <data name="HandoffErrNotFound" xml:space="preserve"><value>{0}里找不到这首歌</value></data>
+  <data name="HandoffErrNetwork" xml:space="preserve"><value>查找歌曲时网络出错，请稍后再试</value></data>
+  <data name="HandoffErrTimeout" xml:space="preserve"><value>{0}没有开始播放这首歌</value></data>
+  <data name="HandoffErrLinkLost" xml:space="preserve"><value>与手机的连接已断开</value></data>
+  <data name="HandoffErrBusy" xml:space="preserve"><value>上一次接力还没完成</value></data>
+  <data name="HandoffErrNoSession" xml:space="preserve"><value>这个播放器已经关闭</value></data>
+  <data name="HandoffErrLaunch" xml:space="preserve"><value>无法打开{0}</value></data>
+  <data name="HandoffErrOther" xml:space="preserve"><value>接力失败（{0}）</value></data>
+  <data name="HandoffDevicePhone" xml:space="preserve"><value>手机</value></data>
+  <data name="HandoffDevicePc" xml:space="preserve"><value>这台电脑</value></data>
+  <data name="HdrUpdate.Text" xml:space="preserve"><value>软件更新</value></data>
+  <data name="UpdateNotesLink.Content" xml:space="preserve"><value>查看更新内容</value></data>
+  <data name="SetUpdateAutoTitle.Text" xml:space="preserve"><value>自动检查更新</value></data>
+  <data name="SetUpdateAutoDesc.Text" xml:space="preserve"><value>每天在 GitHub 上查看一次是否有新版本（只发送版本请求，不含任何个人信息）</value></data>
+  <data name="UpdateCheckButton" xml:space="preserve"><value>检查更新</value></data>
+  <data name="UpdateInstallButton" xml:space="preserve"><value>更新</value></data>
+  <data name="UpdateRetryButton" xml:space="preserve"><value>重试</value></data>
+  <data name="UpdateTitle" xml:space="preserve"><value>MediaDuet</value></data>
+  <data name="UpdateChecking" xml:space="preserve"><value>正在检查更新…</value></data>
+  <data name="UpdateAvailable" xml:space="preserve"><value>发现新版本 {0}</value></data>
+  <data name="UpdateAvailableDetail" xml:space="preserve"><value>当前版本 {0}。更新会下载、校验并安装新版本，MediaDuet 随后自动重启</value></data>
+  <data name="UpdateDownloading" xml:space="preserve"><value>正在下载 {0}</value></data>
+  <data name="UpdateInstalling" xml:space="preserve"><value>正在安装 {0}</value></data>
+  <data name="UpdateInstallingDetail" xml:space="preserve"><value>MediaDuet 将退出并在安装完成后重新启动</value></data>
+  <data name="UpdateCurrent" xml:space="preserve"><value>已是最新版本</value></data>
+  <data name="UpdateCurrentDetail" xml:space="preserve"><value>当前版本 {0}</value></data>
+  <data name="UpdateFailed" xml:space="preserve"><value>更新失败</value></data>
+  <data name="UpdateErr_network" xml:space="preserve"><value>无法连接 GitHub，请检查网络后重试</value></data>
+  <data name="UpdateErr_no_release" xml:space="preserve"><value>没有找到可用的版本</value></data>
+  <data name="UpdateErr_no_asset" xml:space="preserve"><value>这个版本没有适用于 Windows 的安装文件，请到发布页面手动下载</value></data>
+  <data name="UpdateErr_no_checksum" xml:space="preserve"><value>这个版本缺少校验信息，为安全起见没有安装</value></data>
+  <data name="UpdateErr_checksum" xml:space="preserve"><value>下载的文件校验失败，没有安装（可以重试）</value></data>
+  <data name="UpdateErr_write" xml:space="preserve"><value>无法保存下载的文件</value></data>
+  <data name="UpdateErr_not_writable" xml:space="preserve"><value>MediaDuet 所在的文件夹不可写，请到发布页面手动下载新版本</value></data>
+  <data name="UpdateErr_launch" xml:space="preserve"><value>无法启动安装程序</value></data>
+  <data name="UpdateErrOther" xml:space="preserve"><value>出现错误（{0}）</value></data>
+  <data name="UpdateBarButton.Content" xml:space="preserve"><value>更新</value></data>
+  <data name="UpdateBarTitle" xml:space="preserve"><value>MediaDuet {0} 已发布</value></data>
+  <data name="UpdateBarMessage" xml:space="preserve"><value>一键下载并安装，完成后自动重启。</value></data>
 </root>

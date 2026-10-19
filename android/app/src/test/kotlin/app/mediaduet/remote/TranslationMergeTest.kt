@@ -12,6 +12,27 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TranslationMergeTest {
+    /**
+     * NetEase: tlyric follows the plain LRC; the word-timed yrc lines start seconds apart from it
+     * ("Someone Like You": 40 of 68 translations were lost). Mirrors windows/tests/test_lrc.cpp.
+     */
+    @Test
+    fun alignsThroughThePlainLrcForWordTimedLyrics() {
+        val yrc = app.mediaduet.lyrics.LyricFormats.parseYrc(
+            "[10500,2000](10500,2000,0)I heard\n[14100,3000](14100,3000,0)that you're settled down\n" +
+                "[20000,2000](20000,2000,0)I heard\n[30000,2000](30000,2000,0)Never mind\n",
+        )
+        val plain = LrcParser.parse("[00:12.74]I heard\n[00:16.48]That you're settled down\n[00:21.20]I heard\n[00:30.10]Never mind\n")
+        val tr = "[00:12.74]A\n[00:16.48]B\n[00:21.20]C\n[00:30.10]D\n"
+        assertEquals(1, TranslationMerge.merge(yrc, tr).lines.count { it.translation != null }) // timestamps alone
+        val merged = TranslationMerge.merge(yrc, tr, plain)
+        assertEquals(listOf("A", "B", "C", "D"), merged.lines.map { it.translation })
+        val out = app.mediaduet.lyrics.LyricFormats.translationLrc(merged)
+        assertTrue(out.startsWith(app.mediaduet.lyrics.LyricFormats.TRANSLATION_MARK))
+        // Re-read from the cache: the written translation is on the yrc's own timestamps.
+        assertEquals(listOf("A", "B", "C", "D"), TranslationMerge.merge(yrc, out).lines.map { it.translation })
+    }
+
     private val original = LrcParser.parse(
         listOf("[00:01.00]Hello", "[00:05.00]World", "[00:09.00]Same", "[00:20.00]Far").joinToString("\n"),
     )

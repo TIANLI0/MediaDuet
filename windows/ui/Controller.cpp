@@ -429,6 +429,11 @@ namespace mdui
             else m_queues[key] = ParseQueue(*q);
             Raise(Event::State);
         }
+        else if (type == "handoff")
+        {
+            m_handoff = ParseHandoffOutcome(JObj(*message, "outcome"));
+            Raise(Event::Handoff);
+        }
         else if (type == "diagnostics")
         {
             m_diagnostics = *message;
@@ -588,6 +593,13 @@ namespace mdui
         json msg{ { "type", "media.command" }, { "side", SideName(side) }, { "action", action } };
         msg["key"] = key.empty() ? json(nullptr) : json(key);
         if (positionMs) msg["positionMs"] = *positionMs;
+        Send(std::move(msg));
+    }
+
+    void Controller::StartHandoff(Side side, std::string const& key, std::string const& app)
+    {
+        json msg{ { "type", "handoff.start" }, { "side", SideName(side) }, { "key", key } };
+        if (!app.empty()) msg["app"] = app;
         Send(std::move(msg));
     }
 

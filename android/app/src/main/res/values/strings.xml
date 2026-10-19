@@ -403,4 +403,67 @@
         <item quantity="one">%1$d song</item>
         <item quantity="other">%1$d songs</item>
     </plurals>
+
+    <!-- Handoff (continue on the other device) -->
+    <string name="channel_handoff">Continue playing</string>
+    <string name="channel_handoff_desc">Tap to continue a song from your PC on this phone.</string>
+    <string name="handoff_notification_title">Continue on this phone</string>
+    <string name="handoff_notification_text">Tap to continue “%2$s” in %1$s.</string>
+    <string name="handoff_title">Continue on another device</string>
+    <string name="handoff_to_pc">Continue on %1$s</string>
+    <string name="handoff_to_phone">Continue on this phone</string>
+    <string name="handoff_in_app">In %1$s, from where you are</string>
+    <string name="handoff_working">Continuing…</string>
+    <string name="handoff_app_netease">NetEase Cloud Music</string>
+    <string name="handoff_app_qqmusic">QQ Music</string>
+    <string name="handoff_app_spotify">Spotify</string>
+    <string name="handoff_done_pc">“%1$s” continues on the PC</string>
+    <string name="handoff_done_phone">“%1$s” continues on this phone</string>
+    <string name="handoff_opened">“%1$s” is open in %2$s; start it there</string>
+    <string name="handoff_err_app_unavailable">%1$s is not available there</string>
+    <string name="handoff_err_not_found">%1$s does not have this song</string>
+    <string name="handoff_err_network">The song lookup failed (network). Try again later.</string>
+    <string name="handoff_err_timeout">%1$s did not start the song</string>
+    <string name="handoff_err_link_lost">The connection to the PC was lost</string>
+    <string name="handoff_err_busy">The previous handoff is still running</string>
+    <string name="handoff_err_no_session">That player has closed</string>
+    <string name="handoff_err_launch">Could not open %1$s</string>
+    <string name="handoff_err_other">Handoff failed (%1$s)</string>
+
+    <!-- Software update (Settings > About) -->
+    <string name="update_header">Software update</string>
+    <string name="update_title_current_version">MediaDuet %1$s</string>
+    <string name="update_check">Check now</string>
+    <string name="update_checking">Checking for updates…</string>
+    <string name="update_current">MediaDuet is up to date</string>
+    <string name="update_current_detail">Version %1$s</string>
+    <string name="update_available">Version %1$s is available</string>
+    <string name="update_available_detail">You have %1$s. Updating downloads and verifies the new version, then Android asks you to confirm the installation.</string>
+    <string name="update_install">Update</string>
+    <string name="update_downloading">Downloading %1$s</string>
+    <string name="update_needs_permission">%1$s is ready to install</string>
+    <string name="update_needs_permission_detail">Allow MediaDuet to install apps once (Android setting “Install unknown apps”); the update then continues by itself.</string>
+    <string name="update_allow">Allow</string>
+    <string name="update_installing">Installing %1$s</string>
+    <string name="update_installing_detail">Confirm in the Android dialog. MediaDuet restarts with the new version.</string>
+    <string name="update_failed">Update failed</string>
+    <string name="update_retry">Retry</string>
+    <string name="update_notes">What’s new</string>
+    <string name="update_auto">Check for updates automatically</string>
+    <string name="update_auto_text">Looks for a new version on GitHub once a day (only the version request is sent, nothing personal).</string>
+    <string name="update_summary_available">Update available: %1$s</string>
+    <string name="update_notification_title">MediaDuet %1$s is available</string>
+    <string name="update_notification_text">Tap to update in Settings › About.</string>
+    <string name="update_confirm_title">Install MediaDuet %1$s</string>
+    <string name="update_confirm_text">Tap to confirm the update.</string>
+    <string name="update_err_network">Could not reach GitHub. Check the network and try again.</string>
+    <string name="update_err_no_release">No release was found.</string>
+    <string name="update_err_no_asset">This release has no Android file; download it from the release page.</string>
+    <string name="update_err_no_checksum">This release has no checksum, so it was not installed.</string>
+    <string name="update_err_checksum">The download did not match its checksum and was not installed. Try again.</string>
+    <string name="update_err_not_newer">The downloaded file is not a newer MediaDuet, so it was not installed.</string>
+    <string name="update_err_install">Android could not install the update.</string>
+    <string name="update_err_signature">The installed MediaDuet is signed differently (e.g. a debug build). Uninstall it, then install the new version from the release page.</string>
+    <string name="update_err_blocked">A security check (e.g. Google Play Protect) blocked the installation. Choose “Install anyway” under its “More details”, or install the APK from the release page.</string>
+    <string name="update_err_storage">Not enough storage to install the update.</string>
 </resources>

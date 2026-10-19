@@ -431,6 +431,16 @@ struct TaskbarWidget::Impl {
     int64_t delayMs = 0;
     int karaIdx = -1;
     lyrics::KaraokeLine kara;
+    // Line change: the previous rows roll up and fade out while the new ones roll in.
+    struct Shown {
+        int idx = -2; // -2: nothing shown yet
+        std::wstring line1, line2;
+        bool karaoke = false;
+        lyrics::FillSpan span;
+        bool translated = false;
+    } shown, leaving;
+    double rollStart = -1; // now() when the roll started; -1 = none
+    static constexpr double kRollMs = 360;
 
     // state
     bool shownFlag = false;
@@ -806,7 +816,13 @@ struct TaskbarWidget::Impl {
         return lyrics::lineAt(*lyr, static_cast<int64_t>(playPos()));
     }
 
+    bool rolling() const { return rollStart >= 0 && now() - rollStart < kRollMs; }
+
     void scheduleFrame() {
+        if (shownFlag && rolling()) {
+            frameTimer.start(16, [this] { refresh(false); });
+            return;
+        }
         if (!shownFlag || !clock || !clock->playing()) return;
         int idx = currentLine();
         if (!lyr || content == "player") return;
@@ -846,15 +862,18 @@ struct TaskbarWidget::Impl {
     // One text row: karaoke fill (fill != nullptr), shrink up to ~12 % and scroll
     // long lines so the edge stays visible, fade the clipped side(s). A row that fits
     // is anchored to the left or (alignRight) the right edge of x..x+w.
-    void drawRow(const std::wstring& s, float size, DWRITE_FONT_WEIGHT weight, float x, float y, float w,
-                 D2D1_COLOR_F color, const lyrics::FillSpan* fill, D2D1_COLOR_F dim) {
+    // `progress` (0..1, < 0 = none): scrolls a long row without a fill of its own in step with
+    // the karaoke line above it (its translation). Returns the fill fraction of a karaoke row.
+    float drawRow(const std::wstring& s, float size, DWRITE_FONT_WEIGHT weight, float x, float y, float w,
+                  D2D1_COLOR_F color, const lyrics::FillSpan* fill, D2D1_COLOR_F dim, float progress = -1.f,
+                  float zoom = 1.f) {
         auto* rt = surface.rt();
         const TextEntry* e = texts.get(s, L"Segoe UI Variable Text", size, weight);
-        if (!e || s.empty()) return;
-        float k = lyrics::fitScale(e->width, w, 0.88f);
+        if (!e || s.empty() || color.a <= 0.003f) return 0.f;
+        float k = lyrics::fitScale(e->width * zoom, w, 0.88f) * zoom;
         float tw = e->width * k;
         float fx = fill ? fillX(e->carets, *fill) * k : 0.f;
-        float off = fill ? lyrics::scrollOffset(tw, w, fx) : 0.f;
+        float off = fill ? lyrics::scrollOffset(tw, w, fx) : progress >= 0 ? lyrics::scrollOffset(tw, w, progress * tw) : 0.f;
         bool clipped = tw > w + 0.5f;
         if (!clipped && alignRight) x += w - tw;
         com_ptr<ID2D1Brush> mask;
@@ -885,6 +904,38 @@ struct TaskbarWidget::Impl {
         rt->DrawTextLayout(D2D1::Point2F(0, 0), e->layout.get(), brush.get());
         rt->SetTransform(old);
         if (clipped) rt->PopLayer();
+        return fill && tw > 0 ? std::clamp(fx / tw, 0.f, 1.f) : 0.f;
+    }
+
+    // Where the rows of a block go: the first row's top, the pitch to the second row.
+    struct Rows {
+        bool two = false;
+        float y = 0, pitch = 0;
+    };
+    Rows rowsFor(const Shown& b, float h) const {
+        float f1 = fontSize, f2 = fontSize * 0.85f;
+        Rows r;
+        r.two = !b.line2.empty() && h >= (f1 + f2) * 1.35f;
+        float blockH = r.two ? f1 * 1.3f + f2 * 1.25f : f1 * 1.3f;
+        r.y = (h - blockH) / 2;
+        r.pitch = f1 * 1.3f;
+        return r;
+    }
+
+    // Both rows of one lyric (or title / artist) at vertical offset dy with opacity a.
+    void drawBlock(const Shown& b, float textLeft, float tw, float h, D2D1_COLOR_F fg, float dy, float a) {
+        float f1 = fontSize, f2 = fontSize * 0.85f;
+        auto rows = rowsFor(b, h);
+        bool two = rows.two;
+        float y = rows.y + dy;
+        D2D1_COLOR_F c1 = fg, c2 = fg, dim = fg;
+        c1.a = a;
+        c2.a = 0.62f * a;
+        dim.a = 0.45f * a;
+        float frac = drawRow(b.line1, f1, DWRITE_FONT_WEIGHT_SEMI_BOLD, textLeft, y, tw, c1, b.karaoke ? &b.span : nullptr, dim);
+        // A translation scrolls with its line; the next line's preview shows its beginning.
+        if (two) drawRow(b.line2, f2, DWRITE_FONT_WEIGHT_NORMAL, textLeft, y + f1 * 1.3f, tw, c2, nullptr, c2,
+                         b.karaoke && b.translated ? frac : -1.f);
     }
 
     bool render() {
@@ -936,33 +987,70 @@ struct TaskbarWidget::Impl {
 
         float tw = std::max(20.f, textRight - textLeft);
         int idx = currentLine();
-        std::wstring line1, line2;
-        bool karaoke = false;
+        Shown cur;
+        cur.idx = idx;
         if (idx >= 0) {
             ensureKara(idx);
-            line1 = kara.text;
-            karaoke = !line1.empty();
-            const auto& cur = lyr->lines[idx];
-            if (translation && lyrics::hasTranslation(*lyr)) line2 = text::toWide(cur.translation);
-            else if (idx + 1 < static_cast<int>(lyr->lines.size()))
-                line2 = lyrics::buildKaraoke(lyr->lines[idx + 1]).text;
+            cur.line1 = kara.text;
+            cur.karaoke = !cur.line1.empty();
+            const auto& line = lyr->lines[idx];
+            if (translation && lyrics::hasTranslation(*lyr)) {
+                cur.line2 = text::toWide(line.translation);
+                cur.translated = true;
+            } else if (idx + 1 < static_cast<int>(lyr->lines.size())) {
+                cur.line2 = lyrics::buildKaraoke(lyr->lines[idx + 1]).text;
+            }
         }
-        if (line1.empty()) {
-            line1 = text::toWide(title);
-            line2 = text::toWide(artist);
-            karaoke = false;
+        if (cur.line1.empty()) {
+            cur.line1 = text::toWide(title);
+            cur.line2 = text::toWide(artist);
+            cur.karaoke = false;
+            cur.translated = false;
         }
-        float f1 = fontSize, f2 = fontSize * 0.85f;
-        bool two = !line2.empty() && h >= (f1 + f2) * 1.35f;
-        float blockH = two ? f1 * 1.3f + f2 * 1.25f : f1 * 1.3f;
-        float y = (h - blockH) / 2;
-        D2D1_COLOR_F c2 = fg, dim = fg;
-        c2.a = 0.62f;
-        dim.a = 0.45f;
-        lyrics::FillSpan span;
-        if (karaoke) span = lyrics::fillAt(kara, playPos());
-        drawRow(line1, f1, DWRITE_FONT_WEIGHT_SEMI_BOLD, textLeft, y, tw, fg, karaoke ? &span : nullptr, dim);
-        if (two) drawRow(line2, f2, DWRITE_FONT_WEIGHT_NORMAL, textLeft, y + f1 * 1.3f, tw, c2, nullptr, c2);
+        if (cur.karaoke) cur.span = lyrics::fillAt(kara, playPos());
+        // The lyric moved to another line (or another song): roll, like the desktop lyrics.
+        bool changed = shown.idx != -2 && (cur.idx != shown.idx || cur.line1 != shown.line1);
+        if (changed && animations && !lowPower && !shown.line1.empty()) {
+            leaving = shown;
+            rollStart = now();
+        }
+        shown = cur;
+        double t = rollStart >= 0 ? (now() - rollStart) / kRollMs : 1.0;
+        if (t >= 1.0) {
+            rollStart = -1;
+            drawBlock(cur, textLeft, tw, h, fg, 0.f, 1.f);
+            return;
+        }
+        float e = static_cast<float>(1.0 - std::pow(1.0 - std::clamp(t, 0.0, 1.0), 3.0)); // ease-out cubic
+        rt->PushAxisAlignedClip(D2D1::RectF(0, 2, w, h - 2), D2D1_ANTIALIAS_MODE_ALIASED);
+        auto rows = rowsFor(cur, h);
+        bool step = rows.two && rowsFor(leaving, h).two && !cur.translated && !leaving.translated &&
+                    leaving.line2 == cur.line1;
+        if (step) {
+            // The next line was previewed below: scroll the list by one row. The sung line leaves
+            // upwards, the preview moves up and grows into the current line, a new preview enters.
+            float f1 = fontSize, f2 = fontSize * 0.85f;
+            float y1 = rows.y, y2 = rows.y + rows.pitch;
+            auto mix = [&](float from, float to) { return from + (to - from) * e; };
+            D2D1_COLOR_F gone = fg, moving = fg, moveDim = fg, next = fg;
+            gone.a = 1.f - e;
+            D2D1_COLOR_F goneDim = gone;
+            goneDim.a = 0.45f * (1.f - e);
+            moving.a = mix(0.62f, 1.f);
+            moveDim.a = mix(0.62f, 0.45f);
+            next.a = 0.62f * e;
+            drawRow(leaving.line1, f1, DWRITE_FONT_WEIGHT_SEMI_BOLD, textLeft, y1 - rows.pitch * e, tw, gone,
+                    leaving.karaoke ? &leaving.span : nullptr, goneDim);
+            drawRow(cur.line1, f1, DWRITE_FONT_WEIGHT_SEMI_BOLD, textLeft, mix(y2, y1), tw, moving,
+                    cur.karaoke ? &cur.span : nullptr, moveDim, -1.f, mix(f2 / f1, 1.f));
+            drawRow(cur.line2, f2, DWRITE_FONT_WEIGHT_NORMAL, textLeft, y2 + rows.pitch * (1.f - e), tw, next, nullptr, next);
+        } else {
+            // Another kind of change (a translation pair, a seek, a new song): the block rolls.
+            float shift = h * 0.55f;
+            drawBlock(leaving, textLeft, tw, h, fg, -shift * e, 1.f - e);
+            drawBlock(cur, textLeft, tw, h, fg, shift * (1.f - e), e);
+        }
+        rt->PopAxisAlignedClip();
     }
 
     // ------------------------------------------------------------ input

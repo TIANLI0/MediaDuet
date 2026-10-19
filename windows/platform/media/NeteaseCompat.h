@@ -45,6 +45,8 @@ public:
     // True when the session's position is an estimate (compat session or supplemented).
     bool positionEstimated(const std::string& key) const { return key == kKey || (!supKey_.empty() && key == supSession_); }
     bool execute(media::CommandAction action);
+    // Seeks NetEase with its web command and re-anchors the estimated position of session `key`.
+    bool seek(const std::string& key, int64_t positionMs);
 
     static constexpr const char* kKey = "cloudmusic.exe#compat";
 
@@ -86,6 +88,7 @@ private:
     bool supPlaying_ = false;
     int64_t supPos_ = 0, supAt_ = 0;
     std::optional<int64_t> supDuration_;
+    int64_t supId_ = 0; // NetEase song id of the supplemented track (from the play queue)
     uint64_t supGen_ = 0;
     std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
 };

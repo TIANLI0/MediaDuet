@@ -42,6 +42,11 @@ object MsgType {
     const val VOLUME_SET = "volume.set"
     const val MEDIA_QUEUE_GET = "media.queue.get"
     const val MEDIA_QUEUE = "media.queue"
+    const val HANDOFF_APPS = "handoff.apps"
+    const val HANDOFF_START = "handoff.start"
+    const val HANDOFF_PLAY = "handoff.play"
+    const val HANDOFF_PROGRESS = "handoff.progress"
+    const val HANDOFF_RESULT = "handoff.result"
 }
 
 object Caps {
@@ -56,6 +61,8 @@ object Caps {
     /** The PC can play this phone's Bluetooth (A2DP) audio: `audio.sink.state` / `audio.sink.set`. */
     const val AUDIO_A2DP_SINK = "audio.a2dp_sink"
     const val VOLUME = "volume"
+    /** Continue a song on the other device (§8.7): `handoff.*`. */
+    const val HANDOFF = "handoff"
 }
 
 /** §6.1 string limits (code points). */
@@ -180,6 +187,31 @@ data class CustomAction(val id: String, val title: String, val icon: ArtworkRef?
     }
 }
 
+/**
+ * The current track's ids in music catalogues when the player exposes them (§8.3 `ids`): NetEase
+ * song id (decimal), QQ Music songmid, Spotify track id. Used by handoff (§8.7).
+ */
+data class CatalogIds(val netease: String? = null, val qqmusic: String? = null, val spotify: String? = null) {
+    val isEmpty: Boolean get() = netease == null && qqmusic == null && spotify == null
+
+    fun toJson(): JsonObject = buildJsonObject {
+        if (netease != null) put("netease", netease)
+        if (qqmusic != null) put("qqmusic", qqmusic)
+        if (spotify != null) put("spotify", spotify)
+    }
+
+    companion object {
+        private val VALID = Regex("[A-Za-z0-9]{1,64}")
+
+        /** Lenient: entries that are not 1..64 ASCII letters / digits are dropped. */
+        fun parseLenient(e: kotlinx.serialization.json.JsonElement?): CatalogIds? {
+            val o = e as? JsonObject ?: return null
+            fun get(k: String) = (o[k] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { VALID.matches(it) }
+            return CatalogIds(get("netease"), get("qqmusic"), get("spotify")).takeIf { !it.isEmpty }
+        }
+    }
+}
+
 /** The session has a play queue ([count] entries); fetch it with `media.queue.get` when [rev] changes. */
 data class QueueHint(val count: Int, val rev: String, val activeId: Long?) {
     fun toJson(): JsonObject = buildJsonObject {
@@ -295,6 +327,8 @@ data class MediaSessionInfo(
     val customActions: List<CustomAction> = emptyList(),
     /** Present when the player exposes a play queue (`media.queue.get`). */
     val queue: QueueHint? = null,
+    /** Catalogue ids of the current track, when the player exposes them. */
+    val ids: CatalogIds? = null,
 ) {
     val isPlaying: Boolean get() = status == PlayStatus.PLAYING
 
@@ -320,6 +354,7 @@ data class MediaSessionInfo(
         if (outputLatencyMs != null) put("outputLatencyMs", outputLatencyMs.coerceIn(0, MAX_OUTPUT_LATENCY_MS))
         if (customActions.isNotEmpty()) put("customActions", JsonArray(customActions.take(CustomAction.MAX_COUNT).map { it.toJson() }))
         if (queue != null) put("queue", queue.toJson())
+        if (ids != null && !ids.isEmpty) put("ids", ids.toJson())
     }
 
     companion object {
@@ -362,6 +397,7 @@ data class MediaSessionInfo(
                 outputLatencyMs = parseOutputLatency(o),
                 customActions = CustomAction.parseList(o["customActions"]),
                 queue = QueueHint.parseLenient(o["queue"]),
+                ids = CatalogIds.parseLenient(o["ids"]),
             )
         }
     }

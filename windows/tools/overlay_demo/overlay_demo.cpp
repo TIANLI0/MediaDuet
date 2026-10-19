@@ -151,7 +151,9 @@ std::shared_ptr<md::lyrics::Lyrics> sampleLyrics(bool withTranslation) {
                         "\xE8\xAF\x8D\n"
                         "[00:05.00]Line-by-line lyrics fill smoothly too\n"
                         "[00:10.00]\xE8\xBF\x99\xE6\x98\xAF\xE4\xB8\x80\xE5\x8F\xA5\xE6\x95\x85\xE6\x84\x8F\xE5\x86\x99"
-                        "\xE5\xBE\x97\xE5\xBE\x88\xE9\x95\xBF\xE7\x9A\x84\xE8\x8B\xB1\xE6\x96\x87\xE6\xAD\x8C\xE8\xAF\x8D\n"));
+                        "\xE5\xBE\x97\xE5\xBE\x88\xE9\x95\xBF\xE7\x9A\x84\xE8\x8B\xB1\xE6\x96\x87\xE6\xAD\x8C\xE8\xAF\x8D\n"
+                        "[00:18.00]A very, very long Chinese lyric line that checks whether long lines scroll smoothly "
+                        "instead of being cut off\n"));
     return std::make_shared<md::lyrics::Lyrics>(std::move(parsed));
 }
 
@@ -242,6 +244,31 @@ void runTaskbar(md::ManualScheduler& sched, const std::wstring& dir, UINT dpi, b
     }
 }
 
+// Every 16 ms frame from `from` to `to` (as live: line changes roll), saving the listed times.
+void runTaskbarFrames(md::ManualScheduler& sched, const std::wstring& dir, UINT dpi, const wchar_t* name, bool translation,
+                      int from, int to, std::vector<int> save_) {
+    TaskbarWidget tb(sched, {}, {true, [] { return g_now; }, dpi, false});
+    tb.configure({{"enabled", true}, {"width", 360}, {"fontSize", 13}, {"translation", translation}, {"align", "left"}}, true, false);
+    md::media::MediaSessionInfo s;
+    s.title = "Sample Track";
+    s.artist = "MediaDuet Demo";
+    s.trackId = "demo";
+    s.status = md::media::PlaybackStatus::Playing;
+    tb.setTrack(&s);
+    tb.setLyrics(sampleLyrics(translation), "demo");
+    tb.setTiming(playingClock(), 0);
+    float k = dpi / 96.f;
+    int w = static_cast<int>(360 * k), h = static_cast<int>(48 * k);
+    std::vector<uint8_t> px;
+    for (g_now = from; g_now <= to; g_now += 16) {
+        bool keep = std::find_if(save_.begin(), save_.end(), [](int t) { return t >= g_now && t < g_now + 16; }) != save_.end();
+        if (!tb.renderOffscreen(w, h, false, px) || !keep) continue;
+        wchar_t file[96];
+        swprintf_s(file, L"%s_%05d", name, static_cast<int>(g_now));
+        save(dir, file, Bg::TaskbarDark, px, {w, h});
+    }
+}
+
 } // namespace
 
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, LPWSTR, int) {
@@ -304,5 +331,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, LPWSTR, int) {
     runTaskbar(sched, dir, dpi, false);
     runTaskbar(sched, dir, dpi, true);
     runTaskbar(sched, dir, dpi, false, {7000, 15000}, "right");
+    // Line change at 5 s: the rows roll up; a long translation scrolls with its line (18 s).
+    runTaskbarFrames(sched, dir, dpi, L"taskbar_roll", false, 4000, 5600, {4800, 5056, 5120, 5200, 5280, 5600});
+    runTaskbarFrames(sched, dir, dpi, L"taskbar_tr", true, 17000, 26000, {17200, 19000, 21000, 23000, 25000});
     return 0;
 }

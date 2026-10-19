@@ -81,9 +81,30 @@ Every message has a `"type"` field. Messages from the UI to the host may carry a
     {"id": "{0.0.0.00000000}.{guid}", "name": "Headphones (OPPO Enco X4)", "default": true}
   ],
   "settings": { SETTINGS… },
+  "handoff": {"apps": {"local": ["netease"], "remote": ["qqmusic", "netease"]},
+              "active": {"to": "phone", "app": "qqmusic", "title": "…", "waitingForTap": false}},
+  "update": {"phase": "available", "current": "1.5.0", "latest": "1.5.1", "page": "https://github.com/…/releases/tag/v1.5.1",
+             "notes": "…", "progress": 0.0, "error": null, "auto": true, "portable": false, "checkedAt": 1760000000000},
   "diagnostics": {"enabled":false}
 }
 ```
+
+* `update` (Settings › About): `phase` ∈ `idle`, `checking`, `current` (up to
+  date), `available`, `downloading` (`progress` 0..1), `installing` (the host is
+  about to exit), `error` (`error` ∈ `network`, `no_release`, `no_asset`,
+  `no_checksum`, `checksum`, `write`, `not_writable`, `launch`). `portable`: this
+  copy was not installed by setup.exe, so an update replaces the files of its
+  folder (a hidden PowerShell script after the host exits) instead of running the
+  installer (`setup.exe /S /UPDATE`, which restarts MediaDuet). Automatic checks
+  (60 s after start, then daily) follow `settings.update.auto`; a failed automatic
+  check stays `idle`. Downloads are verified against the release's
+  `SHA256SUMS.txt`.
+* `handoff` (continue a song on the other device, protocol §8.7): `apps.local`
+  are this PC's music apps that can take a song (`netease`, `qqmusic`,
+  `spotify`: installed and supported), `apps.remote` the phone's (empty while no
+  phone with `handoff` is connected). `active` is the running handoff or `null`;
+  `waitingForTap`: the phone asks its user to tap a notification. Sessions may
+  carry `ids` (protocol §8.3).
 
 `SESSION`:
 ```json
@@ -191,6 +212,15 @@ lyrics view for such a change; the host re-keys the current lyrics to the new
  "localSessions":2,"remoteSessions":1,"audioSessionsActive":1,"threads":9}
 ```
 
+### `handoff` (a handoff ended)
+```json
+{"type":"handoff","outcome":{"ok":true,"state":"playing","to":"pc","app":"netease","title":"…"}}
+```
+`state` ∈ `playing` (the song plays on the other device, the source paused),
+`opened` (shown there, playback not confirmed; the source keeps playing). On
+failure `"ok":false,"error":{"code":…}` with the codes of protocol §8.7. Sent for
+handoffs started from the UI and from the phone.
+
 ### `show`
 ```json
 {"type":"show","window":"main"}
@@ -213,6 +243,9 @@ lyrics view for such a change; the host re-keys the current lyrics to the new
 | `connect.manual` | `host`, `port` | Remember a manual LAN endpoint for the paired phone and connect. |
 | `discover` | `enable` (bool) | Start/stop discovery (BT paired phones with the MediaDuet SDP record + DNS-SD). |
 | `media.command` extras | `action:"custom"` + `customAction` (id), `action:"playQueueItem"` + `queueId` | The phone app's own buttons (`customActions` in a session: `{id, title, iconPath}`, the icon a cached PNG) and its play queue. Sessions with a queue carry `queue: {count, rev, activeId}`; the host fetches the list from the phone and pushes `{"type":"queue","side":"remote","key":…,"queue":{key, rev, title, activeId, total, offset, items:[{id,title,subtitle}]}}` (or `"queue": null` when it is gone), also right after `hello`. |
+| `update.check` | — | Asks GitHub for the latest release now (`state.update`). |
+| `update.install` | — | Downloads the available version (installer, or the zip for a portable copy), verifies it and installs it; the host exits and is started again by the installer / script. |
+| `handoff.start` | `side` (`local`/`remote`), `key`, `app?` (`netease`/`qqmusic`/`spotify`) | Continues session `key` of `side` on the other device in `app` (default: the source's own app if the other device has it, else its first one), from the current position; the source pauses (protocol §8.7). The `result` arrives when it is done (up to 120 s) with the outcome's error code; the outcome itself also comes as a `handoff` message. |
 | `audio.a2dpSink` | `enable` | Open/close Bluetooth audio receive (AudioPlaybackConnection). `state.audio.a2dpSink.errorCode` ∈ `no_device`, `ambiguous`, `timeout`, `denied`, `failed` (same codes the phone gets in `audio.sink.state`). The phone can switch it too (`audio.sink.set`), and the tray menu has a check item while a phone offers Bluetooth audio. |
 | `audio.lanSend` | `enable` | Start/stop experimental Windows → Android PCM streaming. |
 | `lyrics.overlay` | `visible` | Show/hide the desktop lyrics overlay (rendered by the host). |
@@ -322,10 +355,13 @@ Unknown keys are preserved. Defaults:
     "main": {"x": null, "y": null, "width": null, "height": null, "maximized": false},
     "compact": {"x": null, "y": null, "alwaysOnTop": true, "snap": true}
   },
+  "update": {"auto": true},
   "diagnostics": false
 }
 ```
 
+* `update.auto` (default `true`): check for a new version once a day.
+  `ui.updateDismissed`: the version whose "update available" bar the user closed.
 * `language` ∈ `auto`, `zh-CN`, `en-US`; `theme` ∈ `system`, `light`, `dark`.
 * `ui.main.width` / `ui.main.height` (physical pixels, `null` = default size) and
   `ui.main.maximized` are written by the UI to restore the main window.

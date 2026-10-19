@@ -1,5 +1,6 @@
 package app.mediaduet.media
 
+import app.mediaduet.handoff.Handoff
 import app.mediaduet.protocol.Action
 import app.mediaduet.protocol.ArtworkRef
 import app.mediaduet.protocol.CustomAction
@@ -66,6 +67,8 @@ data class LocalSessionState(
     val customActions: List<CustomAction> = emptyList(),
     /** The player's queue, when it exposes one. */
     val queue: QueueHint? = null,
+    /** `METADATA_KEY_MEDIA_ID` (catalogue ids for handoff, see [Handoff.idsFrom]). */
+    val mediaId: String = "",
 ) {
     val status: String
         get() = if (!hasPlaybackState) PlayStatus.UNKNOWN else when (state) {
@@ -136,6 +139,7 @@ data class LocalSessionState(
             outputLatencyMs = outputLatencyMs,
             customActions = customActions,
             queue = queue,
+            ids = Handoff.idsFrom(packageName, mediaId),
         )
     }
 }

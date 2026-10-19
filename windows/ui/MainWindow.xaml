@@ -167,6 +167,13 @@
                             </Flyout>
                         </Button.Flyout>
                     </Button>
+                    <!-- Handoff: continue this song on the other device (menu of its music apps) -->
+                    <Button x:Name="HandoffButton" x:Uid="HandoffButton" Style="{StaticResource IconButtonStyle}" Visibility="Collapsed">
+                        <FontIcon x:Name="HandoffIcon" FontSize="16" Glyph="&#xE8EA;" />
+                        <Button.Flyout>
+                            <MenuFlyout x:Name="HandoffFlyout" Placement="Top" />
+                        </Button.Flyout>
+                    </Button>
                 </StackPanel>
 
                 <!-- Volume of the device that plays the focused session -->
@@ -335,6 +342,13 @@
              Its own Auto row: while open it moves the player down instead of covering it. -->
         <InfoBar x:Name="VersionBar" Grid.Row="0" HorizontalAlignment="Center" MaxWidth="760"
                  Margin="24,2,24,10" IsOpen="False" Severity="Warning" IsClosable="True" />
+        <!-- A new MediaDuet version is available (Settings > About); closing it skips that version. -->
+        <InfoBar x:Name="UpdateBar" Grid.Row="0" HorizontalAlignment="Center" MaxWidth="760"
+                 Margin="24,2,24,10" IsOpen="False" Severity="Informational" IsClosable="True">
+            <InfoBar.ActionButton>
+                <Button x:Name="UpdateBarButton" x:Uid="UpdateBarButton" />
+            </InfoBar.ActionButton>
+        </InfoBar>
 
         <!-- Bottom bar -->
         <Grid x:Name="BottomBar" Grid.Row="2" Padding="24,6,16,12" ColumnSpacing="12">
@@ -353,6 +367,8 @@
                            TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </Grid>
             <InfoBar x:Name="ErrorBar" Grid.ColumnSpan="2" Margin="0,0,180,0" IsOpen="False" Severity="Error" IsClosable="True" />
+            <!-- Handoff progress and result (on top of the policy line, like ErrorBar) -->
+            <InfoBar x:Name="HandoffBar" Grid.ColumnSpan="2" Margin="0,0,180,0" IsOpen="False" Severity="Informational" IsClosable="True" />
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2">
                 <Button x:Name="VolumeButton" x:Uid="VolumeButton" Style="{StaticResource IconButtonStyle}">
                     <FontIcon x:Name="VolumeButtonIcon" FontSize="16" Glyph="&#xE995;" />

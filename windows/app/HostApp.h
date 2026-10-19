@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Diagnostics.h"
+#include "HandoffHost.h"
 #include "IpcServer.h"
 #include "TrayIcon.h"
 
@@ -12,6 +13,7 @@
 #include "audio/VolumeControl.h"
 #include "bluetooth/BluetoothWatcher.h"
 #include "lyrics/LyricsService.h"
+#include "update/Updater.h"
 #include "media/Artwork.h"
 #include "media/GsmtcSource.h"
 #include "media/NeteaseCompat.h"
@@ -166,6 +168,9 @@ private:
     ScopedTimer appVolTimer_;
     bool gated_ = false;
     std::unique_ptr<platform::LyricsService> lyrics_;
+    std::unique_ptr<HandoffHost> handoff_;
+    std::unique_ptr<platform::Updater> updater_;
+    bool peerHasCap(const char* cap) const;
     std::unique_ptr<platform::LyricsOverlay> overlay_;
     // One smoothed playback clock for every lyrics surface (overlay, taskbar).
     std::shared_ptr<lyrics::LyricsClock> lyricsClock_ = std::make_shared<lyrics::LyricsClock>();

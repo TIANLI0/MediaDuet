@@ -15,6 +15,7 @@ struct TrayMenuState {
     bool standalone = false; // "This PC only": no phone, so no auto-pause modes
     bool a2dpAvailable = false; // the phone can play its audio on this PC over Bluetooth
     bool a2dpOn = false;
+    std::wstring update; // "Update to 1.5.1": a new version is available (empty: none)
 };
 
 // Notification-area icon and its context menu. Owns a hidden top-level window

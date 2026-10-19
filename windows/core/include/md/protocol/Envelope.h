@@ -65,6 +65,11 @@ inline constexpr const char* MediaQueue = "media.queue";
 inline constexpr const char* Bye = "bye";
 inline constexpr const char* VolumeState = "volume.state";
 inline constexpr const char* VolumeSet = "volume.set";
+inline constexpr const char* HandoffApps = "handoff.apps";
+inline constexpr const char* HandoffStart = "handoff.start";
+inline constexpr const char* HandoffPlay = "handoff.play";
+inline constexpr const char* HandoffProgress = "handoff.progress";
+inline constexpr const char* HandoffResult = "handoff.result";
 } // namespace types
 
 } // namespace md::proto

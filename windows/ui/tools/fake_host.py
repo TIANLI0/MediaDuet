@@ -320,7 +320,7 @@ class FakeHost:
                          "connected": True, "transport": "bt", "lastSeen": int(time.time() * 1000)}]
         self.connection_status = "connected"
         # App versions (DeviceInfo.app): this PC and the phone (--phone-version, e.g. 1.1.0 -> mismatch warning).
-        self.self_app = "1.4.1"
+        self.self_app = "1.5.0"
         for d in self.devices:
             d["app"] = args.phone_version
             d["versionMatch"] = version_match(self.self_app, args.phone_version)
@@ -492,6 +492,13 @@ class FakeHost:
                 "lyricsOverlay": {"visible": self.overlay_visible},
                 "settings": self.settings,
                 "diagnostics": {"enabled": self.diag_enabled},
+                # Handoff: music apps on this "PC" and the "phone" (the player card's menu).
+                "handoff": {"apps": {"local": ["netease", "spotify"], "remote": ["qqmusic", "netease"]}, "active": None},
+                "update": {"phase": self.args.update, "current": self.self_app,
+                           "latest": "1.5.1" if self.args.update in ("available", "downloading") else self.self_app,
+                           "page": "https://github.com/TIANLI0/MediaDuet/releases/latest", "notes": "",
+                           "progress": 0.42 if self.args.update == "downloading" else 0.0, "error": None,
+                           "auto": True, "portable": False, "checkedAt": 0},
             }
 
     def find(self, side, key):
@@ -859,7 +866,7 @@ def main():
     p.add_argument("--theme", choices=["system", "light", "dark"])
     p.add_argument("--scenario", default="playing",
                    choices=["playing", "idle", "nopeer", "firstrun", "standalone", "pairing", "stale-pairing", "compat"])
-    p.add_argument("--phone-version", default="1.4.1", help="the phone's app version (e.g. 1.1.0: version warning)")
+    p.add_argument("--phone-version", default="1.5.0", help="the phone's app version (e.g. 1.1.0: version warning)")
     p.add_argument("--no-lyrics", action="store_true")
     p.add_argument("--lyrics-loading-ms", type=int, default=0,
                    help="answer 'loading' first and send the lyrics after this many ms (layout hold test)")
@@ -870,6 +877,8 @@ def main():
     p.add_argument("--showcase", action="store_true",
                    help="clean demo data for screenshots: invented song, original lyrics, neutral device names")
     p.add_argument("--diagnostics", action="store_true")
+    p.add_argument("--update", default="current", choices=["idle", "current", "available", "downloading", "error"],
+                   help="state.update phase (Settings > About, the main window's update bar)")
     p.add_argument("--log", help="append received commands (JSON lines) to this file")
     p.add_argument("--launch", choices=["main", "compact", "settings", "pair"],
                    help="start ../bin/x64/Release/MediaDuetUI.exe with --show <window>")

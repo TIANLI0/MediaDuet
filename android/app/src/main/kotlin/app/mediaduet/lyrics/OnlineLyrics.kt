@@ -27,7 +27,18 @@ import java.net.URLEncoder
  */
 object OnlineLyrics {
     /** [text] is LRC or yrc (see [yrc]); empty [text] = the provider answered "no lyrics". */
-    data class Result(val text: String, val synced: Boolean, val yrc: Boolean, val provider: String, val translation: String = "")
+    /**
+     * [text] is LRC or yrc (see [yrc]); empty [text] = the provider answered "no lyrics".
+     * [translationTiming]: the LRC [translation] is timed by when [text] is not (NetEase yrc).
+     */
+    data class Result(
+        val text: String,
+        val synced: Boolean,
+        val yrc: Boolean,
+        val provider: String,
+        val translation: String = "",
+        val translationTiming: String = "",
+    )
 
     val DEFAULT_PROVIDERS = listOf("netease", "qqmusic", "lrclib")
 
@@ -113,47 +124,50 @@ object OnlineLyrics {
 
     // ---- NetEase -----------------------------------------------------------------------------
 
-    private fun netease(want: SongMatch.Candidate): Result? {
-        val ref = "https://music.163.com/"
-        val body = get("https://music.163.com/api/cloudsearch/pc?type=1&offset=0&limit=10&s=" + enc(SongMatch.searchQuery(want.title, want.artist)), ref)
-            ?: return null
-        val songs = parse(body).obj("result").arr("songs") ?: return Result("", false, false, "netease")
-        var best = 0.0
-        var bestId = 0L
-        for (s in songs) {
-            val have = SongMatch.Candidate(s.str("name").orEmpty(), artists(s.arr("ar")), s.obj("al").str("name").orEmpty(), s.long("dt"))
-            val score = SongMatch.score(want, have)
-            if (score > best) {
-                best = score
-                bestId = s.long("id") ?: 0
+    // ---- Catalogue lookups (also used by handoff, §8.7) -----------------------------------------
+
+    /** [answered] false: network / server failure (try again later); [hit] null: no match. */
+    data class Found<T>(val answered: Boolean, val hit: T?)
+
+    data class QqSong(val mid: String, val id: Long)
+
+    /** The NetEase song id of [want] (score >= 0.6). Blocking. */
+    fun findNetease(want: SongMatch.Candidate): Found<Long> = try {
+        val body = get("https://music.163.com/api/cloudsearch/pc?type=1&offset=0&limit=10&s=" + enc(SongMatch.searchQuery(want.title, want.artist)), "https://music.163.com/")
+        if (body == null) {
+            Found(false, null)
+        } else {
+            var best = 0.0
+            var bestId = 0L
+            for (s in parse(body).obj("result").arr("songs").orEmpty()) {
+                val have = SongMatch.Candidate(s.str("name").orEmpty(), artists(s.arr("ar")), s.obj("al").str("name").orEmpty(), s.long("dt"))
+                val score = SongMatch.score(want, have)
+                if (score > best) {
+                    best = score
+                    bestId = s.long("id") ?: 0
+                }
             }
+            Found(true, bestId.takeIf { best >= 0.6 && it != 0L })
         }
-        if (best < 0.6 || bestId == 0L) return Result("", false, false, "netease")
-        val ly = get("https://music.163.com/api/song/lyric/v1?lv=1&yv=1&tv=-1&id=$bestId", ref) ?: return null
-        val j = parse(ly) ?: return null
-        if (j.bool("pureMusic") == true) return Result("", false, false, "netease")
-        val trans = j.obj("tlyric").str("lyric").orEmpty()
-        val yrc = j.obj("yrc").str("lyric").orEmpty()
-        if (yrc.isNotBlank() && !LyricFormats.parseYrc(yrc).isEmpty) return Result(yrc, true, true, "netease", trans)
-        val lrc = j.obj("lrc").str("lyric").orEmpty()
-        val parsed = LyricFormats.parseSynced(lrc)
-        if (parsed != null && !LyricFormats.isInstrumentalNotice(parsed)) return Result(lrc, true, false, "netease", trans)
-        return Result("", false, false, "netease")
+    } catch (e: IOException) {
+        MdLog.i(TAG, "NetEase search failed: ${e.javaClass.simpleName}")
+        Found(false, null)
     }
 
-    // ---- QQ Music ----------------------------------------------------------------------------
-
-    private fun qqComm() = buildJsonObject {
-        putJsonObject("comm") {
-            put("ct", "19")
-            put("cv", "1859")
-            put("uin", "0")
-        }
+    /**
+     * The QQ Music song of [want] (score >= 0.6, or the hit whose songmid is [mid]). An empty result
+     * list counts as not answered: the desktop search is rate limited per IP. Blocking.
+     */
+    fun findQq(want: SongMatch.Candidate, mid: String? = null): Found<QqSong> = try {
+        qqSearch(want, mid)
+    } catch (e: IOException) {
+        MdLog.i(TAG, "QQ Music search failed: ${e.javaClass.simpleName}")
+        Found(false, null)
     }
 
-    private fun qq(want: SongMatch.Candidate): Result? {
+    private fun qqSearch(want: SongMatch.Candidate, wantMid: String?): Found<QqSong> {
         val ref = "https://y.qq.com/"
-        data class Hit(val mid: String, val have: SongMatch.Candidate)
+        data class Hit(val song: QqSong, val have: SongMatch.Candidate)
         val hits = ArrayList<Hit>()
         var transportOk = false
         val search = JsonObject(
@@ -173,7 +187,7 @@ object OnlineLyrics {
             val list = parse(body).obj("req_1").obj("data").obj("body").obj("song").arr("list")
             for (s in list.orEmpty()) {
                 val mid = s.str("mid") ?: continue
-                hits += Hit(mid, SongMatch.Candidate(s.str("name").orEmpty(), artists(s.arr("singer")), s.obj("album").str("name").orEmpty(), s.long("interval")?.times(1000)))
+                hits += Hit(QqSong(mid, s.long("id") ?: 0), SongMatch.Candidate(s.str("name").orEmpty(), artists(s.arr("singer")), s.obj("album").str("name").orEmpty(), s.long("interval")?.times(1000)))
             }
         }
         if (hits.isEmpty()) {
@@ -182,13 +196,49 @@ object OnlineLyrics {
                 transportOk = true
                 for (s in parse(body).obj("data").obj("song").arr("list").orEmpty()) {
                     val mid = s.str("songmid") ?: continue
-                    hits += Hit(mid, SongMatch.Candidate(s.str("songname").orEmpty(), artists(s.arr("singer")), s.str("albumname").orEmpty(), s.long("interval")?.times(1000)))
+                    hits += Hit(QqSong(mid, s.long("songid") ?: 0), SongMatch.Candidate(s.str("songname").orEmpty(), artists(s.arr("singer")), s.str("albumname").orEmpty(), s.long("interval")?.times(1000)))
                 }
             }
         }
-        if (!transportOk) return null
+        if (!transportOk) return Found(false, null)
+        wantMid?.let { m -> hits.firstOrNull { it.song.mid == m }?.let { return Found(true, it.song) } }
         val best = hits.maxByOrNull { SongMatch.score(want, it.have) }
-        if (best == null || SongMatch.score(want, best.have) < 0.6) return if (hits.isEmpty()) null else Result("", false, false, "qqmusic")
+        val hit = best?.takeIf { SongMatch.score(want, it.have) >= 0.6 }?.song
+        return Found(hits.isNotEmpty(), hit)
+    }
+
+    private fun netease(want: SongMatch.Candidate): Result? {
+        val ref = "https://music.163.com/"
+        val found = findNetease(want)
+        if (!found.answered) return null
+        val bestId = found.hit ?: return Result("", false, false, "netease")
+        val ly = get("https://music.163.com/api/song/lyric/v1?lv=1&yv=1&tv=-1&id=$bestId", ref) ?: return null
+        val j = parse(ly) ?: return null
+        if (j.bool("pureMusic") == true) return Result("", false, false, "netease")
+        val trans = j.obj("tlyric").str("lyric").orEmpty()
+        val yrc = j.obj("yrc").str("lyric").orEmpty()
+        // tlyric follows the plain LRC's timestamps, which often differ from the yrc's.
+        if (yrc.isNotBlank() && !LyricFormats.parseYrc(yrc).isEmpty) return Result(yrc, true, true, "netease", trans, j.obj("lrc").str("lyric").orEmpty())
+        val lrc = j.obj("lrc").str("lyric").orEmpty()
+        val parsed = LyricFormats.parseSynced(lrc)
+        if (parsed != null && !LyricFormats.isInstrumentalNotice(parsed)) return Result(lrc, true, false, "netease", trans)
+        return Result("", false, false, "netease")
+    }
+
+    // ---- QQ Music ----------------------------------------------------------------------------
+
+    private fun qqComm() = buildJsonObject {
+        putJsonObject("comm") {
+            put("ct", "19")
+            put("cv", "1859")
+            put("uin", "0")
+        }
+    }
+
+    private fun qq(want: SongMatch.Candidate): Result? {
+        val ref = "https://y.qq.com/"
+        val found = qqSearch(want, null)
+        val best = found.hit ?: return if (found.answered) Result("", false, false, "qqmusic") else null
 
         var lrc = ""
         var trans = ""

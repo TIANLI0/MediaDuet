@@ -34,6 +34,7 @@ const std::map<std::string_view, Entry>& table() {
         {"mode.custom", {L"Custom priorities", L"自定义优先级"}},
         {"settings", {L"Settings…", L"设置…"}},
         {"exit", {L"Exit", L"退出"}},
+        {"update", {L"Update to %s…", L"更新到 %s…"}},
         {"status.no_peer", {L"No phone paired", L"尚未配对手机"}},
         {"status.disconnected", {L"Phone not connected", L"手机未连接"}},
         {"status.connecting", {L"Connecting…", L"正在连接…"}},

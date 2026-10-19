@@ -19,6 +19,7 @@ enum : UINT {
     IdPrev,
     IdSettings,
     IdExit,
+    IdUpdate,
     IdA2dp,
     IdModeBase = 200
 };
@@ -119,6 +120,7 @@ void TrayIcon::showMenu() {
         AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(modes), tr("arbitration"));
     }
     AppendMenuW(m, MF_STRING, IdSettings, tr("settings"));
+    if (!st.update.empty()) AppendMenuW(m, MF_STRING, IdUpdate, st.update.c_str());
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING, IdExit, tr("exit"));
     SetMenuDefaultItem(m, IdOpen, FALSE);
@@ -139,6 +141,7 @@ void TrayIcon::showMenu() {
     case IdPrev: cb_.onCommand("previous"); break;
     case IdSettings: cb_.onCommand("settings"); break;
     case IdExit: cb_.onCommand("exit"); break;
+    case IdUpdate: cb_.onCommand("update"); break;
     default:
         if (cmd >= IdModeBase && cmd < IdModeBase + std::size(kModes))
             cb_.onCommand(std::string("mode:") + kModes[cmd - IdModeBase]);

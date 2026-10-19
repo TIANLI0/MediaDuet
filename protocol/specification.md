@@ -333,6 +333,11 @@ HANDSHAKE frames; everything else in SECURE/CONTROL records.
 | `audio.sink.set` | S→C | `{enable: bool}` — asks the client to start / stop receiving the phone's Bluetooth audio (requires cap `audio.a2dp_sink`); answered with `audio.sink.state`. Receiving Bluetooth audio and PC→phone PCM streaming (§9) are mutually exclusive: enabling one stops the other |
 | `media.queue.get` | both | `{key}` — the play queue of one of the receiver's sessions (`queue` in the snapshot); answered with `media.queue` or `error {code:"not_found", re}` |
 | `media.queue` | both | `{key, rev, title, activeId?, total, offset, items:[{id, title, subtitle}]}` with `re` — at most 300 entries: the whole queue, or a window around the current one (`offset` = index of the first entry, `total` = queue length) |
+| `handoff.apps` | both | `{apps:[string]}` — the sender's music apps that can take over a song (§8.7), in preference order; sent after `session.ready` and when one is installed or removed (requires cap `handoff`) |
+| `handoff.start` | S→C | `{from:"phone"\|"pc", key, app?}` — the phone's UI asks the PC to move session `key` of `from` to the other device (the PC coordinates both directions); answered with `handoff.result` (an outcome) with `re` |
+| `handoff.play` | C→S | `{app, song:{title, artist, album, durationMs}, ids?}` — play this song in `app` on the phone; answered with `handoff.result` with `re`, possibly after `handoff.progress` |
+| `handoff.progress` | S→C | `{state:"tap_to_continue"}` with `re` — the phone asks its user to tap a notification (Android does not let a background app open another app) |
+| `handoff.result` | both | `{ok, state?, key?, error?:{code}}` with `re` — the answer to `handoff.play` / `handoff.start` (§8.7) |
 | `bye` | both | `{reason}` — orderly disconnect (user disconnect, app exit) |
 
 `error.code` values: `not_paired`, `auth_failed`, `version_unsupported`,
@@ -402,6 +407,10 @@ streamed: receivers extrapolate from `positionMs` using a monotonic clock.
 * `queue` (optional): the player exposes a play queue of `count` entries;
   `activeId` is the current entry. Receivers fetch it with `media.queue.get
   {key}` whenever `rev` changes (a change of `activeId` alone needs no fetch).
+* `ids` (optional): the current track's ids in music catalogues when the player
+  exposes them — `netease` (decimal song id), `qqmusic` (songmid), `spotify`
+  (track id), each 1–64 ASCII letters / digits; receivers drop invalid entries.
+  Used by handoff (§8.7) to open the exact song instead of searching for it.
 * At most 16 sessions; senders exclude their *own* bridged mirror sessions
   (e.g. MediaDuet's SMTC bridge on Windows), which prevents echo loops.
 
@@ -445,6 +454,44 @@ streamed: receivers extrapolate from `positionMs` using a monotonic clock.
 * Receivers reassemble, verify SHA-256, and cache by hash (content addressed,
   so each image is fetched and decoded at most once).
 * A receiver requests artwork only for hashes it does not have cached.
+
+### 8.7 Handoff (cap `handoff`)
+
+"Continue on the other device": the song a session plays on one device continues
+in a music app on the other, at the same position, and the source pauses.
+
+* App ids: `netease` (NetEase Cloud Music), `qqmusic` (QQ Music), `spotify`.
+  A session belongs to one by its app id: contains `cloudmusic`, `qqmusic`,
+  `spotify` (case-insensitive; Windows exe / AUMID or Android package).
+* The **PC coordinates both directions** (it is the arbitration authority, §10).
+  The phone's UI sends `handoff.start`; the PC's UI talks to its host directly.
+* The coordinator picks the app: the one asked for if the target device has it,
+  else the source's own app if it has that, else its first app; none →
+  `app_unavailable`.
+* Phone as the target: the PC sends `handoff.play`; the phone resolves the song
+  (`ids` of the source session, else a catalogue lookup by title / artist /
+  album / duration with the lyrics matching rules), opens it and answers
+  `handoff.result {ok:true, state:"playing", key}` once session `key` of that
+  app shows the song (titles equal after normalisation or one a prefix of the
+  other, durations within 5 s) and plays, within 20 s. A paused target that
+  shows the song is started after 2.5 s. When the phone may not open the app
+  from the background it posts a notification, sends `handoff.progress
+  {state:"tap_to_continue"}` and waits up to 90 s for the tap.
+* PC as the target: the same, inside the host (NetEase `orpheus://` web command,
+  QQ Music `QQMusic.exe /tencentprotocol`, Spotify `spotify:` URIs), 25 s.
+* `state:"opened"`: the app shows the song (or, without a catalogue id, a search
+  for it) but playback could not be confirmed; the source keeps playing.
+* On `playing` the coordinator pauses the source (a *user* pause: arbitration
+  never resumes it, §10) and, from 3 s into the song, seeks the target to the
+  source's live position (+ half the RTT for the phone).
+* `handoff.start` is answered with an outcome:
+  `{ok, state?, error?:{code}, to:"pc"|"phone", app, title}`, within 120 s.
+* Error codes: `app_unavailable`, `not_found` (not in that app's catalogue),
+  `network` (the catalogue lookup failed), `launch_failed`, `timeout`,
+  `no_session` (the source is gone), `busy` (one handoff at a time),
+  `link_lost`, `unsupported`.
+* Only the PC coordinates: a phone receiving `handoff.start`, or a PC receiving
+  `handoff.play`, answers `handoff.result {ok:false, error:{code:"unsupported"}}`.
 
 ---
 
@@ -511,4 +558,4 @@ Key rules that the protocol supports:
   depends on a capability the peer did not announce.
 * v1 capability strings: `media.source`, `media.control`, `artwork`, `lyrics`,
   `policy.host`, `policy.client`, `audio.a2dp_sink`, `audio.recv.pcm`,
-  `audio.send.pcm`, `smtc.bridge`, `notif.bridge`, `volume`.
+  `audio.send.pcm`, `smtc.bridge`, `notif.bridge`, `volume`, `handoff`.

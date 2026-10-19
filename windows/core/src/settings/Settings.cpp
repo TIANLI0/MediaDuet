@@ -59,6 +59,7 @@ json defaults() {
     "main": {"x": null, "y": null, "width": null, "height": null, "maximized": false},
     "compact": {"x": null, "y": null, "alwaysOnTop": true, "snap": true}
   },
+  "update": {"auto": true},
   "diagnostics": false
 })");
 }

@@ -33,6 +33,7 @@ import app.mediaduet.protocol.BlobChunk
 import app.mediaduet.protocol.Caps
 import app.mediaduet.protocol.CommandResult
 import app.mediaduet.protocol.DeviceInfo
+import app.mediaduet.protocol.ErrorCode
 import app.mediaduet.protocol.LanEndpoint
 import app.mediaduet.protocol.LyricsPush
 import app.mediaduet.protocol.MediaCommand
@@ -41,6 +42,17 @@ import app.mediaduet.protocol.PolicyStatus
 import app.mediaduet.protocol.SinkState
 import app.mediaduet.protocol.MediaQueue
 import app.mediaduet.lyrics.LyricsRepository
+import app.mediaduet.handoff.HandoffApp
+import app.mediaduet.handoff.HandoffErrors
+import app.mediaduet.handoff.HandoffExecutor
+import app.mediaduet.handoff.HandoffOutcome
+import app.mediaduet.handoff.HandoffPlay
+import app.mediaduet.handoff.PlayResult
+import app.mediaduet.update.Updater
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import app.mediaduet.media.TargetChoice
 import app.mediaduet.remote.MirrorSessionController
 import app.mediaduet.remote.RemoteMediaStore
@@ -101,6 +113,8 @@ class Engine private constructor(private val app: Context) : LinkHost {
     val audio = AudioReceiver(scope, settings.audioReceiveEnabled) { peer, stream, reason -> link.sendAudioStop(peer, stream, reason) }
     val mirror = MirrorSessionController(app, scope, remote, settings.mirrorEnabled)
     val volume = VolumeController(app)
+    /** Software updates from GitHub (Settings > About). */
+    val updater = Updater(app, scope, settings)
     /** Where the phone's media audio plays; a change re-sends the snapshot (outputLatencyMs). */
     val outputRoute = AudioRouteMonitor(app) { requestSnapshot() }
 
@@ -172,6 +186,47 @@ class Engine private constructor(private val app: Context) : LinkHost {
     /** Local sessions as currently captured (for the "Phone media" screen). */
     val localStates: StateFlow<List<LocalSessionState>> = _localStates
 
+    // ---- Handoff (§8.7): continue a song on the other device -----------------------------------
+
+    private val handoffExecutor by lazy { HandoffExecutor(app, media, _localStates) }
+    private val handoffMutex = Mutex()
+    private val _phoneHandoffApps = MutableStateFlow<List<HandoffApp>>(emptyList())
+    /** Music apps on this phone that can take a song from the PC. */
+    val phoneHandoffApps: StateFlow<List<HandoffApp>> = _phoneHandoffApps
+    private val _pcHandoffApps = MutableStateFlow<List<HandoffApp>>(emptyList())
+    /** Music apps on the connected PC that can take a song from this phone (`handoff.apps`). */
+    val pcHandoffApps: StateFlow<List<HandoffApp>> = _pcHandoffApps
+    private val _handoffBusy = MutableStateFlow(false)
+    /** A handoff started here is running (the PC coordinates it). */
+    val handoffBusy: StateFlow<Boolean> = _handoffBusy
+
+    private fun refreshHandoffApps() {
+        val apps = handoffExecutor.installedApps()
+        if (apps == _phoneHandoffApps.value) return
+        _phoneHandoffApps.value = apps
+        MdLog.i(TAG, "music apps for handoff: ${apps.joinToString { it.id }.ifEmpty { "none" }}")
+        link.broadcastHandoffApps()
+    }
+
+    /**
+     * Moves session [key] of [side] to the other device, in [app] (null: the PC picks). The PC
+     * coordinates and answers when the song plays there (or why it could not).
+     */
+    suspend fun startHandoff(side: Side, key: String, app: HandoffApp?): HandoffOutcome {
+        if (!_handoffBusy.compareAndSet(false, true)) return HandoffOutcome(false, null, HandoffErrors.BUSY, null, app, "")
+        try {
+            val body = buildJsonObject {
+                put("from", if (side == Side.PC) "pc" else "phone")
+                put("key", key)
+                if (app != null) put("app", app.id)
+            }
+            val answer = link.sendHandoffStart(body) ?: return HandoffOutcome(false, null, HandoffErrors.LINK_LOST, null, app, "")
+            return HandoffOutcome.parse(answer).also { MdLog.i(TAG, "handoff to the ${if (side == Side.PC) "phone" else "PC"}: $it") }
+        } finally {
+            _handoffBusy.value = false
+        }
+    }
+
     private val _lastSentSnapshot = MutableStateFlow<MediaSnapshot?>(null)
     val lastSentSnapshot: StateFlow<MediaSnapshot?> = _lastSentSnapshot
 
@@ -195,6 +250,18 @@ class Engine private constructor(private val app: Context) : LinkHost {
         startedAtMs = clock.nowMs()
         MdLog.i(TAG, "engine starting (device ${settings.deviceId.take(8)}, ${settings.deviceName.value})")
         Notifications.createChannels(app)
+        refreshHandoffApps()
+        updater.start()
+        // Music apps installed / removed: tell the PC which ones can take a song.
+        val packages = android.content.IntentFilter().apply {
+            addAction(android.content.Intent.ACTION_PACKAGE_ADDED)
+            addAction(android.content.Intent.ACTION_PACKAGE_REMOVED)
+            addAction(android.content.Intent.ACTION_PACKAGE_REPLACED)
+            addDataScheme("package")
+        }
+        androidx.core.content.ContextCompat.registerReceiver(app, object : android.content.BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: android.content.Intent) = refreshHandoffApps()
+        }, packages, androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED)
         startTargetResolver()
         startLyricsRequests()
         // Work mode: listen for / talk to PCs only when linked.
@@ -323,7 +390,31 @@ class Engine private constructor(private val app: Context) : LinkHost {
         add(Caps.LYRICS)
         add(Caps.POLICY_CLIENT)
         add(Caps.VOLUME)
+        add(Caps.HANDOFF)
         if (settings.audioReceiveEnabled.value) add(Caps.AUDIO_RECV_PCM)
+    }
+
+    override fun handoffApps(): List<String> = _phoneHandoffApps.value.map { it.id }
+
+    override fun onPeerHandoffApps(peerId: String, apps: JsonElement?) {
+        _pcHandoffApps.value = HandoffApp.listFrom(apps)
+        MdLog.i(TAG, "PC music apps for handoff: ${_pcHandoffApps.value.joinToString { it.id }.ifEmpty { "none" }}")
+    }
+
+    override suspend fun onHandoffPlay(peerId: String, body: JsonObject, progress: suspend (String) -> Unit): JsonObject {
+        val req = HandoffPlay.parse(body) ?: return PlayResult.failed(ErrorCode.BAD_MESSAGE).toJson()
+        if (!settings.mode.value.linked) return PlayResult.failed(HandoffErrors.UNSUPPORTED).toJson()
+        MdLog.i(TAG, "PC hands over \"${req.song.title}\" to ${req.app.id}")
+        // One at a time; a second request while one runs is refused.
+        if (!handoffMutex.tryLock()) return PlayResult.failed(HandoffErrors.BUSY).toJson()
+        return try {
+            handoffExecutor.play(req, progress).also {
+                MdLog.i(TAG, "handoff result: $it")
+                requestSnapshot()
+            }.toJson()
+        } finally {
+            handoffMutex.unlock()
+        }
     }
 
     override fun freshSnapshot(): MediaSnapshot =
@@ -371,6 +462,7 @@ class Engine private constructor(private val app: Context) : LinkHost {
         remote.onSessionStarted(peer.id, resumed)
 
     override fun onPeerDisconnected(peerId: String) {
+        _pcHandoffApps.value = emptyList()
         remote.onDisconnected(peerId)
         audio.stopForPeer(peerId)
     }

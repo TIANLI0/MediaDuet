@@ -2,7 +2,7 @@
 ; Build the staged folder first:
 ;   powershell -ExecutionPolicy Bypass -File windows\packaging\package.ps1 -Arch x64
 ; then:
-;   makensis /DVERSION=1.4.1 /DARCH=x64 windows\packaging\installer.nsi
+;   makensis /DVERSION=1.5.0 /DARCH=x64 windows\packaging\installer.nsi
 
 Unicode true
 ManifestDPIAware true
@@ -10,7 +10,7 @@ RequestExecutionLevel user
 SetCompressor /SOLID lzma
 
 !ifndef VERSION
-  !define VERSION "1.4.1"
+  !define VERSION "1.5.0"
 !endif
 !ifndef ARCH
   !define ARCH "x64"
@@ -27,6 +27,7 @@ BrandingText "MediaDuet ${VERSION}"
 !include "MUI2.nsh"
 !include "x64.nsh"
 !include "WinVer.nsh"
+!include "FileFunc.nsh"
 
 !define MUI_ICON "..\app\resources\app.ico"
 !define MUI_UNICON "..\app\resources\app.ico"
@@ -72,6 +73,17 @@ Function .onInit
     Abort
   ${EndIf}
   !insertmacro MUI_LANGDLL_DISPLAY
+FunctionEnd
+
+; In-app update (Settings > About): `setup.exe /S /UPDATE` installs silently, then starts
+; MediaDuet again (a plain silent install does not).
+Function .onInstSuccess
+  ${GetParameters} $R0
+  ClearErrors
+  ${GetOptions} $R0 "/UPDATE" $R1
+  ${IfNot} ${Errors}
+    Exec '"$INSTDIR\MediaDuet.exe"'
+  ${EndIf}
 FunctionEnd
 
 !macro StopApp

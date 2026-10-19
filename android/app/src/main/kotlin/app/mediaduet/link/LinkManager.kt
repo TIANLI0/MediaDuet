@@ -90,6 +90,20 @@ interface LinkHost {
 
     /** Local Bluetooth adapter name for `transport.info.btName` (null without permission). */
     fun bluetoothName(): String?
+
+    /** Handoff (§8.7): our music apps that can take a song (`handoff.apps`, ids). */
+    fun handoffApps(): List<String> = emptyList()
+    /** The PC's music apps (`handoff.apps`). */
+    fun onPeerHandoffApps(peerId: String, apps: kotlinx.serialization.json.JsonElement?) = Unit
+    /**
+     * `handoff.play`: play the song here; the body of `handoff.result`. [progress] sends
+     * `handoff.progress {state}` (e.g. tap_to_continue).
+     */
+    suspend fun onHandoffPlay(peerId: String, body: JsonObject, progress: suspend (String) -> Unit): JsonObject =
+        buildJsonObject {
+            put("ok", false)
+            put("error", ErrorInfo(ErrorCode.UNSUPPORTED).toJson())
+        }
 }
 
 data class TransportStatus(
@@ -245,6 +259,7 @@ class LinkManager(
         sendTransportInfo(session, conn)
         host.freshSnapshot()?.let { send(session, conn, MsgType.MEDIA_SNAPSHOT, it.toJson()) }
         if (Caps.VOLUME in session.peerCaps) host.volumeState()?.let { send(session, conn, MsgType.VOLUME_STATE, it.toJson()) }
+        if (Caps.HANDOFF in session.peerCaps) send(session, conn, MsgType.HANDOFF_APPS, handoffAppsBody())
 
         val heartbeat = scope.launch(dispatcher) { heartbeat(session, conn) }
         try {
@@ -310,6 +325,12 @@ class LinkManager(
     }
 
     private fun failPending(session: LinkSession, code: String) {
+        handoffWaits.keys.filter { it.first == session.sid }.forEach { k ->
+            handoffWaits.remove(k)?.complete(buildJsonObject {
+                put("ok", false)
+                put("error", ErrorInfo(code).toJson())
+            })
+        }
         session.pending.values.forEach { it.result.complete(CommandResult.failure(code)) }
         session.pending.clear()
     }
@@ -509,6 +530,37 @@ class LinkManager(
                     }
                 }
             }
+            MsgType.HANDOFF_APPS -> host.onPeerHandoffApps(peerId, env.body["apps"])
+            MsgType.HANDOFF_PLAY -> {
+                if (Caps.HANDOFF !in host.capabilities()) {
+                    send(session, conn, MsgType.HANDOFF_RESULT, unsupportedResult(), env.id)
+                    return
+                }
+                scope.launch(dispatcher) {
+                    val result = try {
+                        host.onHandoffPlay(peerId, env.body) { state ->
+                            withContext(dispatcher) {
+                                send(session, null, MsgType.HANDOFF_PROGRESS, buildJsonObject { put("state", state) }, env.id)
+                            }
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        MdLog.e(TAG, "handoff failed", e)
+                        buildJsonObject {
+                            put("ok", false)
+                            put("error", ErrorInfo(ErrorCode.INTERNAL).toJson())
+                        }
+                    }
+                    send(session, null, MsgType.HANDOFF_RESULT, result, env.id)
+                }
+            }
+            MsgType.HANDOFF_RESULT -> {
+                val re = env.re ?: throw BadMessageException("result without re")
+                handoffWaits.remove(session.sid to re)?.complete(env.body)
+            }
+            // Only the PC coordinates a handoff.
+            MsgType.HANDOFF_START -> send(session, conn, MsgType.HANDOFF_RESULT, unsupportedResult(), env.id)
             MsgType.BYE -> {
                 MdLog.i(TAG, "peer said bye: ${env.body.optString("reason", 128)}")
                 session.connections.toList().forEach { it.closeAfterFlush("peer bye") }
@@ -651,6 +703,42 @@ class LinkManager(
         send(session, null, MsgType.LYRICS_PUSH, body) != null
     }
 
+    private fun handoffAppsBody() = buildJsonObject { put("apps", JsonArray(host.handoffApps().map { kotlinx.serialization.json.JsonPrimitive(it) })) }
+
+    private fun unsupportedResult() = buildJsonObject {
+        put("ok", false)
+        put("error", ErrorInfo(ErrorCode.UNSUPPORTED).toJson())
+    }
+
+    /** Handoff answers we wait for, by (session id, `handoff.start` id). Dispatcher only. */
+    private val handoffWaits = HashMap<Pair<String, Long>, CompletableDeferred<JsonObject>>()
+
+    /** Re-announces our music apps (`handoff.apps`) after one was installed or removed. */
+    fun broadcastHandoffApps() {
+        scope.launch(dispatcher) {
+            sessions.values.filter { it.isConnected && Caps.HANDOFF in it.peerCaps }
+                .forEach { send(it, null, MsgType.HANDOFF_APPS, handoffAppsBody()) }
+        }
+    }
+
+    /**
+     * Asks the PC to move a session to the other device (`handoff.start`, §8.7; the PC
+     * coordinates both directions). Returns the PC's `handoff.result` body, null when no PC with
+     * `handoff` is connected or it did not answer in time.
+     */
+    suspend fun sendHandoffStart(body: JsonObject): JsonObject? {
+        val wait = withContext(dispatcher) {
+            val session = currentSession() ?: return@withContext null
+            if (Caps.HANDOFF !in session.peerCaps) return@withContext null
+            val env = send(session, null, MsgType.HANDOFF_START, body) ?: return@withContext null
+            CompletableDeferred<JsonObject>().also { handoffWaits[session.sid to env.id] = it } to (session.sid to env.id)
+        } ?: return null
+        val (deferred, key) = wait
+        return withTimeoutOrNull(HANDOFF_TIMEOUT_MS) { deferred.await() }.also {
+            withContext(dispatcher) { handoffWaits.remove(key) }
+        }
+    }
+
     /** Asks the Windows arbitration engine to change mode (§8.2 policy.config). */
     suspend fun sendPolicyConfig(mode: String): Boolean = withContext(dispatcher) {
         val session = currentSession() ?: return@withContext false
@@ -754,6 +842,8 @@ class LinkManager(
         const val RESUME_WINDOW_MS = 10 * 60 * 1000L
         const val RESEND_WINDOW_MS = 5_000L
         const val COMMAND_TIMEOUT_MS = 5_000L
+        /** The PC gives a handoff 120 s (a tap on the phone may be needed); a little more here. */
+        const val HANDOFF_TIMEOUT_MS = 130_000L
         const val PLAYING_INTERVAL_MS = 15_000L
         const val IDLE_INTERVAL_MS = 60_000L
         const val SECONDARY_INTERVAL_MS = 120_000L

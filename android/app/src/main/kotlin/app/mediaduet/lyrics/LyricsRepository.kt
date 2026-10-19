@@ -133,7 +133,13 @@ class LyricsRepository(
         val lrcFile = File(cacheDir, "$stem.lrc")
         val trFile = File(cacheDir, "$stem.tlrc")
         val missFile = File(cacheDir, "$stem.none")
-        readCached(lrcFile, trFile)?.let { return it.copy(trackId = trackId, song = song) }
+        // Translations of word-timed lyrics cached before they were aligned through the plain LRC
+        // (no TRANSLATION_MARK) may miss lines: look the song up again, once; the old cache stays
+        // in use when that finds nothing.
+        val stale = onlineEnabled.value && !(missFile.isFile && System.currentTimeMillis() - missFile.lastModified() < NEGATIVE_TTL_MS) &&
+            staleTranslation(lrcFile, trFile)
+        if (!stale) readCached(lrcFile, trFile)?.let { return it.copy(trackId = trackId, song = song) }
+        else MdLog.i(TAG, "refreshing the cached translation of $trackId")
         if (missFile.isFile && System.currentTimeMillis() - missFile.lastModified() < NEGATIVE_TTL_MS) return none
         if (!onlineEnabled.value) return none
 
@@ -153,12 +159,19 @@ class LyricsRepository(
             val base = if (r.yrc) LyricFormats.parseYrc(r.text) else LrcParser.parse(r.text)
             if (base.isEmpty) continue
             val lrc = if (r.yrc) LyricFormats.toLrc(base) else r.text
-            val merged = if (r.translation.isNotBlank()) TranslationMerge.merge(base, r.translation) else base
+            val timing = r.translationTiming.takeIf { it.isNotBlank() }?.let { LrcParser.parse(it) }
+            val merged = if (r.translation.isNotBlank()) TranslationMerge.merge(base, r.translation, timing) else base
             write(lrcFile, lrc)
             if (merged.hasTranslations) write(trFile, LyricFormats.translationLrc(merged))
             MdLog.i(TAG, "lyrics for $trackId from $provider (${merged.lines.size} lines)")
             trim()
             return LyricsState(trackId, merged, emptyList(), provider, song)
+        }
+        if (stale) {
+            // Nothing better online: keep the cached lyrics; mark the old translation as checked
+            // when the providers answered, so the song is not looked up on every play.
+            if (definitive || plain != null) runCatching { trFile.readText() }.getOrNull()?.let { write(trFile, "${LyricFormats.TRANSLATION_MARK}\n$it") }
+            readCached(lrcFile, trFile)?.let { return it.copy(trackId = trackId, song = song) }
         }
         if (plain != null) {
             write(lrcFile, plain.plain.joinToString("\n"))
@@ -167,6 +180,15 @@ class LyricsRepository(
         }
         if (definitive) write(missFile, "")
         return none
+    }
+
+    /** A cached word-timed lyric whose translation predates [LyricFormats.TRANSLATION_MARK]. */
+    private fun staleTranslation(lrcFile: File, trFile: File): Boolean {
+        if (!lrcFile.isFile || !trFile.isFile) return false
+        val tr = runCatching { trFile.readText() }.getOrNull() ?: return false
+        if (tr.startsWith(LyricFormats.TRANSLATION_MARK)) return false
+        val lrc = runCatching { lrcFile.readText() }.getOrNull() ?: return false
+        return lrc.contains('<') // enhanced LRC: converted from NetEase yrc
     }
 
     /** Hands the cached files of [trackId] (only ever the phone's own finds) to [onFound]. */

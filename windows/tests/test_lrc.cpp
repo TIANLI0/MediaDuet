@@ -92,6 +92,28 @@ TEST_CASE("translations merge by timestamp and round-trip as LRC") {
     CHECK(hasTranslation(again));
 }
 
+TEST_CASE("translations of word-timed lyrics are aligned through the plain LRC") {
+    // NetEase: tlyric follows the plain LRC; the yrc lines start up to seconds earlier or later
+    // ("Someone Like You": 40 of 68 translations were lost with the timestamp match alone).
+    auto yrc = parseYrc("[10500,2000](10500,2000,0)I heard\n[14100,3000](14100,3000,0)that you're settled down\n"
+                        "[20000,2000](20000,2000,0)I heard\n[30000,2000](30000,2000,0)Never mind\n");
+    auto plain = parseLrc("[00:12.74]I heard\n[00:16.48]That you're settled down\n[00:21.20]I heard\n[00:30.10]Never mind\n");
+    auto tr = parseLrc("[00:12.74]A\n[00:16.48]B\n[00:21.20]C\n[00:30.10]D\n");
+    auto lost = yrc;
+    CHECK(mergeTranslation(lost, tr) == 1); // the old match: only lines within 600 ms
+    CHECK(mergeTranslation(yrc, tr, 600, &plain) == 4);
+    CHECK(yrc.lines[0].translation == "A");
+    CHECK(yrc.lines[1].translation == "B"); // same text up to case and spaces
+    CHECK(yrc.lines[2].translation == "C"); // a repeated line: the nearest occurrence
+    CHECK(yrc.lines[3].translation == "D");
+    auto out = translationLrc(yrc);
+    CHECK(out.rfind(kTranslationMark, 0) == 0);
+    auto again = parseYrc("[10500,2000](10500,2000,0)I heard\n[14100,3000](14100,3000,0)that you're settled down\n"
+                          "[20000,2000](20000,2000,0)I heard\n[30000,2000](30000,2000,0)Never mind\n");
+    CHECK(mergeTranslation(again, parseLrc(out)) == 4); // re-read from the cache / the phone
+    CHECK(translationLrc(parseLrc("[00:01.00]x\n")).empty());
+}
+
 TEST_CASE("entities and instrumental notices") {
     CHECK(decodeEntities("Don&apos;t &quot;stop&quot; &amp; &#26228;") == "Don't \"stop\" & \xE6\x99\xB4");
     CHECK(isInstrumentalNotice(parseLrc("[00:00.000]\xE7\xBA\xAF\xE9\x9F\xB3\xE4\xB9\x90\xEF\xBC\x8C\xE8\xAF\xB7\xE6\xAC\xA3\xE8\xB5\x8F")));

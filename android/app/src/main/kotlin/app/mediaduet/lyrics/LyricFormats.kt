@@ -50,12 +50,22 @@ object LyricFormats {
         }
     }
 
-    /** The translations as an LRC on the base lines' timestamps. */
-    fun translationLrc(l: Lyrics): String = buildString {
-        for (line in l.lines) {
-            val t = line.translation ?: continue
-            append('[').append(stamp(line.timeMs)).append(']').append(t).append('\n')
+    /**
+     * First line of translation LRCs written since translations are aligned through the plain
+     * LRC; cached translations of word-timed lyrics without it may be incomplete (re-fetched).
+     * Same as the host's `lyrics::kTranslationMark`.
+     */
+    const val TRANSLATION_MARK = "[md:tr2]"
+
+    /** The translations as an LRC on the base lines' timestamps (starting with [TRANSLATION_MARK]). */
+    fun translationLrc(l: Lyrics): String {
+        val body = buildString {
+            for (line in l.lines) {
+                val t = line.translation ?: continue
+                append('[').append(stamp(line.timeMs)).append(']').append(t).append('\n')
+            }
         }
+        return if (body.isEmpty()) body else "$TRANSLATION_MARK\n$body"
     }
 
     private fun stamp(ms: Long): String {

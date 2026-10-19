@@ -64,6 +64,7 @@ namespace winrt::MediaDuetUI::implementation
         void UpdateLyrics();
         void UpdateWelcome();
         void UpdateVersionBar();
+        void UpdateUpdateBar();
         void UpdateLyricsOffset();
         void UpdateProgress(uint64_t now);
         void UpdateLyricsPosition(double nowQpcMs, bool force);
@@ -77,6 +78,13 @@ namespace winrt::MediaDuetUI::implementation
         winrt::Windows::Foundation::Point CardOrigin();
         void SetLyricsLayout(bool on, bool animate);
         void BuildSourceMenu();
+        // Handoff: the menu of the other device's music apps, the progress / result bar.
+        bool CanHandoff(mdui::Session const* s) const;
+        void BuildHandoffMenu();
+        void UpdateHandoffBar();
+        void ShowHandoffOutcome();
+        bool m_handoffResultShown{ false };   // HandoffBar shows a result (not progress)
+        Microsoft::UI::Dispatching::DispatcherQueueTimer m_handoffBarTimer{ nullptr };
         void PlaceInitially();
         void SavePosition();
         void OnClosed();

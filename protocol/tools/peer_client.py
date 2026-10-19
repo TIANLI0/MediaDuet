@@ -229,7 +229,7 @@ def open_session(args, state, resume=None):
     priv, epk = new_ephemeral()
     n_c = secrets.token_bytes(32)
     body = {"device": device_info(state["id"], state["name"]), "protocol": {"min": 1, "max": 1},
-            "caps": ["media.source", "media.control", "artwork", "lyrics", "policy.host", "volume"],
+            "caps": ["media.source", "media.control", "artwork", "lyrics", "policy.host", "volume", "handoff"],
             "epk": b64(epk), "nonce": b64(n_c), "transport": "lan"}
     if resume:
         body["resume"] = resume
@@ -269,6 +269,8 @@ class Session:
         self.blobs = {}
         self.results = {}
         self.pongs = {}
+        self.handoff = {}         # handoff.result by re
+        self.handoff_apps = None  # the phone's handoff.apps
 
     def pump(self, until=None, timeout=10.0):
         """Reads records, handling them, until until() is true or the timeout expires."""
@@ -351,6 +353,18 @@ class Session:
                         v["muted"] = bool(body["muted"])
                     self.c.send("volume.state", dict(v), re=env["id"])
                     print(f"-> volume.state {json.dumps(v)}")
+            elif t == "handoff.apps":
+                self.handoff_apps = body.get("apps")
+                print(f"<- handoff.apps {json.dumps(body)}")
+            elif t == "handoff.progress":
+                print(f"<- handoff.progress re={env.get('re')} {json.dumps(body)}")
+            elif t == "handoff.result":
+                self.handoff[env.get("re")] = body
+                print(f"<- handoff.result re={env.get('re')} {json.dumps(body, ensure_ascii=False)}")
+            elif t == "handoff.start":
+                print(f"<- handoff.start {json.dumps(body, ensure_ascii=False)}")
+                self.c.send("handoff.result", {"ok": False, "to": "pc", "title": "", "app": None,
+                                               "error": {"code": "unsupported"}}, re=env["id"])
             elif t == "policy.config":
                 print(f"<- policy.config {json.dumps(body)}")
             elif t == "error":
@@ -506,6 +520,32 @@ def cmd_session(args, state):
         else:
             print("FAIL: no volume.state answer")
             rc = 1
+    if args.handoff_play:
+        # Act as the coordinating PC (§8.7): ask the phone to play a song in one of its apps.
+        song = {"title": args.title, "artist": args.artist, "album": args.album,
+                "durationMs": args.duration if args.duration else None}
+        body = {"app": args.handoff_play, "song": song}
+        if args.ids:
+            body["ids"] = json.loads(args.ids)
+        msg = c.send("handoff.play", body)
+        print(f"-> handoff.play {json.dumps(body, ensure_ascii=False)} id={msg['id']}")
+        if not s.pump(lambda: msg["id"] in s.handoff, timeout=args.handoff_wait):
+            print("FAIL: no handoff.result")
+            rc = 1
+        else:
+            r = s.handoff[msg["id"]]
+            if r.get("ok") and r.get("state") == "playing":
+                print(f"OK: {r.get('key')} plays the song")
+                if args.seek is not None:
+                    cmd = c.send("media.command", {"key": r.get("key"), "action": "seek", "positionMs": args.seek,
+                                                   "origin": "user", "reason": "handoff"})
+                    s.pump(lambda: cmd["id"] in s.results, timeout=6)
+                    s.pump(timeout=3)
+                    a = next((x for x in (s.snapshot or {}).get("sessions", []) if x["key"] == r.get("key")), None)
+                    print(f"after seek: pos={a and a.get('positionMs')} status={a and a.get('status')}")
+            else:
+                print(f"handoff answered {json.dumps(r)}")
+                rc = 0 if r.get("ok") else 1
     if args.audio:
         rc |= stream_audio(args, s)
     if args.listen:
@@ -617,6 +657,14 @@ def main():
     ps.add_argument("--resume", action="store_true", help="resume the stored sid")
     ps.add_argument("--listen", type=float, default=0, metavar="SECONDS")
     ps.add_argument("--bye", action="store_true")
+    ps.add_argument("--handoff-play", metavar="APP", help="handoff.play: netease | qqmusic | spotify")
+    ps.add_argument("--title", default="起风了")
+    ps.add_argument("--artist", default="买辣椒也用券")
+    ps.add_argument("--album", default="起风了")
+    ps.add_argument("--duration", type=int, default=325000, metavar="MS")
+    ps.add_argument("--ids", metavar="JSON", help='catalogue ids, e.g. {"qqmusic":"003hKob536i6FA"}')
+    ps.add_argument("--seek", type=int, metavar="MS", help="after the handoff: seek the target (as the PC does)")
+    ps.add_argument("--handoff-wait", type=float, default=100, metavar="SECONDS")
     args = p.parse_args()
     state = load_state(args.state, args.name)
     save_state(args.state, state)

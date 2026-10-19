@@ -972,6 +972,31 @@
                                     <TextBlock Grid.Row="3" Grid.Column="1" x:Uid="AboutLicenseValue" Style="{StaticResource ValueTextStyle}" />
                                 </Grid>
                             </Border>
+                            <TextBlock x:Uid="HdrUpdate" Style="{StaticResource SectionHeaderStyle}" />
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE895;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Name="UpdateTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Name="UpdateDetail" Style="{StaticResource CardDescriptionStyle}" TextWrapping="Wrap" />
+                                        <ProgressBar x:Name="UpdateProgress" Margin="0,8,0,0" Minimum="0" Maximum="1" Visibility="Collapsed" />
+                                        <HyperlinkButton x:Name="UpdateNotesLink" x:Uid="UpdateNotesLink" Padding="0" Margin="0,4,0,0" Visibility="Collapsed" />
+                                    </StackPanel>
+                                    <Button x:Name="UpdateButton" Grid.Column="2" VerticalAlignment="Center" MinWidth="96" />
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE823;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetUpdateAutoTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="SetUpdateAutoDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                    <ToggleSwitch x:Name="UpdateAutoToggle" Grid.Column="2" />
+                                </Grid>
+                            </Border>
                             <TextBlock x:Uid="HdrDeveloper" Style="{StaticResource SectionHeaderStyle}" />
                             <Border Style="{StaticResource CardStyle}">
                                 <Grid ColumnSpacing="16">

@@ -250,6 +250,46 @@ namespace mdui
         bool ready{ true };   // absent = ready
     };
 
+    // Handoff (docs/ipc.md state.handoff): music apps that can take a song on this PC
+    // ("local") and on the phone ("remote"), ids netease | qqmusic | spotify; the running one.
+    struct Handoff
+    {
+        std::vector<std::string> localApps;
+        std::vector<std::string> remoteApps;
+        bool active{ false };
+        std::string to;        // pc | phone
+        std::string app;
+        std::string title;
+        bool waitingForTap{ false };
+    };
+
+    // Software updates (docs/ipc.md state.update).
+    struct Update
+    {
+        bool valid{ false };
+        std::string phase;     // idle | checking | current | available | downloading | installing | error
+        std::string current;
+        std::string latest;    // empty: not known
+        std::string page;      // release page (notes)
+        std::string error;     // network | no_release | no_asset | no_checksum | checksum | write | not_writable | launch
+        double progress{ 0 };  // downloading: 0..1
+        bool autoCheck{ true };
+        bool portable{ false };
+    };
+
+    // The end of a handoff (host message "handoff").
+    struct HandoffOutcome
+    {
+        bool ok{ false };
+        std::string state;   // playing | opened
+        std::string error;   // app_unavailable, not_found, network, timeout, link_lost, ...
+        std::string to;      // pc | phone
+        std::string app;
+        std::string title;
+    };
+    HandoffOutcome ParseHandoffOutcome(json const& j);
+    Update ParseUpdate(json const& j);
+
     struct State
     {
         bool valid{ false };
@@ -281,6 +321,8 @@ namespace mdui
         bool overlayVisible{ false };
         json settings = json::object();
         bool diagnosticsEnabled{ false };
+        Handoff handoff;
+        Update update;
 
         // The session shown by the cards: focus.side/focus.key, else that side's active session,
         // else the first playing session, else the first session of any side. nullptr if none.

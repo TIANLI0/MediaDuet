@@ -30,6 +30,17 @@ Legend: ✅ verified · 🧪 verified on emulator/fixture only · 🔧 implement
 | QQ Music `com.tencent.qqmusic` | Android | 🔧 | standard MediaSession |
 | Spotify, YouTube Music | Android | 🔧 | standard MediaSession |
 
+## Handoff targets (continue on the other device, protocol §8.7)
+
+| App | Platform | How the song is opened | Status |
+|-----|----------|------------------------|--------|
+| NetEase Cloud Music 9.6 | Android | `orpheus://song/<id>?switch=true`; id from the source or a NetEase catalogue lookup; seek via MediaSession | 🧪 emulator (guest mode): plays the song |
+| QQ Music 20.9 | Android | `qqmusic://qq.com/media/playSonglist?p=…&source=…` (songmid); seek via MediaSession | 🧪 emulator, end to end with the phone app (E51): plays, seeks, tap notification from the background |
+| Spotify | Android | session `playFromUri` / `playFromSearch` when offered, else `spotify:track:<id>` or `MEDIA_PLAY_FROM_SEARCH` | 🔧 not installable here; exact only with the Spotify track id of the source |
+| NetEase Cloud Music 3.x | Windows | `orpheus://` + base64 `{"cmd":"play","type":"song","id"}`; seek with `{"cmd":"seek"}` (its session has no timeline) | 🔧 format read from the installed client; not launched here |
+| QQ Music | Windows | `QQMusic.exe /tencentprotocol 'tencent://QQMusic/?…cmd_0==playsong&&id_0==<id>&&songtype_0==0'` (numeric id from the QQ catalogue) | 🔧 format from the client's binaries only, never run — may need adjusting |
+| Spotify | Windows | `spotify:track:<id>` (from the phone's Spotify), else `spotify:search:` (opened, not played) | 🔧 not installed here |
+
 ## Features by acceptance scenario
 
 | # | Scenario | Implemented | Automated test | Emulator / fixture e2e | Real device | Notes |

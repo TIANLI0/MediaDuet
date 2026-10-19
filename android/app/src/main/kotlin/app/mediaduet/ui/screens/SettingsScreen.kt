@@ -55,6 +55,9 @@ import app.mediaduet.ui.SettingsRoute
 import app.mediaduet.ui.UiContext
 import app.mediaduet.ui.components.AppIcons
 import app.mediaduet.ui.components.GlassButton
+import app.mediaduet.update.UpdateInfo
+import app.mediaduet.update.Updater
+import androidx.core.net.toUri
 import app.mediaduet.ui.components.GlassCard
 import app.mediaduet.ui.components.InfoRow
 import app.mediaduet.ui.components.SectionHeader
@@ -138,7 +141,13 @@ fun SettingsRoot(ui: UiContext, onBack: () -> Unit) {
                 current?.rttMs?.let { stringResource(R.string.rtt_ms, it) } ?: stringResource(R.string.placeholder_none),
             ) { ui.openSettings(SettingsRoute.DIAGNOSTICS) }
             RowDivider()
-            NavRow(AppIcons.Info, stringResource(R.string.about_title), BuildConfig.VERSION_NAME) { ui.openSettings(SettingsRoute.ABOUT) }
+            val update by engine.updater.state.collectAsStateWithLifecycle()
+            val newVersion = (update as? Updater.State.Available)?.release?.version
+            NavRow(
+                AppIcons.Info, stringResource(R.string.about_title),
+                newVersion?.let { stringResource(R.string.update_summary_available, it) } ?: BuildConfig.VERSION_NAME,
+                attention = newVersion != null,
+            ) { ui.openSettings(SettingsRoute.ABOUT) }
         }
     }
 }
@@ -601,6 +610,119 @@ private fun CrashReportCard(ui: UiContext) {
     }
 }
 
+/**
+ * Software update (Settings > About): the state of [Updater] with one action (check / update /
+ * allow installing / retry), a progress bar while downloading, the release page and the switch for
+ * the daily automatic check.
+ */
+@Composable
+private fun UpdateCard(ui: UiContext) {
+    val updater = ui.engine.updater
+    val context = LocalContext.current
+    val state by updater.state.collectAsStateWithLifecycle()
+    val auto by ui.engine.settings.autoUpdateCheck.collectAsStateWithLifecycle()
+    val current = BuildConfig.VERSION_NAME
+    var title = stringResource(R.string.update_title_current_version, current)
+    var detail: String? = null
+    var action: Pair<String, () -> Unit>? = stringResource(R.string.update_check) to { updater.checkNow() }
+    var progress: Float? = null
+    var release: UpdateInfo.Release? = null
+    when (val s = state) {
+        Updater.State.Idle -> Unit
+        Updater.State.Checking -> {
+            title = stringResource(R.string.update_checking)
+            action = null
+        }
+        is Updater.State.Current -> {
+            title = stringResource(R.string.update_current)
+            detail = stringResource(R.string.update_current_detail, current)
+        }
+        is Updater.State.Available -> {
+            release = s.release
+            title = stringResource(R.string.update_available, s.release.version)
+            detail = stringResource(R.string.update_available_detail, current)
+            action = stringResource(R.string.update_install) to { updater.install() }
+        }
+        is Updater.State.Downloading -> {
+            release = s.release
+            title = stringResource(R.string.update_downloading, s.release.version)
+            detail = "${(s.progress * 100).toInt()}%"
+            progress = s.progress
+            action = null
+        }
+        is Updater.State.NeedsPermission -> {
+            release = s.release
+            title = stringResource(R.string.update_needs_permission, s.release.version)
+            detail = stringResource(R.string.update_needs_permission_detail)
+            action = stringResource(R.string.update_allow) to { context.launchSafely(updater.openInstallPermission()) }
+        }
+        is Updater.State.Installing -> {
+            release = s.release
+            title = stringResource(R.string.update_installing, s.release.version)
+            detail = stringResource(R.string.update_installing_detail)
+            action = null
+        }
+        is Updater.State.Error -> {
+            release = s.release
+            title = stringResource(R.string.update_failed)
+            detail = stringResource(UPDATE_ERRORS[s.code] ?: R.string.update_err_install)
+            if (s.release != null && UpdateInfo.isNewer(s.release.version, current)) action = stringResource(R.string.update_retry) to { updater.install() }
+        }
+    }
+    // Back from Android's "install unknown apps" page: continue by itself once it is allowed.
+    androidx.lifecycle.compose.LifecycleResumeEffect(key1 = state) {
+        if (state is Updater.State.NeedsPermission && context.packageManager.canRequestPackageInstalls()) updater.install()
+        onPauseOrDispose { }
+    }
+    GlassCard(ui.backdrop, Modifier.fillMaxWidth()) {
+        Text(title, style = MaterialTheme.typography.titleMedium)
+        detail?.let {
+            Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp))
+        }
+        progress?.let {
+            androidx.compose.material3.LinearProgressIndicator(
+                progress = { it },
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                color = LocalGlass.current.accent,
+            )
+        }
+        Spacer(Modifier.height(12.dp))
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            action?.let { (label, run) ->
+                GlassButton(run, ui.backdrop, height = 44.dp, prominent = state is Updater.State.Available || state is Updater.State.NeedsPermission) { Text(label) }
+            }
+            val page = release?.page?.takeIf { release != null && UpdateInfo.isNewer(release.version, current) }
+            if (page != null) {
+                GlassButton({ context.launchSafely(android.content.Intent(android.content.Intent.ACTION_VIEW, page.toUri())) }, ui.backdrop, height = 44.dp) {
+                    Text(stringResource(R.string.update_notes))
+                }
+            }
+        }
+    }
+    GlassCard(ui.backdrop, Modifier.fillMaxWidth()) {
+        InfoRow(
+            stringResource(R.string.update_auto),
+            subtitle = stringResource(R.string.update_auto_text),
+            trailing = { LiquidToggle({ auto }, { ui.engine.settings.setAutoUpdateCheck(it) }, ui.backdrop, contentDescription = stringResource(R.string.update_auto)) },
+            onClick = { ui.engine.settings.setAutoUpdateCheck(!auto) },
+            role = Role.Switch,
+        )
+    }
+}
+
+private val UPDATE_ERRORS = mapOf(
+    Updater.ERR_NETWORK to R.string.update_err_network,
+    Updater.ERR_NO_RELEASE to R.string.update_err_no_release,
+    Updater.ERR_NO_ASSET to R.string.update_err_no_asset,
+    Updater.ERR_NO_CHECKSUM to R.string.update_err_no_checksum,
+    Updater.ERR_CHECKSUM to R.string.update_err_checksum,
+    Updater.ERR_NOT_NEWER to R.string.update_err_not_newer,
+    Updater.ERR_INSTALL to R.string.update_err_install,
+    Updater.ERR_SIGNATURE to R.string.update_err_signature,
+    Updater.ERR_STORAGE to R.string.update_err_storage,
+    Updater.ERR_BLOCKED to R.string.update_err_blocked,
+)
+
 /** The unified MediaDuet mark (same drawable as the launcher icon) on the brand violet. */
 @Composable
 fun BrandMark(modifier: Modifier = Modifier) {
@@ -639,6 +761,8 @@ fun AboutPage(ui: UiContext, onBack: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        SectionHeader(stringResource(R.string.update_header))
+        UpdateCard(ui)
         SectionHeader(stringResource(R.string.about_developer))
         DeveloperCard(ui)
         if (mode.linked) {

@@ -16,6 +16,11 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.layout.onSizeChanged
+import app.mediaduet.handoff.HandoffApp
+import app.mediaduet.handoff.HandoffErrors
+import app.mediaduet.handoff.HandoffOutcome
+import app.mediaduet.handoff.PlayResult
+import app.mediaduet.protocol.Caps
 import app.mediaduet.ui.components.InfoRow
 import app.mediaduet.ui.components.liquid.LiquidToggle
 import app.mediaduet.util.VersionCompat
@@ -150,6 +155,9 @@ import com.kyant.backdrop.effects.vibrancy
 import com.kyant.shapes.Capsule
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import androidx.compose.ui.platform.LocalContext
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -1630,6 +1638,7 @@ private fun TargetSheet(ui: UiContext) {
                 // Sound output first: one switch sends this phone's audio to the PC's speakers.
                 if (mode.linked && link.current != null && remote?.connected == true) {
                     sink?.let { PcSpeakerRow(ui, it, link.current?.peer?.name ?: stringResource(R.string.pc_generic)) }
+                    HandoffRows(ui, close)
                 }
                 fun pick(c: TargetChoice) {
                     haptics.performHapticFeedback(HapticFeedbackType.Confirm)
@@ -1722,6 +1731,93 @@ private fun PcSpeakerRow(ui: UiContext, sink: SinkState, pcName: String) {
         role = Role.Switch,
     )
     SheetDivider()
+}
+
+/**
+ * Handoff (§8.7): continue the song the player shows on the other device, in one of its music
+ * apps, from the current position; this side pauses. The PC coordinates and answers when it plays
+ * (a toast then says where, or why not). Shown only when the other side has a music app for it.
+ */
+@Composable
+private fun HandoffRows(ui: UiContext, close: () -> Unit) {
+    val engine = ui.engine
+    val context = LocalContext.current
+    val haptics = LocalHapticFeedback.current
+    val resolved by engine.target.collectAsStateWithLifecycle()
+    val remote by engine.remote.state.collectAsStateWithLifecycle()
+    val local by engine.localStates.collectAsStateWithLifecycle()
+    val link by engine.link.status.collectAsStateWithLifecycle()
+    val pcApps by engine.pcHandoffApps.collectAsStateWithLifecycle()
+    val phoneApps by engine.phoneHandoffApps.collectAsStateWithLifecycle()
+    val busy by engine.handoffBusy.collectAsStateWithLifecycle()
+    val t = resolved ?: return
+    if (Caps.HANDOFF !in link.current?.peerCaps.orEmpty()) return
+    val (title, appId) = when (t.side) {
+        Side.PHONE -> local.firstOrNull { it.key == t.key }?.let { it.title to it.packageName }
+        Side.PC -> remote?.snapshot?.sessions?.firstOrNull { it.key == t.key }?.let { it.title to it.appId }
+    } ?: return
+    if (title.isBlank()) return
+    val own = HandoffApp.ofSession(appId)
+    // The source's own app first when the other side has it.
+    val apps = (if (t.side == Side.PHONE) pcApps else phoneApps).sortedByDescending { it == own }
+    if (apps.isEmpty()) return
+    val pcName = link.current?.peer?.name ?: stringResource(R.string.pc_generic)
+    SheetHeader(stringResource(R.string.handoff_title))
+    for (app in apps) {
+        SourceRow(
+            if (t.side == Side.PHONE) AppIcons.Computer else AppIcons.Phone,
+            if (t.side == Side.PHONE) stringResource(R.string.handoff_to_pc, pcName) else stringResource(R.string.handoff_to_phone),
+            if (busy) stringResource(R.string.handoff_working) else stringResource(R.string.handoff_in_app, handoffAppLabel(app)),
+            selected = false,
+            chevron = true,
+        ) {
+            if (busy) return@SourceRow
+            haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+            close()
+            val side = t.side
+            val key = t.key
+            // Outlives the sheet (and the player page): the PC answers when the song plays.
+            engine.scope.launch {
+                val o = engine.startHandoff(side, key, app)
+                val text = handoffOutcomeText(context, o, title, app)
+                withContext(Dispatchers.Main) { ui.toast(text) }
+            }
+        }
+    }
+    SheetDivider()
+}
+
+@Composable
+private fun handoffAppLabel(app: HandoffApp): String = stringResource(HANDOFF_APP_LABELS.getValue(app))
+
+private val HANDOFF_APP_LABELS = mapOf(
+    HandoffApp.NETEASE to R.string.handoff_app_netease,
+    HandoffApp.QQMUSIC to R.string.handoff_app_qqmusic,
+    HandoffApp.SPOTIFY to R.string.handoff_app_spotify,
+)
+
+/** What a toast says about a finished handoff. */
+private fun handoffOutcomeText(context: android.content.Context, o: HandoffOutcome, title: String, asked: HandoffApp): String {
+    val app = context.getString(HANDOFF_APP_LABELS.getValue(o.app ?: asked))
+    val song = o.title.ifEmpty { title }
+    if (o.ok) {
+        return when {
+            o.state != PlayResult.STATE_PLAYING -> context.getString(R.string.handoff_opened, song, app)
+            o.to == "phone" -> context.getString(R.string.handoff_done_phone, song)
+            else -> context.getString(R.string.handoff_done_pc, song)
+        }
+    }
+    return when (o.error) {
+        HandoffErrors.APP_UNAVAILABLE -> context.getString(R.string.handoff_err_app_unavailable, app)
+        HandoffErrors.NOT_FOUND -> context.getString(R.string.handoff_err_not_found, app)
+        HandoffErrors.NETWORK -> context.getString(R.string.handoff_err_network)
+        HandoffErrors.TIMEOUT -> context.getString(R.string.handoff_err_timeout, app)
+        HandoffErrors.LINK_LOST -> context.getString(R.string.handoff_err_link_lost)
+        HandoffErrors.BUSY -> context.getString(R.string.handoff_err_busy)
+        HandoffErrors.NO_SESSION -> context.getString(R.string.handoff_err_no_session)
+        HandoffErrors.LAUNCH_FAILED -> context.getString(R.string.handoff_err_launch, app)
+        else -> context.getString(R.string.handoff_err_other, o.error ?: "?")
+    }
 }
 
 /** `audio.sink.state` error codes → text (unknown codes: [R.string.pc_speaker_error_failed]). */

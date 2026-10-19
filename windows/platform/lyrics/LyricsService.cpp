@@ -1,5 +1,7 @@
 #include "LyricsService.h"
 
+#include "Catalog.h"
+
 #include "md/util/Bytes.h"
 #include "md/util/Log.h"
 #include "md/util/Text.h"
@@ -80,75 +82,14 @@ struct OnlineResult {
     bool yrc = false;    // NetEase word-timed format
     std::string provider;
     std::string translation; // LRC with the same timestamps
+    std::string translationTiming; // the LRC `translation` is timed by when `lrc` is not (NetEase yrc)
 };
 
-constexpr wchar_t kBrowserUa[] = L"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)";
-
-std::wstring esc(const std::string& s) { return std::wstring(Windows::Foundation::Uri::EscapeComponent(text::toWide(s))); }
-
-// Search keyword: title without bracketed suffixes plus the first artist.
-std::string searchQuery(const media::MediaSessionInfo& t) {
-    std::string title = t.title;
-    for (const char* open : {" (", "\xEF\xBC\x88", " [", "\xE3\x80\x90"}) { // ( （ [ 【
-        auto p = title.find(open);
-        if (p != std::string::npos && p > 0) title.resize(p);
-    }
-    std::string artist = t.artist;
-    for (const char* sep : {"/", ",", "&", "\xE3\x80\x81", ";"}) { // 、
-        auto p = artist.find(sep);
-        if (p != std::string::npos && p > 0) artist.resize(p);
-    }
-    return text::trim(title + " " + artist);
-}
-
-// GET with a timeout; returns body or nullopt (404 -> empty string).
-std::optional<std::string> httpGet(HttpClient& client, const std::wstring& url) {
-    auto op = client.GetAsync(Windows::Foundation::Uri(url));
-    auto timer = Windows::System::Threading::ThreadPoolTimer::CreateTimer(
-        [op](auto&&) {
-            try {
-                op.Cancel();
-            } catch (...) {
-            }
-        },
-        std::chrono::seconds(10));
-    auto resp = op.get();
-    timer.Cancel();
-    if (resp.StatusCode() == HttpStatusCode::NotFound) return std::string();
-    if (!resp.IsSuccessStatusCode()) return std::nullopt;
-    return text::toUtf8(resp.Content().ReadAsStringAsync().get());
-}
-
+using web::browserClient;
+using web::esc;
+std::optional<std::string> httpGet(HttpClient& client, const std::wstring& url) { return web::get(client, url); }
 std::optional<std::string> httpPostJson(HttpClient& client, const std::wstring& url, const std::string& body) {
-    HttpStringContent content(text::toWide(body), Windows::Storage::Streams::UnicodeEncoding::Utf8, L"application/json");
-    auto op = client.PostAsync(Windows::Foundation::Uri(url), content);
-    auto timer = Windows::System::Threading::ThreadPoolTimer::CreateTimer(
-        [op](auto&&) {
-            try {
-                op.Cancel();
-            } catch (...) {
-            }
-        },
-        std::chrono::seconds(10));
-    auto resp = op.get();
-    timer.Cancel();
-    if (!resp.IsSuccessStatusCode()) {
-        log::debug("lyrics", "POST {} -> HTTP {}", text::toUtf8(url), static_cast<int>(resp.StatusCode()));
-        return std::nullopt;
-    }
-    return text::toUtf8(resp.Content().ReadAsStringAsync().get());
-}
-
-HttpClient browserClient(const wchar_t* referer) {
-    // No shared WinINet cookies/cache: requests must be anonymous and fresh.
-    Filters::HttpBaseProtocolFilter filter;
-    filter.CookieUsageBehavior(Filters::HttpCookieUsageBehavior::NoCookies);
-    filter.CacheControl().ReadBehavior(Filters::HttpCacheReadBehavior::NoCache);
-    filter.CacheControl().WriteBehavior(Filters::HttpCacheWriteBehavior::NoCache);
-    HttpClient c(filter);
-    c.DefaultRequestHeaders().UserAgent().TryParseAdd(kBrowserUa);
-    c.DefaultRequestHeaders().Referer(Windows::Foundation::Uri(referer));
-    return c;
+    return web::postJson(client, url, body);
 }
 
 std::optional<OnlineResult> neteaseLyricById(HttpClient& client, int64_t id) {
@@ -161,7 +102,12 @@ std::optional<OnlineResult> neteaseLyricById(HttpClient& client, int64_t id) {
     if (lj.contains("tlyric") && lj["tlyric"].is_object()) trans = lj["tlyric"].value("lyric", std::string());
     if (lj.contains("yrc") && lj["yrc"].is_object()) {
         std::string y = lj["yrc"].value("lyric", std::string());
-        if (!y.empty() && !lyrics::parseYrc(y).empty()) return OnlineResult{y, true, true, "netease", trans};
+        if (!y.empty() && !lyrics::parseYrc(y).empty()) {
+            // tlyric follows the plain LRC's timestamps, which often differ from the yrc's.
+            std::string plain;
+            if (lj.contains("lrc") && lj["lrc"].is_object()) plain = lj["lrc"].value("lyric", std::string());
+            return OnlineResult{y, true, true, "netease", trans, plain};
+        }
     }
     if (lj.contains("lrc") && lj["lrc"].is_object()) {
         std::string l = lj["lrc"].value("lyric", std::string());
@@ -172,33 +118,14 @@ std::optional<OnlineResult> neteaseLyricById(HttpClient& client, int64_t id) {
     return OnlineResult{};
 }
 
-// NetEase Cloud Music public web API: /api/cloudsearch/pc + /api/song/lyric/v1.
+// NetEase Cloud Music public web API: /api/cloudsearch/pc (catalog) + /api/song/lyric/v1.
 std::optional<OnlineResult> queryNetease(const media::MediaSessionInfo& t, int64_t knownId = 0) {
     auto client = browserClient(L"https://music.163.com/");
     if (knownId > 0) return neteaseLyricById(client, knownId);
-    auto body = httpGet(client, L"https://music.163.com/api/cloudsearch/pc?type=1&offset=0&limit=10&s=" + esc(searchQuery(t)));
-    if (!body) return std::nullopt;
-    auto j = nlohmann::json::parse(*body, nullptr, false);
-    if (!j.is_object() || !j.contains("result") || !j["result"].contains("songs")) return OnlineResult{};
-    lyrics::Candidate want{t.title, t.artist, t.album, t.durationMs};
-    int64_t bestId = 0;
-    double best = 0;
-    for (auto& s : j["result"]["songs"]) {
-        if (!s.is_object()) continue;
-        std::string artists;
-        if (s.contains("ar") && s["ar"].is_array())
-            for (auto& a : s["ar"]) artists += (artists.empty() ? "" : "/") + a.value("name", std::string());
-        lyrics::Candidate have{s.value("name", std::string()), artists,
-                               s.contains("al") && s["al"].is_object() ? s["al"].value("name", std::string()) : std::string(),
-                               s.contains("dt") && s["dt"].is_number() ? std::optional<int64_t>(s["dt"].get<int64_t>()) : std::nullopt};
-        double score = lyrics::matchScore(want, have);
-        if (score > best) {
-            best = score;
-            bestId = s.value("id", int64_t(0));
-        }
-    }
-    if (best < 0.6 || !bestId) return OnlineResult{};
-    return neteaseLyricById(client, bestId);
+    auto found = catalog::findNetease({t.title, t.artist, t.album, t.durationMs});
+    if (!found.answered) return std::nullopt;
+    if (!found.hit) return OnlineResult{};
+    return neteaseLyricById(client, found.hit->id);
 }
 
 // QQ Music public web API: musicu.fcg search (falls back to the legacy
@@ -206,69 +133,9 @@ std::optional<OnlineResult> queryNetease(const media::MediaSessionInfo& t, int64
 // base64 UTF-8), falling back to fcg_query_lyric_new (no translation).
 std::optional<OnlineResult> queryQq(const media::MediaSessionInfo& t) {
     auto client = browserClient(L"https://y.qq.com/");
-    struct Hit {
-        std::string mid, name, artists, album;
-        std::optional<int64_t> durationMs;
-    };
-    std::vector<Hit> hits;
-    auto artistsOf = [](const nlohmann::json& arr) {
-        std::string out;
-        if (arr.is_array())
-            for (auto& a : arr) out += (out.empty() ? "" : "/") + a.value("name", std::string());
-        return out;
-    };
-    nlohmann::json req = {{"comm", {{"ct", "19"}, {"cv", "1859"}, {"uin", "0"}}},
-                          {"req_1",
-                           {{"method", "DoSearchForQQMusicDesktop"},
-                            {"module", "music.search.SearchCgiService"},
-                            {"param", {{"num_per_page", 10}, {"page_num", 1}, {"query", searchQuery(t)}, {"search_type", 0}}}}}};
-    bool transportOk = false;
-    if (auto body = httpPostJson(client, L"https://u.y.qq.com/cgi-bin/musicu.fcg", req.dump())) {
-        transportOk = true;
-        auto j = nlohmann::json::parse(*body, nullptr, false);
-        try {
-            for (auto& s : j.at("req_1").at("data").at("body").at("song").at("list")) {
-                Hit h{s.value("mid", std::string()), s.value("name", std::string()), artistsOf(s.value("singer", nlohmann::json())),
-                      s.contains("album") && s["album"].is_object() ? s["album"].value("name", std::string()) : std::string(),
-                      s.contains("interval") && s["interval"].is_number() ? std::optional<int64_t>(s["interval"].get<int64_t>() * 1000)
-                                                                           : std::nullopt};
-                if (!h.mid.empty()) hits.push_back(std::move(h));
-            }
-        } catch (...) {
-        }
-    }
-    if (hits.empty()) {
-        // The desktop search is rate limited per IP; the legacy endpoint usually still answers.
-        auto body = httpGet(client, L"https://c.y.qq.com/soso/fcgi-bin/client_search_cp?format=json&p=1&n=10&cr=1&w=" +
-                                        esc(searchQuery(t)));
-        if (body) {
-            transportOk = true;
-            auto j = nlohmann::json::parse(*body, nullptr, false);
-            try {
-                for (auto& s : j.at("data").at("song").at("list")) {
-                    Hit h{s.value("songmid", std::string()), s.value("songname", std::string()),
-                          artistsOf(s.value("singer", nlohmann::json())), s.value("albumname", std::string()),
-                          s.contains("interval") && s["interval"].is_number()
-                              ? std::optional<int64_t>(s["interval"].get<int64_t>() * 1000)
-                              : std::nullopt};
-                    if (!h.mid.empty()) hits.push_back(std::move(h));
-                }
-            } catch (...) {
-            }
-        }
-    }
-    if (!transportOk) return std::nullopt;
-    lyrics::Candidate want{t.title, t.artist, t.album, t.durationMs};
-    std::string bestMid;
-    double best = 0;
-    for (auto& h : hits) {
-        double score = lyrics::matchScore(want, {h.name, h.artists, h.album, h.durationMs});
-        if (score > best) {
-            best = score;
-            bestMid = h.mid;
-        }
-    }
-    if (best < 0.6 || bestMid.empty()) return hits.empty() ? std::nullopt : std::optional<OnlineResult>(OnlineResult{});
+    auto found = catalog::findQq({t.title, t.artist, t.album, t.durationMs});
+    if (!found.hit) return found.answered ? std::optional<OnlineResult>(OnlineResult{}) : std::nullopt;
+    const std::string bestMid = found.hit->mid;
     std::string l, trans;
     nlohmann::json lreq = {{"comm", {{"ct", "19"}, {"cv", "1859"}, {"uin", "0"}}},
                            {"req_1",
@@ -441,11 +308,19 @@ void LyricsService::request(const media::MediaSessionInfo& t, int64_t neteaseId)
         std::error_code ec;
         bool negative = fs::exists(miss, ec) &&
                         fs::last_write_time(miss, ec) + kNegativeTtl > fs::file_time_type::clock::now();
-        if (auto y = readText(hitYrc)) {
+        // Translations of word-timed lyrics cached before they were aligned through the plain
+        // LRC (no kTranslationMark) may miss lines: look the song up again, once. The old
+        // cache stays in use when that lookup finds nothing.
+        bool staleTr = false;
+        if (online && !providers.empty() && !negative && fs::exists(hitYrc, ec))
+            if (auto tr = readText(hitTr); tr && tr->rfind(lyrics::kTranslationMark, 0) != 0) staleTr = true;
+        if (staleTr) log::info("lyrics", "refreshing the cached translation of {}", t.trackId);
+        bool wroteYrc = false, wroteTr = false;
+        if (auto y = staleTr ? std::nullopt : readText(hitYrc)) {
             auto parsed = lyrics::parseYrc(*y);
             std::string asLrc = lyrics::toLrc(parsed);
             r = {t.trackId, "found", "cache", std::move(parsed), std::move(asLrc)};
-        } else if (auto s = readText(hitLrc)) {
+        } else if (auto s = staleTr ? std::nullopt : readText(hitLrc)) {
             r = {t.trackId, "found", "cache", lyrics::parseLrc(*s), *s};
         } else if (auto l = searchLocal(local, t)) {
             r = {t.trackId, "found", "local", lyrics::parseLrc(*l), *l};
@@ -480,18 +355,39 @@ void LyricsService::request(const media::MediaSessionInfo& t, int64_t neteaseId)
                     continue;
                 }
                 writeText(res->yrc ? hitYrc : hitLrc, res->lrc);
+                wroteYrc = res->yrc;
                 // `lrc` is what the phone receives: always LRC (enhanced if word-timed).
                 std::string asLrc = res->yrc ? lyrics::toLrc(parsed) : res->lrc;
                 std::string tr;
-                if (!res->translation.empty() && lyrics::mergeTranslation(parsed, lyrics::parseLrc(res->translation)) > 0) {
+                auto timing = res->translationTiming.empty() ? std::optional<lyrics::Lyrics>()
+                                                              : std::optional<lyrics::Lyrics>(lyrics::parseLrc(res->translationTiming));
+                if (!res->translation.empty() &&
+                    lyrics::mergeTranslation(parsed, lyrics::parseLrc(res->translation), 600, timing ? &*timing : nullptr) > 0) {
                     tr = lyrics::translationLrc(parsed);
                     writeText(hitTr, tr);
+                    wroteTr = true;
                 }
                 r = {t.trackId, "found", res->provider, std::move(parsed), std::move(asLrc), std::move(tr)};
                 break;
             }
             if (r.status == "found" && !r.lyrics.synced) writeText(hitLrc, r.lrc);
             if (r.status != "found" && definitive) writeText(miss, ""); // all providers said no
+        }
+        if (staleTr && r.status == "found" && r.lyrics.synced) {
+            // Replaced: never treat the old files as stale again.
+            if (!wroteYrc) fs::remove(hitYrc, ec);
+            if (!wroteTr) fs::remove(hitTr, ec);
+        } else if (staleTr) {
+            // Nothing better online: keep the cached lyrics. When the providers did answer, mark
+            // the old translation as checked so the song is not looked up on every play.
+            bool answered = r.status == "found" || fs::exists(miss, ec);
+            if (auto y = readText(hitYrc)) {
+                auto parsed = lyrics::parseYrc(*y);
+                std::string asLrc = lyrics::toLrc(parsed);
+                r = {t.trackId, "found", "cache", std::move(parsed), std::move(asLrc)};
+            }
+            if (auto old = readText(hitTr); old && answered)
+                writeText(hitTr, std::string(lyrics::kTranslationMark) + "\n" + *old);
         }
         if (r.status == "found" && r.source == "cache" && !lyrics::hasTranslation(r.lyrics)) {
             if (auto tr = readText(hitTr); tr && lyrics::mergeTranslation(r.lyrics, lyrics::parseLrc(*tr)) > 0)

@@ -45,7 +45,15 @@ std::string decodeEntities(std::string_view s);
 bool isInstrumentalNotice(const Lyrics& l);
 // Attaches translated lines (an LRC with the same timestamps, e.g. NetEase tlyric or
 // QQ Music trans) to the closest original line within toleranceMs. Returns how many.
-size_t mergeTranslation(Lyrics& base, const Lyrics& translation, int64_t toleranceMs = 600);
+// `timedLike`: the lyrics whose timestamps the translation follows when `base` is timed
+// differently (NetEase: tlyric follows the plain LRC, not the word-timed yrc, whose line
+// starts often differ by more than the tolerance). Each translation then goes to the base
+// line with the same text as its LRC line (the nearest one), else the line nearest in time.
+size_t mergeTranslation(Lyrics& base, const Lyrics& translation, int64_t toleranceMs = 600,
+                        const Lyrics* timedLike = nullptr);
+// First line of translation LRCs written since translations are aligned through the plain LRC;
+// cached translations of word-timed lyrics without it may be incomplete (re-fetched).
+inline constexpr const char* kTranslationMark = "[md:tr2]";
 bool hasTranslation(const Lyrics& l);
 // The translations as an LRC (line timestamps of the base lyrics).
 std::string translationLrc(const Lyrics& l);

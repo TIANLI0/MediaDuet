@@ -1,8 +1,10 @@
 #include "NeteaseCompat.h"
 
+#include "md/handoff/Handoff.h"
 #include "md/util/Log.h"
 #include "md/util/Text.h"
 
+#include <shellapi.h>
 #include <shlobj.h>
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.Storage.Streams.h>
@@ -216,6 +218,7 @@ void NeteaseCompat::supplement(media::MediaSessionInfo& s) {
         supPos_ = 0;
         supAt_ = now;
         supDuration_.reset();
+        supId_ = 0;
         uint64_t gen = ++supGen_;
         if (!s.title.empty()) {
             std::weak_ptr<bool> alive = alive_;
@@ -237,6 +240,7 @@ void NeteaseCompat::supplement(media::MediaSessionInfo& s) {
         supPlaying_ = playing;
     }
     s.durationMs = supDuration_;
+    if (supId_ > 0) s.ids.netease = std::to_string(supId_);
     int64_t pos = supPos_;
     if (supDuration_) pos = std::min(pos, *supDuration_);
     s.positionMs = pos;
@@ -287,9 +291,31 @@ std::optional<media::MediaSessionInfo> NeteaseCompat::session() const {
     s.actions = media::action::Toggle | media::action::Next | media::action::Previous | media::action::Play |
                 media::action::Pause;
     s.artwork = artwork_;
+    if (songId_ > 0) s.ids.netease = std::to_string(songId_);
     media::sanitize(s);
     s.updateTrackId();
     return s;
+}
+
+bool NeteaseCompat::seek(const std::string& key, int64_t positionMs) {
+    // NetEase's own web command (orpheus://, handled by `cloudmusic.exe --webcmd`, forwarded to
+    // the running instance): its media session has no timeline to seek with.
+    std::wstring uri = text::toWide(handoff::neteaseDesktopSeek(positionMs));
+    auto h = ShellExecuteW(nullptr, L"open", uri.c_str(), nullptr, nullptr, SW_SHOWNOACTIVATE);
+    if (reinterpret_cast<INT_PTR>(h) <= 32) {
+        log::warn("netease", "seek command failed ({})", reinterpret_cast<INT_PTR>(h));
+        return false;
+    }
+    int64_t now = sched_.nowMs();
+    if (key == kKey) {
+        posMs_ = std::max<int64_t>(positionMs, 0);
+        posAt_ = now;
+    } else if (key == supSession_) {
+        supPos_ = std::max<int64_t>(positionMs, 0);
+        supAt_ = now;
+    }
+    if (changed_) changed_();
+    return true;
 }
 
 bool NeteaseCompat::execute(media::CommandAction action) {

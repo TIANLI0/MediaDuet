@@ -18,11 +18,14 @@ object Notifications {
     const val CHANNEL_MIRROR = "mirror"
     const val CHANNEL_PAIRING = "pairing"
     const val CHANNEL_ATTENTION = "attention"
+    const val CHANNEL_HANDOFF = "handoff"
 
     const val ID_LINK = 1
     const val ID_MIRROR = 2
     const val ID_PAIRING = 3
     const val ID_VOLUME = 4
+    const val ID_HANDOFF = 5
+    const val ID_UPDATE = 6
 
     /** At most one "volume control restricted" notification per this interval. */
     private const val VOLUME_NOTICE_INTERVAL_MS = 10 * 60_000L
@@ -45,6 +48,10 @@ object Notifications {
                 },
                 NotificationChannel(CHANNEL_ATTENTION, context.getString(R.string.channel_attention), NotificationManager.IMPORTANCE_LOW).apply {
                     description = context.getString(R.string.channel_attention_desc)
+                    setShowBadge(false)
+                },
+                NotificationChannel(CHANNEL_HANDOFF, context.getString(R.string.channel_handoff), NotificationManager.IMPORTANCE_HIGH).apply {
+                    description = context.getString(R.string.channel_handoff_desc)
                     setShowBadge(false)
                 },
             ),
@@ -125,6 +132,78 @@ object Notifications {
             // Permission revoked between the check and the call.
         }
     }
+
+    /**
+     * Handoff from the PC while MediaDuet is in the background, where Android does not let it open
+     * another app: a heads-up notification that opens [open] (the music app on the song) when
+     * tapped. Returns false when notifications cannot be shown.
+     */
+    fun showHandoff(context: Context, open: Intent, title: String, appName: String): Boolean {
+        if (!canPost(context)) return false
+        createChannels(context)
+        val tap = PendingIntent.getActivity(context, ID_HANDOFF, open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val text = context.getString(R.string.handoff_notification_text, appName, title)
+        val n = Notification.Builder(context, CHANNEL_HANDOFF)
+            .setSmallIcon(R.drawable.ic_stat_link)
+            .setContentTitle(context.getString(R.string.handoff_notification_title))
+            .setContentText(text)
+            .setStyle(Notification.BigTextStyle().bigText(text))
+            .setCategory(Notification.CATEGORY_RECOMMENDATION)
+            .setAutoCancel(true)
+            .setTimeoutAfter(HANDOFF_NOTICE_MS)
+            .setContentIntent(tap)
+            .build()
+        return try {
+            context.getSystemService(NotificationManager::class.java).notify(ID_HANDOFF, n)
+            true
+        } catch (e: SecurityException) {
+            false
+        }
+    }
+
+    /** A new MediaDuet version (automatic check, once per version): opens Settings > About. */
+    fun showUpdate(context: Context, version: String) {
+        if (!canPost(context)) return
+        createChannels(context)
+        val text = context.getString(R.string.update_notification_text)
+        val n = Notification.Builder(context, CHANNEL_ATTENTION)
+            .setSmallIcon(R.drawable.ic_stat_link)
+            .setContentTitle(context.getString(R.string.update_notification_title, version))
+            .setContentText(text)
+            .setStyle(Notification.BigTextStyle().bigText(text))
+            .setCategory(Notification.CATEGORY_RECOMMENDATION)
+            .setAutoCancel(true)
+            .setContentIntent(openAppIntent(context, "about"))
+            .build()
+        try {
+            context.getSystemService(NotificationManager::class.java).notify(ID_UPDATE, n)
+        } catch (e: SecurityException) {
+            // Permission revoked between the check and the call.
+        }
+    }
+
+    /** The update is ready but MediaDuet went to the background: tap to confirm the installation. */
+    fun showUpdateConfirm(context: Context, confirm: Intent, version: String) {
+        if (!canPost(context)) return
+        createChannels(context)
+        val tap = PendingIntent.getActivity(context, ID_UPDATE, confirm, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val n = Notification.Builder(context, CHANNEL_HANDOFF)
+            .setSmallIcon(R.drawable.ic_stat_link)
+            .setContentTitle(context.getString(R.string.update_confirm_title, version))
+            .setContentText(context.getString(R.string.update_confirm_text))
+            .setCategory(Notification.CATEGORY_STATUS)
+            .setAutoCancel(true)
+            .setContentIntent(tap)
+            .build()
+        try {
+            context.getSystemService(NotificationManager::class.java).notify(ID_UPDATE, n)
+        } catch (e: SecurityException) {
+            // Permission revoked between the check and the call.
+        }
+    }
+
+    /** How long a handoff notification stays (the PC waits as long for the tap). */
+    const val HANDOFF_NOTICE_MS = 90_000L
 
     fun cancel(context: Context, id: Int) {
         context.getSystemService(NotificationManager::class.java).cancel(id)
