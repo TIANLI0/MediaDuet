@@ -1,124 +1,210 @@
-<p align="center"><img src="windows/app/resources/app_512.png" width="96" alt="MediaDuet"></p>
+<p align="center"><img src="windows/app/resources/app_512.png" width="96" alt="MediaDuet 图标"></p>
 
 <h1 align="center">MediaDuet</h1>
-<p align="center">Lightweight cross-device media control for Windows and Android<br>
-Windows 与 Android 之间的轻量双向媒体控制与智能播放协调</p>
+<p align="center"><strong>用电脑控制手机音乐，用手机控制电脑播放。</strong><br>
+电脑出声时自动暂停手机音乐，在电脑和手机上同步看歌词。</p>
 
-**[官网 / Website](https://tianli0.github.io/MediaDuet/)** · **[下载 / Download](https://github.com/TIANLI0/MediaDuet/releases/latest)**
-
-[中文](#中文) · [English](#english) · [Protocol](protocol/specification.md) · [Architecture](docs/architecture.md) · [Testing & status](docs/testing.md) · [Compatibility](docs/compatibility.md)
-
----
+<p align="center">
+  <a href="https://github.com/TIANLI0/MediaDuet/releases/latest"><strong>下载 Windows / Android 版</strong></a> ·
+  <a href="https://tianli0.github.io/MediaDuet/">官网</a> ·
+  <a href="#english">English</a>
+</p>
 
 ## 中文
 
-### 它能做什么
+MediaDuet 连接你的 **Windows 电脑和 Android 手机**，让你在任意一端查看、控制另一端正在播放的内容。音乐和视频由原来的播放器负责播放，MediaDuet 帮你切歌、调音量、看歌词，以及协调两台设备的播放。
 
-- **双向控制**：在电脑上看到并控制手机正在播放的音乐（网易云、QQ 音乐、Spotify…），也能在手机上控制电脑上的播放器。
-- **局域网优先，蓝牙兜底**：同一 Wi-Fi 下自动发现并作为首选控制链路（延迟更低）；蓝牙 RFCOMM 作为热备份。断线无缝切换，局域网稳定后再切回，同一指令绝不执行两次。
-- **智能播放仲裁**：耳机同时连着两台设备时，电脑开始放视频/游戏声音会自动暂停手机（也可设为手机优先、最新优先或按应用自定义优先级）。区分“你暂停的”和“程序暂停的”，不会擅自恢复你暂停的音乐，也不会双向打架。通话时总是优先。
-- **原生集成**：手机正在播放的歌曲出现在 Windows 系统媒体浮窗/键盘媒体键里；Windows 媒体出现在手机 App 中。
-- **接力播放**：一键把正在听的歌换到另一台设备上，用网易云音乐、QQ 音乐或 Spotify 从当前进度接着播放，原设备随后暂停（电脑端在播放卡片的「在手机上继续 / 在电脑上继续」按钮里，手机端在「播放来源」面板里）。歌曲按歌名/歌手/时长在目标 App 的曲库里精确定位，可以跨 App（例如手机上的 QQ 音乐接到电脑上的网易云）。手机在后台时，Android 不允许打开其他 App，此时会弹出一条通知，轻触即可继续。
-- **精美界面**：Windows 端 WinUI 3 媒体卡片、悬停才显示控制的迷你播放器、可置顶、可点击穿透的桌面歌词（描边字、双行交替/居中、长句横向滚动、渐进式逐字/逐行填充）；Android 端 Kyant0 液态玻璃、无底部导航栏的全高“正在播放”主页（设置从右上角进入）、类 Apple Music 的播放器与歌词一体界面。
-- **歌词**：本地 LRC、手机推送、网易云（含逐字 yrc）、QQ 音乐、LRCLIB 依次查找（只发送歌名/歌手/专辑/时长，可调整顺序或关闭）；30 首测试曲目命中 29 首。不会伪造歌词。歌词时间轴经过平滑，并自动补偿蓝牙耳机延迟，每个播放器可单独微调偏移（±0.1 秒）。
-- **手机自己找歌词**：手机不连电脑时也会用同样的规则在网易云、QQ 音乐、LRCLIB 中查找并缓存歌词；同一首歌的元数据反复变化（如 QQ 音乐）时歌词不会闪烁。
-- **任务栏歌词**：在 Windows 11（居中或靠左）和 Windows 10 任务栏的空白处显示渐进式歌词或播放控件（悬停显示按钮）；换行时像列表一样向上滚动，过长的歌词和译文会跟着演唱进度横向滚动。
-- **高清封面**：播放器提供的封面太小时，自动查找同一首歌的高清封面（可关闭）。
-- **单设备也能用**：首次启动选择「搭配使用」或「仅此手机 / 仅此电脑」；配对后两端互相显示版本号，版本不一致时提醒。
-- **音量**：双向调节对方设备音量；Windows 端可单独调节每个应用的音量。
-- **多点耳机辅助**：耳机因另一台设备占用而自动暂停你刚播放的音乐时，自动接管；可设置仅在指定音频输出（如耳机）时才进行播放干预。
-- **网易云 Windows 兼容**：网易云未公开系统媒体会话时，通过窗口标题、本地播放队列和音频活动识别，并按歌曲 ID 精确获取歌词。
-- **音频（可选）**：Windows 作为手机的蓝牙音频接收端（A2DP Sink）；实验性的“电脑声音推到手机”（局域网 PCM）。
-- **检查更新与软件内更新**：两端每天在 GitHub 上检查一次新版本（可关闭，也可手动检查）。在「设置 › 关于」里一键下载，用发布附带的 SHA256SUMS.txt 校验后安装：电脑上安装版静默升级、便携版自动替换文件，完成后都会自动重启；手机上由系统确认安装。
-- **安全**：首次配对需在两端核对 6 位数字；每次连接 ECDHE + 配对密钥双向认证 + AES-256-GCM；密钥用 DPAPI / Android Keystore 保存；不需要任何云账号。
+## 你可以用它做什么
 
-### 安装
+- **手机听歌，电脑切歌。** 手机放在一旁，在电脑上查看歌名、封面和进度，暂停、切歌或调节音量；也可以反过来，用手机控制电脑上的音乐和视频。
+- **电脑有声音时，让手机音乐先停一停。** 例如耳机同时连接电脑和手机：电脑开始播放视频或游戏声音时，自动暂停手机音乐；电脑安静后再恢复。你手动暂停的音乐会保持暂停。
+- **把歌词放到方便看的地方。** 在电脑播放器、桌面悬浮窗、任务栏或手机上看同步歌词，支持逐字高亮和译文，也可以手动调整歌词时间。
+- **换台设备，接着听。** 把当前歌曲交给另一台设备上的网易云音乐、QQ 音乐或 Spotify，尝试从当前进度继续播放。效果取决于目标播放器和曲库，详见下方说明。
+- **只用一台设备也有用。** 选择“仅此电脑”或“仅此手机”，就能控制本机播放、查看歌词；电脑端还能使用桌面歌词和任务栏歌词。
 
-**Windows 10 2004+ / Windows 11**
+此外，还支持 Windows 键盘媒体键控制手机播放、迷你播放器、电脑应用单独调音量，以及在软件内检查和安装更新。
 
-1. 下载并解压 `MediaDuet-<版本>-win-x64.zip`（或运行安装包），运行 `MediaDuet.exe`。它会常驻托盘，界面按需打开；关闭窗口不影响后台同步。
-2. 如需蓝牙：先在 *Windows 设置 → 蓝牙* 中与手机完成系统配对。
+## 界面预览
 
-**Android 10+（目标 API 37 / Android 17）**
+<table>
+  <tr>
+    <th>Windows：播放控制与同步歌词</th>
+    <th>Android：查看和控制播放</th>
+  </tr>
+  <tr>
+    <td><img src="website/assets/win-player-zh.webp" width="680" alt="Windows 播放器：歌曲封面、播放控制、音量和同步歌词"></td>
+    <td><img src="website/assets/android-player.webp" width="210" alt="Android 播放器：歌曲封面、进度、切歌和音量控制"></td>
+  </tr>
+</table>
 
-1. 安装 APK，打开 App。
-2. *设置 → 权限与后台*：授予“通知使用权”（只用于读取媒体会话，**不会读取或上传通知内容**）、蓝牙、通知、局域网访问（Android 17）；建议关闭电池优化并按厂商指引允许后台运行。
-3. *设置 → 连接 → 配对模式* 打开（5 分钟有效）。
-4. 在电脑 *设置 → 设备 → 配对新手机* 中选择手机（蓝牙）或输入 IP（局域网，默认端口 47321），两端核对 6 位数字后确认。
+## 下载与开始使用
 
-### 构建
+### 1. 安装电脑端和手机端
 
-| 组件 | 命令 |
-|------|------|
-| Windows 主程序 + 测试 | `cmake -S windows -B windows/build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build windows/build && windows\build\md_tests.exe`（需 VS 2022/2026 C++、Windows SDK 10.0.26100） |
-| Windows 界面 (WinUI 3) | `msbuild windows\ui\MediaDuetUI.vcxproj -restore -p:Configuration=Release -p:Platform=x64` |
-| Windows 打包 | `powershell -ExecutionPolicy Bypass -File windows\packaging\package.ps1 -Arch x64` → `dist\MediaDuet-<版本>-win-x64.zip` 与 `dist\MediaDuet-<版本>-x64-setup.exe`（需 NSIS 3；也可用 `installer.iss` + Inno Setup） |
-| Android | `cd android && ./gradlew :app:assembleDebug :app:assembleRelease :app:testDebugUnitTest :app:lintDebug`（JDK 21，Android SDK 37）。发布签名：在 `android/keystore.properties` 写入 `storeFile/storePassword/keyAlias/keyPassword`（已被 git 忽略），否则 release 包不签名 |
+打开 [下载页面](https://github.com/TIANLI0/MediaDuet/releases/latest)，两端尽量安装同一版本。
 
-### 当前状态
+| 设备 | 系统要求 | 下载哪个文件 |
+| --- | --- | --- |
+| Windows 电脑 | Windows 10 2004 或更高版本 / Windows 11，x64 | 安装版 `MediaDuet-<版本>-x64-setup.exe`，或免安装版 `MediaDuet-<版本>-win-x64.zip` |
+| Android 手机 | Android 10 或更高版本 | `MediaDuet-<版本>-android.apk` |
 
-真实完成度见 [docs/testing.md](docs/testing.md) 与 [docs/compatibility.md](docs/compatibility.md)。简要：
+电脑端运行安装程序，或将免安装版**完整解压**后运行 `MediaDuet.exe`。手机端安装 APK 并打开。
 
-- ✅ 单元测试：Windows 146/146，Android 157/157，WinUI 逻辑 16/16；协议向量由独立 Python 实现交叉验证。
-- ✅ 真机外的端到端：Windows 主程序 ↔ Android App（API 36/37 模拟器，局域网）配对、会话、双向控制、封面、SMTC 桥接、断线恢复、撤销、与真实游戏音频的仲裁。
-- 🔧 需要真实硬件验证：电脑与实体手机之间的蓝牙 RFCOMM、蓝牙↔局域网切换、A2DP 接收、网易云/QQ 音乐真机兼容、各厂商 ROM 的后台存活。
+首次启动时，选择搭配另一台设备使用。如果只需要本机播放器和歌词，选择“仅此电脑 / 仅此手机”即可，无需进行下面的配对。
 
-### 隐私
+### 2. 在手机上开启权限
 
-不使用云服务，不上传通知、联系人或聊天内容。可选的外部请求只有三类：歌词和高清封面查询（网易云音乐、QQ 音乐、LRCLIB、iTunes，只发送歌名、歌手、专辑和时长）、接力播放时的曲库查找（同样只发送歌曲信息），以及每天一次的更新检查（GitHub，只请求最新版本号）。这些都可以在设置中关闭。
+进入手机 MediaDuet 的 **设置 → 权限与后台**，按页面提示开启：
 
----
+- **通知使用权**：用于获取、控制音乐和视频的播放状态。MediaDuet 不读取、保存或发送通知正文。
+- **附近的设备 / 蓝牙、通知、局域网访问**：按系统版本和连接方式授权。
+- **后台运行**：建议解除电池优化限制，并按照页面中的厂商指引允许后台活动，避免锁屏后断开。
+
+如果系统不允许开启“通知使用权”，可先到系统的 **应用信息 → 右上角菜单 → 允许受限设置**，再返回授权。具体名称可能因手机而异。
+
+### 3. 连接并配对
+
+可以通过**同一局域网或蓝牙**连接。第一次使用时，可以先让电脑和手机连接同一个 Wi-Fi；电脑通过网线连接同一路由器也可以。
+
+1. 手机 MediaDuet：进入 **设置 → 连接 → 配对模式**，开启配对（5 分钟内有效）。
+2. 电脑 MediaDuet：进入 **设置 → 设备与配对 → 配对新手机**，选择发现的手机。
+3. 检查两端显示的 **6 位配对码**是否一致，并在两端确认。
+4. 在手机或电脑上播放一首歌，另一端应显示歌曲信息；试试暂停或切歌。
+
+没有发现手机时，可在电脑端选择“通过 IP 地址连接”，填写手机 App 中显示的地址（默认端口 `47321`）。
+
+要通过蓝牙连接，请先在 **Windows 系统设置 → 蓝牙和设备**中完成电脑与手机的系统配对，再进行上面的 MediaDuet 配对。自动连接模式支持在局域网和蓝牙之间切换。
+
+## 几个常用设置
+
+### 自动暂停和恢复
+
+在电脑端 **设置 → 播放仲裁**中选择行为。这里的“播放仲裁”就是决定两台设备同时播放时，哪一端继续播放。
+
+| 模式 | 会发生什么 |
+| --- | --- |
+| 电脑优先（默认） | 电脑播放声音时暂停手机音乐，电脑安静后按设置恢复 |
+| 手机优先 | 手机播放时，暂停电脑上可控制的媒体 |
+| 后播放者优先 | 最近开始播放的一端继续，另一端暂停 |
+| 自定义优先级 | 按你设置的应用优先级决定 |
+| 关闭 | 两台设备各自播放，不自动干预 |
+
+你可以关闭自动恢复、调整恢复前的等待时间，或设置成仅在使用指定耳机等音频输出设备时介入。**自动恢复只针对 MediaDuet 自动暂停的内容。**
+
+### 在另一台设备上继续听
+
+电脑端点击播放卡片中的 **“在手机上继续 / 在电脑上继续”**；手机端打开 **“播放来源”**面板，选择接力到另一端和目标播放器。
+
+目标设备需要安装对应播放器，并能播放这首歌。MediaDuet 会查找歌曲、尝试从当前进度播放，成功后暂停原设备。部分播放器或跨曲库匹配只能打开歌曲或搜索结果，需要手动开始播放；Spotify 等目标仍有待真机验证。手机端在后台时，可能需要点一下通知才能继续。
+
+### 让手机声音从电脑播放
+
+如果你希望手机的声音从电脑音箱或电脑连接的耳机传出，可以开启 **“接收手机音频”**。这需要先完成系统蓝牙配对；必要时还需在手机上选择电脑作为声音输出。
+
+另有实验性的“电脑声音传到手机”功能，需要局域网连接，存在明显延迟，不适合边看视频边听。音频传输的兼容情况见 [音频说明](docs/audio-routing.md)。
+
+## 常见问题
+
+**控制了手机音乐，声音会自动转到电脑吗？**
+
+默认仍从手机当前的耳机或扬声器播放。远程控制、接力播放和音频传输是三个独立功能；需要转移声音时，再开启上面的音频功能。
+
+**哪些播放器可以用？**
+
+主要通过播放器提供的系统媒体控制接口工作，控制按钮和进度信息取决于播放器开放的能力。项目包含网易云音乐、QQ 音乐、Spotify 等适配，但不同版本、设备的支持程度有差异。游戏声音可以触发自动暂停手机音乐，游戏本身通常不能被远程暂停。已验证范围见 [兼容性列表](docs/compatibility.md) 和 [测试记录](docs/testing.md)。
+
+**关掉电脑窗口后，还能用吗？**
+
+可以。Windows 端关闭窗口后会留在系统托盘，继续同步和响应控制；要完全退出，请使用托盘菜单。手机端需要允许后台运行。
+
+**连接成功，但看不到手机歌曲怎么办？**
+
+先确认手机上的播放器正在播放，再到“权限与后台”检查通知使用权。锁屏后容易掉线时，检查电池优化和厂商后台限制。
+
+**需要账号或互联网吗？**
+
+MediaDuet 无需注册账号。设备之间的控制和同步通过局域网或蓝牙进行；在线查歌词、封面、跨曲库接力查歌和检查更新需要互联网。原播放器的登录、会员和歌曲访问要求仍然适用。
+
+## 隐私
+
+设备之间直接连接，并对通信加密，不经过云端转发。MediaDuet 不上传通知正文、联系人或聊天内容。
+
+会访问外网的功能包括：从网易云音乐、QQ 音乐、LRCLIB、iTunes 查询歌词或高清封面，接力时查找歌曲，以及通过 GitHub 检查和下载更新。歌曲查询使用歌名、歌手、专辑、时长等歌曲信息。你可以在设置中关闭在线歌词源、高清封面查询和自动更新检查，并自行决定是否使用接力播放。
+
+## 开发与项目文档
+
+普通用户直接下载发布版即可。构建命令放在下面，协议、架构和详细验证记录见对应文档。
+
+<details>
+<summary>从源码构建与测试</summary>
+
+### Windows
+
+需要 Visual Studio 2022 / 2026 的 C++ 和 WinUI 开发工具、Windows SDK、CMake 3.24+、Ninja。生成安装包还需 NSIS 3。
+
+在仓库根目录运行以下命令，可构建主程序和 WinUI 界面、运行核心测试，并生成 `dist/` 下的免安装压缩包；已安装 NSIS 时还会生成安装包：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File windows\packaging\package.ps1 -Arch x64
+```
+
+仅构建主程序并运行核心测试（在 Visual Studio Developer PowerShell 中）：
+
+```powershell
+cmake -S windows -B windows/build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build windows/build
+ctest --test-dir windows/build --output-on-failure
+```
+
+单独构建界面：
+
+```powershell
+msbuild windows\ui\MediaDuetUI.vcxproj -restore -p:Configuration=Release -p:Platform=x64
+```
+
+更多界面构建、调试与测试方法见 [Windows 界面文档](windows/ui/README.md)。
+
+### Android
+
+需要 JDK 21、Android SDK 37。在 Windows PowerShell 中运行：
+
+```powershell
+cd android
+.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
+```
+
+macOS / Linux 使用 `./gradlew`。Debug APK 位于 `android/app/build/outputs/apk/debug/`。发布构建和签名配置见 [Android 文档](android/README.md)；未配置签名时，Release APK 不会签名。
+
+</details>
+
+- [架构与目录说明](docs/architecture.md)
+- [通信协议](protocol/specification.md) · [蓝牙与局域网连接](docs/bluetooth.md)
+- [兼容性列表](docs/compatibility.md) · [测试记录与待验证项目](docs/testing.md)
+- [Windows 界面开发](windows/ui/README.md) · [Android 开发](android/README.md)
 
 ## English
 
-### What it does
+**Control your phone's music from Windows, or control your PC's playback from Android.** MediaDuet also coordinates playback between the two devices and displays synced lyrics. Your existing music and video apps handle playback.
 
-- **Two-way control**: see and control your phone's music (NetEase Cloud Music, QQ Music, Spotify, …) from Windows, and Windows players from the phone.
-- **LAN first, Bluetooth fallback**: on the same Wi-Fi the phone is discovered automatically and used as the control link (lower latency); Bluetooth RFCOMM stays connected as a hot standby. Seamless failover, stable switch-back, and at-most-once command execution.
-- **Playback arbitration**: with one headset on both devices, PC video/game audio pauses the phone (or phone-first, latest-wins, custom per-app priorities). User pauses are never undone, policy pauses are attributed so the devices never fight, calls always win.
-- **Native integration**: phone media appears in the Windows media flyout and media keys; Windows media appears on the phone.
-- **Handoff**: continue the song you are listening to on the other device — in NetEase Cloud Music, QQ Music or Spotify, from the same position — and this side pauses ("Continue on your phone / on this PC" on the PC's player card, the source sheet on the phone). The song is found in the target app's catalogue by title / artist / duration, also across apps (QQ Music on the phone → NetEase on the PC). While the phone app is in the background, Android does not let it open another app; a notification then continues with one tap.
-- **Polished UI**: WinUI 3 media card, hover-only mini player, always-on-top, click-through desktop lyrics (outlined text, two-line alternate or centred layout, scrolling long lines, progressive word/line fill) on Windows; Kyant0 liquid glass, a full-height Now Playing home without a tab bar (settings from the top-right) and an Apple-Music-style integrated player/lyrics screen on Android.
-- **Lyrics**: local LRC, phone-provided, NetEase (word-timed yrc), QQ Music, LRCLIB in a configurable order (title/artist/album/duration only; can be disabled); 30/30 hit rate on a mixed test set. **Translations** (NetEase / QQ Music) shown under each line on every surface, with a toggle. Never invented. Lyric timing is smoothed, compensates Bluetooth output latency automatically and has a per-player offset (±0.1 s steps).
-- **Lyrics on the phone alone**: without a PC the phone looks lyrics up itself (same providers and matching rules, cached); lyrics no longer flicker when a player (QQ Music) keeps re-reporting the same song.
-- **Taskbar lyrics** on the Windows 11 (centred or left-aligned) and Windows 10 taskbar, with hover controls; lines scroll up like a list, long lines and their translations scroll sideways with the singing.
-- **HD covers**: when a player's own cover is small, the song's high-resolution cover is looked up (optional).
-- **One device is enough**: choose "with my phone/PC" or "this device only" on first launch; once paired, each side shows the other's version and warns on a mismatch.
-- **Volume**: control the other device's volume; per-app volume on Windows.
-- **Multipoint headset assist** and optional *only intervene when this output is in use*.
-- **NetEase Cloud Music for Windows** compatibility when it publishes no media session.
-- **Audio (optional)**: Windows as the phone's Bluetooth A2DP sink; experimental PC→phone LAN PCM streaming.
-- **Updates**: both apps look for a new version on GitHub once a day (can be turned off, or checked by hand) and install it from Settings › About after verifying it against the release's SHA256SUMS.txt — the PC updates its installed or portable copy and restarts, the phone hands the APK to Android to confirm.
-- **Security**: 6-digit comparison on first pairing; per-connection ECDHE with mutual pairing-key authentication and AES-256-GCM; keys in DPAPI / Android Keystore; no accounts, no cloud.
+- **Remote controls:** view track information, pause, skip, seek and adjust volume on the other device, where supported by the player.
+- **Automatic pause and resume:** PC video or game audio can pause phone music and let it resume when the PC goes quiet. Music you paused yourself stays paused. Choose PC-first, phone-first, latest-started, custom priorities, or turn this off.
+- **Lyrics:** synced lyrics and translations in both apps, plus desktop and taskbar lyrics on Windows.
+- **Handoff:** try to continue a song on the other device using NetEase Cloud Music, QQ Music or Spotify. Results depend on the target app and catalogue; some targets only open the song or search results. See [compatibility](docs/compatibility.md).
+- **One device is enough:** choose “This PC only” or “This phone only” for local controls and lyrics.
 
-### Install
+### Get started
 
-**Windows 10 2004+ / 11**: unzip the release (or run the setup) and start `MediaDuet.exe` (tray app; the UI opens on demand). For Bluetooth, bond the phone in *Windows Settings → Bluetooth* first.
+1. [Download the Windows installer or portable ZIP and the Android APK](https://github.com/TIANLI0/MediaDuet/releases/latest). Requires Windows 10 2004+ / Windows 11 (x64) and Android 10+. Use matching app versions.
+2. On Android, open **Settings → Permissions & background**. Grant notification access for media controls, the permissions needed for your connection, and allow background activity. Notification contents are never read, stored or sent.
+3. Put both devices on the same LAN. On the phone, enable **Settings → Connection → Pairing mode**. In the PC app, open **Settings → Devices & pairing → Pair a new phone**, select the phone, compare the six-digit code and confirm on both devices. If discovery fails, enter the address shown in the phone app (default port `47321`).
+4. Play something in your usual player and try controlling it from the other device. For Bluetooth, pair the devices in Windows system settings first, then pair in MediaDuet.
 
-**Android 10+ (targets API 37)**: install the APK, then *Settings → Permissions & background*: grant notification access (used only to read media sessions — notification contents are never read or uploaded), Bluetooth, notifications and local network (Android 17); allow background activity. Open *Settings → Connection → Pairing mode*, then pair from *Windows Settings → Devices → Pair new phone* (Bluetooth device, or IP on port 47321) and confirm the matching 6-digit code on both screens.
+Closing the PC window leaves MediaDuet running in the tray. Remote control leaves audio on its original output by default. Optional phone → PC audio uses Bluetooth; experimental PC → phone audio uses the LAN and has noticeable latency. See [audio routing](docs/audio-routing.md).
 
-### Build
+No MediaDuet account or cloud relay is required. Online lyrics, artwork and handoff searches contact external providers using song information; update checks and downloads use GitHub. Online lyrics providers, HD artwork and automatic update checks can be disabled in settings.
 
-See the table in the Chinese section; commands are identical. CI: `.github/workflows/windows.yml` (host, tests, vector reproducibility, WinUI) and `android.yml` (build, unit tests, lint).
+For build instructions and verification details, see the [Android](android/README.md), [Windows UI](windows/ui/README.md), [architecture](docs/architecture.md) and [testing](docs/testing.md) docs.
 
-### Status
+## 开源许可 / License
 
-Verified results, measurements (idle host: 0.13 % of one core, 7.5 MB private) and the list of hardware-only checks are in [docs/testing.md](docs/testing.md) and [docs/compatibility.md](docs/compatibility.md).
-
-### Repository layout
-
-```
-protocol/   specification, JSON test vectors, reference generator, Python peer client
-windows/    core/ (protocol, crypto, link, policy, lyrics, settings) · platform/ (Bluetooth, LAN,
-            GSMTC/SMTC, Core Audio, A2DP, loopback, lyrics providers, D2D overlay) · app/ (tray host)
-            · ui/ (WinUI 3) · tests/ · tools/ · packaging/
-android/    app/ (Kotlin, Compose, liquid glass) · testplayer/ (test fixture)
-docs/       architecture, ipc, bluetooth, media sessions, audio routing, testing, compatibility
-```
-
-### License
-
-MIT © 2026 tianli — see [LICENSE](LICENSE). Bundled third-party components keep their own licences, see
-[third-party notices](docs/THIRD_PARTY_NOTICES.md); in particular the HarmonyOS Sans fonts in
-`windows/ui/Assets/Fonts` are © Huawei Device Co., Ltd. under the HarmonyOS Sans Fonts License
-Agreement (shipped unmodified) and are not covered by the MIT licence.
+[MIT](LICENSE) © 2026 tianli。第三方组件使用各自的许可，详见 [第三方许可说明](docs/THIRD_PARTY_NOTICES.md)。随附的 HarmonyOS Sans 字体遵循其字体许可，不属于 MIT 许可范围。
