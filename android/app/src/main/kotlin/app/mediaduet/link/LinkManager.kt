@@ -67,7 +67,8 @@ interface LinkHost {
 
     fun onSessionStarted(peer: DeviceInfo, resumed: Boolean, peerCaps: Set<String>)
     fun onPeerDisconnected(peerId: String)
-    fun onPeerSnapshot(peerId: String, snapshot: MediaSnapshot, rttMs: Long?)
+    /** [positionAtMs]: our monotonic clock at which the snapshot's positions hold (§11.1). */
+    fun onPeerSnapshot(peerId: String, snapshot: MediaSnapshot, positionAtMs: Long)
     fun onBlobChunk(peerId: String, chunk: BlobChunk)
     fun onArtworkNotFound(peerId: String, hash: String)
     fun onLyrics(peerId: String, lyrics: LyricsPush)
@@ -387,13 +388,24 @@ class LinkManager(
         when (env.type) {
             MsgType.PING -> {
                 val t = env.body.optLong("t")
-                send(session, conn, MsgType.PONG, buildJsonObject { if (t != null) put("t", t) }, env.id)
+                // rt: our clock as we answer, for the peer's clock estimate (§11.1).
+                send(session, conn, MsgType.PONG, buildJsonObject {
+                    if (t != null) put("t", t)
+                    put("rt", clock.nowMs())
+                }, env.id)
             }
             MsgType.PONG -> {
                 val t = env.body.optLong("t") ?: return
-                val rtt = clock.nowMs() - t
+                val now = clock.nowMs()
+                val rtt = now - t
                 if (rtt in 0..120_000) {
                     session.rttMs = rtt
+                    val rt = try {
+                        env.body.optLong("rt")
+                    } catch (e: BadMessageException) {
+                        null // odd peer: RTT only
+                    }
+                    if (rt != null) session.clockSync.addSample(t, rt, now)
                     publishStatus()
                 }
             }
@@ -413,7 +425,9 @@ class LinkManager(
                 val snapshot = MediaSnapshot.parse(env.body)
                 if (snapshot.gen <= session.lastPeerGen) return
                 session.lastPeerGen = snapshot.gen
-                host.onPeerSnapshot(peerId, snapshot, session.rttMs)
+                // Positions hold at the PC's `at` on our clock; older PCs: now − RTT/2.
+                val anchor = session.clockSync.anchor(snapshot.atMs, clock.nowMs(), (session.rttMs ?: 0) / 2)
+                host.onPeerSnapshot(peerId, snapshot, anchor)
             }
             MsgType.MEDIA_COMMAND -> {
                 val command = MediaCommand.parse(env.body)
@@ -793,10 +807,21 @@ class LinkManager(
 
     private suspend fun heartbeat(session: LinkSession, conn: Connection) {
         var lastPingSent = clock.nowMs()
+        var burstLeft = 0
+        var lastEpoch = -1
+        var wasPlaying = false
         while (!conn.isClosed) {
+            val primary = session.primaryOrAny() === conn
+            val playing = anyPlaying.value
+            // A few quick pings for the clock estimate (§11.1) when this becomes the primary and when
+            // media starts; liveness below still uses the regular interval.
+            if (primary && (session.primaryEpoch.value != lastEpoch || (playing && !wasPlaying))) burstLeft = ClockSync.BURST_PINGS
+            if (!primary) burstLeft = 0
+            lastEpoch = session.primaryEpoch.value
+            wasPlaying = playing
             val interval = when {
-                session.primaryOrAny() !== conn -> SECONDARY_INTERVAL_MS
-                anyPlaying.value -> PLAYING_INTERVAL_MS
+                !primary -> SECONDARY_INTERVAL_MS
+                playing -> PLAYING_INTERVAL_MS
                 else -> IDLE_INTERVAL_MS
             }
             val now = clock.nowMs()
@@ -806,11 +831,13 @@ class LinkManager(
                 conn.close("heartbeat timeout")
                 return
             }
-            if (now - lastPingSent >= interval) {
+            if (now - lastPingSent >= if (burstLeft > 0) ClockSync.BURST_GAP_MS else interval) {
                 send(session, conn, MsgType.PING, buildJsonObject { put("t", now) })
                 lastPingSent = now
+                if (burstLeft > 0) burstLeft--
             }
-            val wait = (minOf(lastPingSent + interval, deadline) - clock.nowMs()).coerceAtLeast(100)
+            val gap = if (burstLeft > 0) ClockSync.BURST_GAP_MS else interval
+            val wait = (minOf(lastPingSent + gap, deadline) - clock.nowMs()).coerceAtLeast(100)
             withTimeoutOrNull(wait) {
                 merge(anyPlaying.drop(1).map { }, session.primaryEpoch.drop(1).map { }).first()
             }

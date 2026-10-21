@@ -128,9 +128,11 @@ Every message has a `"type"` field. Messages from the UI to the host may carry a
 }
 ```
 
-* Position extrapolation: `atTick` is `GetTickCount64()` of the host when
-  `positionMs` was valid. `GetTickCount64` is system-wide, so the UI computes
-  `positionMs + (GetTickCount64() - atTick) * rate` while `status == "playing"`
+* Position extrapolation: `atTick` is the host's monotonic clock when
+  `positionMs` was valid: interrupt time in ms (`QueryInterruptTimePrecise` / 10 000,
+  the time base of `GetTickCount64` at sub-millisecond precision; `GetTickCount64`
+  on systems without it). It is system-wide, so the UI computes
+  `positionMs + (now - atTick) * rate` with the same clock while `status == "playing"`
   and clamps to `[0, durationMs]`. The UI must not poll the host for progress.
 * Sessions may also carry `source` (`smtc` | `compat` | `remote`) and
   `positionEstimated` (bool).
@@ -208,7 +210,7 @@ lyrics view for such a change; the host re-keys the current lyrics to the new
 ```json
 {"type":"diagnostics","cpuPercent":0.12,"workingSetMB":21.4,"privateMB":9.8,
  "transport":"bt","connectedForSec":350,"bytesIn":1,"bytesOut":2,
- "msgsIn":3,"msgsOut":4,"rttMs":41,"lastCommandLatencyMs":120,
+ "msgsIn":3,"msgsOut":4,"rttMs":41,"clockErrorMs":3,"lastCommandLatencyMs":120,
  "localSessions":2,"remoteSessions":1,"audioSessionsActive":1,"threads":9}
 ```
 

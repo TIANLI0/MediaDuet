@@ -255,7 +255,8 @@ json toJson(const MediaQueue& q) {
 json toWire(const MediaSnapshot& s, int64_t nowMs) {
     json arr = json::array();
     for (auto& x : s.sessions) arr.push_back(toWire(x, nowMs));
-    return {{"gen", s.gen}, {"active", s.active ? json(*s.active) : json(nullptr)}, {"sessions", std::move(arr)}};
+    // at: our monotonic clock at which the positions hold (spec §8.3, §11.1).
+    return {{"gen", s.gen}, {"at", nowMs}, {"active", s.active ? json(*s.active) : json(nullptr)}, {"sessions", std::move(arr)}};
 }
 
 namespace {
@@ -393,6 +394,15 @@ std::optional<MediaSessionInfo> sessionFromWire(const json& j, int64_t receivedA
         *s.positionMs += static_cast<int64_t>(static_cast<double>(latencyMs) * s.rate);
     s.positionAtMs = receivedAtMs;
     return s;
+}
+
+std::optional<int64_t> snapshotAt(const json& j) {
+    if (!j.is_object()) return std::nullopt;
+    auto a = j.find("at");
+    if (a == j.end() || !a->is_number_integer()) return std::nullopt;
+    int64_t v = a->get<int64_t>();
+    if (v < 0) return std::nullopt;
+    return v;
 }
 
 std::optional<MediaSnapshot> snapshotFromWire(const json& j, int64_t receivedAtMs, int64_t latencyMs,

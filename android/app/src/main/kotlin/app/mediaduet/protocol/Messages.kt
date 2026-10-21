@@ -403,12 +403,14 @@ data class MediaSessionInfo(
     }
 }
 
-data class MediaSnapshot(val gen: Long, val active: String?, val sessions: List<MediaSessionInfo>) {
+/** [atMs]: the sender's monotonic clock at which the positions hold (§8.3, §11.1); null from older senders. */
+data class MediaSnapshot(val gen: Long, val active: String?, val sessions: List<MediaSessionInfo>, val atMs: Long? = null) {
     val activeSession: MediaSessionInfo?
         get() = sessions.firstOrNull { it.key == active } ?: sessions.firstOrNull()
 
     fun toJson(): JsonObject = buildJsonObject {
         put("gen", gen)
+        if (atMs != null) put("at", atMs)
         if (active != null) put("active", active) else put("active", JsonNull)
         put("sessions", JsonArray(sessions.take(MAX_SESSIONS).map { it.toJson() }))
     }
@@ -423,7 +425,13 @@ data class MediaSnapshot(val gen: Long, val active: String?, val sessions: List<
             val sessions = array.map {
                 MediaSessionInfo.parse(it as? JsonObject ?: throw BadMessageException("session must be an object"))
             }
-            return MediaSnapshot(gen, o.optString("active", StrLimit.SESSION_KEY), sessions)
+            // Optional: a missing or invalid `at` only loses the precise anchor.
+            val at = try {
+                o.optLong("at")?.takeIf { it >= 0 }
+            } catch (e: BadMessageException) {
+                null
+            }
+            return MediaSnapshot(gen, o.optString("active", StrLimit.SESSION_KEY), sessions, at)
         }
     }
 }

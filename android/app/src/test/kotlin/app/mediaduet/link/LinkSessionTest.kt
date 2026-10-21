@@ -7,6 +7,7 @@ import app.mediaduet.protocol.DeviceInfo
 import app.mediaduet.protocol.Hex
 import app.mediaduet.protocol.MediaCommand
 import app.mediaduet.protocol.MediaSnapshot
+import app.mediaduet.protocol.optLong
 import app.mediaduet.util.MonoClock
 import app.mediaduet.protocol.VolumeSet
 import app.mediaduet.protocol.VolumeState
@@ -291,5 +292,30 @@ class LinkSessionTest {
             val reply = peer.hello(c2) as app.mediaduet.protocol.Envelope
             assertEquals("not_paired", (reply.body["code"] as JsonPrimitive).content)
         }
+    }
+    @Test
+    fun clockSyncAnchorsPcSnapshotsOnThePcClock() {
+        val (c, _) = open()
+        // Our pongs carry rt (the phone's clock).
+        c.sendSecure(peer.envelope("ping", buildJsonObject { put("t", 1) }))
+        val pong = c.readUntil("pong")
+        assertTrue(pong.body.optLong("rt")!! > 0)
+        // The phone's sync burst: answer as a PC whose clock runs 1 000 000 ms ahead.
+        val pcAhead = 1_000_000L
+        val ping = c.readUntil("ping")
+        c.sendSecure(peer.envelope("pong", buildJsonObject {
+            put("t", ping.body.optLong("t")!!)
+            put("rt", MonoClock.SYSTEM_NANO.nowMs() + pcAhead)
+        }, re = ping.id))
+        // A snapshot whose positions held 300 ms ago on the PC's clock.
+        val heldAt = MonoClock.SYSTEM_NANO.nowMs() - 300
+        c.sendSecure(peer.envelope("media.snapshot", buildJsonObject {
+            put("gen", 1)
+            put("at", heldAt + pcAhead)
+            put("sessions", kotlinx.serialization.json.JsonArray(emptyList()))
+        }))
+        val anchor = waitFor { host.peerAnchors.firstOrNull() }
+        assertTrue("anchor $anchor vs $heldAt", kotlin.math.abs(anchor - heldAt) < 50)
+        c.close()
     }
 }

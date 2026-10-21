@@ -188,7 +188,7 @@ object SnapshotBuilder {
     fun build(gen: Long, sessions: List<LocalSessionState>, nowMs: Long, outputLatencyMs: Int? = null): MediaSnapshot {
         val capped = sessions.take(MediaSnapshot.MAX_SESSIONS)
         val active = pickActive(capped)
-        return MediaSnapshot(gen, active?.key, capped.map { it.toSessionInfo(nowMs, outputLatencyMs) })
+        return MediaSnapshot(gen, active?.key, capped.map { it.toSessionInfo(nowMs, outputLatencyMs) }, atMs = nowMs)
     }
 }
 
@@ -215,7 +215,7 @@ class SnapshotSuppressor(private val toleranceMs: Long = 1_500) {
     }
 
     private fun normalized(s: MediaSnapshot) =
-        s.copy(gen = 0, sessions = s.sessions.map { it.copy(positionMs = it.positionMs?.let { 0L }) })
+        s.copy(gen = 0, atMs = null, sessions = s.sessions.map { it.copy(positionMs = it.positionMs?.let { 0L }) })
 
     private fun changed(prev: MediaSnapshot, next: MediaSnapshot, elapsedMs: Long): Boolean {
         if (normalized(prev) != normalized(next)) return true

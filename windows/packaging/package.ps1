@@ -14,7 +14,7 @@
 #>
 param(
     [ValidateSet('x64', 'ARM64')] [string]$Arch = 'x64',
-    [string]$Version = '1.5.0',
+    [string]$Version = '1.5.1',
     [switch]$SkipTests
 )
 $ErrorActionPreference = 'Stop'

@@ -7,10 +7,10 @@ with step-by-step procedures.
 
 ## 1. Unit tests
 
-| Suite | Command | Result (2026-10-20) |
+| Suite | Command | Result (2026-10-21) |
 |-------|---------|--------------------|
-| Windows core (doctest) | `cmake -S windows -B windows/build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build windows/build && windows\build\md_tests.exe` | **146 / 146 passed, 1070 assertions** |
-| Android (JUnit, JVM) | `cd android && ./gradlew :app:testDebugUnitTest` | **157 / 157 passed** |
+| Windows core (doctest) | `cmake -S windows -B windows/build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build windows/build && windows\build\md_tests.exe` | **155 / 155 passed, 1095 assertions** |
+| Android (JUnit, JVM) | `cd android && ./gradlew :app:testDebugUnitTest` | **165 / 165 passed** |
 | WinUI logic (headless, doctest) | see `windows/ui/README.md` (`windows/ui/tests/ui_logic_tests.cpp`, built with `cl`, no window) | **16 / 16 passed** |
 | Android lint | `./gradlew :app:lintDebug` | 0 errors (MissingTranslation, HardcodedText, plurals are errors); 3 warnings in older code (ChromeOsAbiSupport, 2 × UseKtx) |
 
@@ -115,6 +115,7 @@ The Android agent ran the same flows on **Android 17 (API 37)** with
 | E54 | Windows in-app update: check, download, checksum (`MediaDuetUpdateCheck`: the real Updater against GitHub, never installs); the portable replacement script | ✅ as 1.4.1: "up to date"; as 1.4.0: finds 1.4.1, downloads the 33 MB portable zip with progress, SHA-256 matches `SHA256SUMS.txt`. The replacement script (`apply.ps1`) on a sandbox folder: merges sub-folders, replaces the exe, starts it again. 🔧 `setup.exe /S /UPDATE` on an installed copy not run (it would reinstall MediaDuet on the test PC) |
 | E55 | Android in-app update end to end: a 1.4.0 build signed with the release key on a headless API 37 emulator | ✅ the automatic check finds 1.4.1 (About shows it); download + checksum + package check; "install unknown apps" prompt; back in the app the system "Update this app?" dialog; confirmed: `versionCode 7 → 8`, `versionName 1.4.1`. The emulator's Play Protect blocked the first attempt (`INSTALL_FAILED_VERIFICATION_FAILURE`, now shown to the user as such) |
 | E53 | Taskbar lyrics: line changes scroll like a list (the preview below moves up and grows into the current line, a new preview enters), other changes roll the whole block; a long translation scrolls sideways with its line's karaoke progress; animations follow *Animations* / *Low power* | ✅ `MediaDuetOverlayDemo` frame sequences (`taskbar_roll_*`, `taskbar_tr_*`), off-screen |
+| E56 | 1.5.1: lyrics / progress across devices shifted by link latency (user report): the receiver anchored a snapshot at its arrival + RTT/2 (Android: one ping every 15 s), so one slow snapshot (Wi-Fi power save, a queue behind artwork) stayed off until the next one. Now NTP-style clock estimate from pongs (`rt`, best of 16 samples by RTT/2 + drift) and the sender's `at` in snapshots (§11.1), sync bursts on primary change / media start, sub-ms host clock (`QueryInterruptTimePrecise`); PC lyrics cache capped at 600 files, least recently used out, like the phone | ✅ core `test_clock_sync` + connection-manager tests (phone clock +1 000 000 ms mapped exactly; older phone without `rt` keeps RTT/2), Android `ClockSyncTest` + link test (anchor within 50 ms over the loopback link); WinUI Release build. **Unverified on hardware** (Wi-Fi / Bluetooth latency) |
 
 ### Measured resource use (Windows 11, 20 logical CPUs, Release x64)
 

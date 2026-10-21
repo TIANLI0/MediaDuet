@@ -430,3 +430,27 @@ TEST_CASE("LAN: an unanswered heartbeat is followed up instead of waiting three 
     w.s.advance(60'000 + 11'000);
     CHECK(w.rec.downs >= 1);
 }
+
+TEST_CASE("clock sync: pongs with the phone's clock map its snapshot times to ours") {
+    World w(link::ConnMode::LanOnly);
+    w.s.advance(5000); // link up + the sync burst after the primary was chosen
+    REQUIRE(w.cm->isUp());
+    CHECK(w.cm->status().clockErrorMs >= 0);
+    int64_t now = w.s.nowMs();
+    // A snapshot whose positions hold 250 ms ago on the phone's clock.
+    CHECK(w.cm->remoteAnchor(now - 250 + w.srv.clockOffsetMs) == now - 250);
+    // Never in the future; without `at` it is now − RTT/2 (0 in the fake).
+    CHECK(w.cm->remoteAnchor(now + 500 + w.srv.clockOffsetMs) == now);
+    CHECK(w.cm->remoteAnchor(std::nullopt) == now);
+}
+
+TEST_CASE("clock sync: an older phone without rt keeps the RTT fallback") {
+    World w(link::ConnMode::LanOnly, true, false);
+    w.srv.pongWithRt = false;
+    w.start();
+    w.s.advance(5000);
+    REQUIRE(w.cm->isUp());
+    CHECK(w.cm->status().clockErrorMs == -1);
+    int64_t now = w.s.nowMs();
+    CHECK(w.cm->remoteAnchor(now - 250 + w.srv.clockOffsetMs) == now);
+}

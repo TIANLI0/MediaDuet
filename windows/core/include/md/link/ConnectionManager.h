@@ -1,5 +1,6 @@
 #pragma once
 
+#include "md/link/ClockSync.h"
 #include "md/link/Connection.h"
 #include "md/link/LinkSession.h"
 #include "md/media/MediaTypes.h"
@@ -53,6 +54,7 @@ struct LinkStatus {
     std::optional<TransportKind> primary, secondary;
     int64_t sinceMs = 0;
     int64_t rttMs = -1;
+    int64_t clockErrorMs = -1; // error bound of the peer clock estimate (spec §11.1), -1 = none yet
     uint64_t bytesIn = 0, bytesOut = 0;
     uint64_t msgsIn = 0, msgsOut = 0;
     std::string lastError;
@@ -81,6 +83,9 @@ public:
         int64_t btBackoffBaseMs = 2'000, btBackoffMaxMs = 60'000;
         int64_t lanBackoffBaseMs = 1'000, lanBackoffMaxMs = 30'000;
         int64_t pingActiveMs = 15'000, pingIdleMs = 60'000, pingSecondaryMs = 120'000;
+        // Extra pings on the primary after it changes and when media starts, for a quick clock estimate.
+        int syncBurstPings = 5;
+        int64_t syncBurstGapMs = 600;
         int64_t resendMaxAgeMs = 5'000;
         int64_t nextEndpointDelayMs = 250;        // next LAN candidate after a connect failure
         int64_t raceDelayMs = 300;                // head start of a LAN handshake before the next candidate races it
@@ -131,6 +136,9 @@ public:
     };
     std::optional<AudioRoute> audioRoute() const;
     const std::vector<std::string>* peerCaps() const;
+    // Our clock at which the active peer's snapshot positions hold (ClockSync::anchor): its `at`
+    // converted with the clock estimate, else now − RTT/2.
+    int64_t remoteAnchor(std::optional<int64_t> peerAt) const;
 
 private:
     struct Slot {
@@ -181,6 +189,9 @@ private:
         std::vector<int64_t> lanDrops;
         ScopedTimer promote;
         int64_t rttMs = -1;
+        ClockSync clock;
+        ScopedTimer syncBurst;
+        int syncPingsLeft = 0;
         std::vector<std::string> caps;
         std::string lastError;
         uint64_t msgsIn = 0, msgsOut = 0;
@@ -212,6 +223,8 @@ private:
     void setPrimary(Peer& p, Connection* c);
     void armHeartbeat(Peer& p, Slot& s);
     void armPongCheck(Peer& p, Slot& s);
+    void startSyncBurst(Peer& p);
+    void armSyncBurst(Peer& p);
     // Pings [s] and closes it unless something arrives within kPongWaitMs.
     void probe(Peer& p, Slot& s, const std::string& why);
     static constexpr int64_t kPongWaitMs = 5'000;

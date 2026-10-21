@@ -28,6 +28,8 @@ class LinkSession(
     var lastActiveMs: Long = createdAtMs
     var attachedAtMs: Long = createdAtMs
     var rttMs: Long? = null
+    /** The peer's clock relative to ours, from pongs (§11.1). */
+    val clockSync = ClockSync()
     var lastPeerGen: Long = 0
     var resumeCount: Int = 0
 

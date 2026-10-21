@@ -84,6 +84,8 @@ public:
     bool autoAcceptPairing = true;
     bool corruptHelloAckMac = false;
     bool forgetSessions = false;
+    int64_t clockOffsetMs = 1'000'000; // the phone's monotonic clock relative to ours
+    bool pongWithRt = true;            // false: an older phone without `rt` in pongs
     std::map<std::string, Session> sessions;
     std::vector<std::unique_ptr<Conn>> conns;
     std::map<uint64_t, int> executions; // media.command id -> times executed
@@ -214,7 +216,9 @@ public:
             return;
         }
         if (e->type == proto::types::Ping) {
-            sendSecure(c, proto::types::Pong, {{"t", e->body["t"]}}, e->id);
+            proto::json body = {{"t", e->body["t"]}};
+            if (pongWithRt) body["rt"] = s.nowMs() + clockOffsetMs;
+            sendSecure(c, proto::types::Pong, body, e->id);
         } else if (e->type == proto::types::LinkPrimary) {
             ss.primary = &c;
         } else if (e->type == proto::types::MediaCommand) {

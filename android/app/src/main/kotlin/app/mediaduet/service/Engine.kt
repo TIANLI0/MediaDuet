@@ -467,7 +467,7 @@ class Engine private constructor(private val app: Context) : LinkHost {
         audio.stopForPeer(peerId)
     }
 
-    override fun onPeerSnapshot(peerId: String, snapshot: MediaSnapshot, rttMs: Long?) = remote.onSnapshot(peerId, snapshot, rttMs)
+    override fun onPeerSnapshot(peerId: String, snapshot: MediaSnapshot, positionAtMs: Long) = remote.onSnapshot(peerId, snapshot, positionAtMs)
     override fun onBlobChunk(peerId: String, chunk: BlobChunk) = remote.onChunk(chunk)
     override fun onArtworkNotFound(peerId: String, hash: String) = remote.onArtworkNotFound(hash)
     override fun onLyrics(peerId: String, lyrics: LyricsPush) =

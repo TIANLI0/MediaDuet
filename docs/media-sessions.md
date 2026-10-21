@@ -70,7 +70,7 @@ from local players, it stays opt-in and is never mirrored back.
 See `windows/platform/lyrics/LyricsService.cpp`. Provider chain: cache → lyrics
 pushed by the peer → local `.lrc` folder (UTF-8 or ANSI/GBK) → LRCLIB
 (`/api/get`, then `/api/search` with title/artist/duration matching; ±5 s
-duration hard limit). Negative results are cached for 72 h. Without lyrics only
+duration hard limit). Negative results are cached for 72 h; the cache keeps at most 600 files (least recently used first out, a hit refreshes the file), like the phone. Without lyrics only
 the media card is shown. No private NetEase/QQ APIs, scraping or UI automation.
 Lyric progress is interpolated locally from the last snapshot (no per-second
 cross-device polling).

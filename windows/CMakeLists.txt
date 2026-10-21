@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(MediaDuet VERSION 1.5.0 LANGUAGES CXX)
+project(MediaDuet VERSION 1.5.1 LANGUAGES CXX)
 
 if(NOT MSVC)
   message(FATAL_ERROR "MediaDuet for Windows requires MSVC (C++/WinRT, Windows SDK).")
@@ -43,6 +43,7 @@ add_library(md_core STATIC
   core/src/link/Handshake.cpp
   core/src/link/Connection.cpp
   core/src/link/LinkSession.cpp
+  core/src/link/ClockSync.cpp
   core/src/link/ConnectionManager.cpp
   core/src/link/DedupWindow.cpp
   core/src/policy/PlaybackArbiter.cpp
@@ -160,6 +161,7 @@ if(MD_BUILD_TESTS)
     tests/test_handshake.cpp
     tests/test_link_session.cpp
     tests/test_connection_manager.cpp
+    tests/test_clock_sync.cpp
     tests/test_arbiter.cpp
     tests/test_lrc.cpp
     tests/test_settings.cpp

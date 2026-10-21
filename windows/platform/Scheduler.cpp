@@ -31,7 +31,19 @@ Win32Scheduler::~Win32Scheduler() {
     }
 }
 
-int64_t Win32Scheduler::nowMs() const { return static_cast<int64_t>(GetTickCount64()); }
+// Interrupt time: the time base of GetTickCount64 (since boot, including sleep), but precise to well
+// under a millisecond instead of 15.6 ms ticks; ping timestamps and snapshot anchors need that (§11.1).
+int64_t Win32Scheduler::nowMs() const {
+    using Fn = VOID(WINAPI*)(PULONGLONG);
+    static const Fn precise = [] {
+        HMODULE kb = GetModuleHandleW(L"kernelbase.dll");
+        return kb ? reinterpret_cast<Fn>(GetProcAddress(kb, "QueryInterruptTimePrecise")) : nullptr;
+    }();
+    if (!precise) return static_cast<int64_t>(GetTickCount64());
+    ULONGLONG t = 0;
+    precise(&t);
+    return static_cast<int64_t>(t / 10'000);
+}
 
 int64_t Win32Scheduler::wallMs() const {
     FILETIME ft;

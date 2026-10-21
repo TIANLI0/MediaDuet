@@ -67,6 +67,7 @@ class InMemoryTrustStore : TrustStore {
 class FakeHost(val device: DeviceInfo) : LinkHost {
     val executed = CopyOnWriteArrayList<MediaCommand>()
     val peerSnapshots = CopyOnWriteArrayList<MediaSnapshot>()
+    val peerAnchors = CopyOnWriteArrayList<Long>()
     val chunks = CopyOnWriteArrayList<BlobChunk>()
     val sessionsStarted = CopyOnWriteArrayList<Boolean>()
     val gen = AtomicInteger()
@@ -89,8 +90,9 @@ class FakeHost(val device: DeviceInfo) : LinkHost {
     }
 
     override fun onPeerDisconnected(peerId: String) = Unit
-    override fun onPeerSnapshot(peerId: String, snapshot: MediaSnapshot, rttMs: Long?) {
+    override fun onPeerSnapshot(peerId: String, snapshot: MediaSnapshot, positionAtMs: Long) {
         peerSnapshots += snapshot
+        peerAnchors += positionAtMs
     }
 
     override fun onBlobChunk(peerId: String, chunk: BlobChunk) {

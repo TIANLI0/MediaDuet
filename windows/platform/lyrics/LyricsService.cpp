@@ -16,6 +16,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <cctype>
 #include <fstream>
 #include <sstream>
@@ -29,6 +30,9 @@ using namespace winrt::Windows::Web::Http;
 namespace {
 
 constexpr auto kNegativeTtl = std::chrono::hours(72);
+// Like the phone (LyricsRepository): at most this many cache files (.lrc / .yrc / .tlrc / .none),
+// least recently used first out; a cache hit refreshes the file time.
+constexpr size_t kMaxCacheFiles = 600;
 
 std::optional<std::string> readText(const fs::path& p, size_t maxBytes = 512 * 1024) {
     std::error_code ec;
@@ -53,6 +57,28 @@ void writeText(const fs::path& p, const std::string& s) {
     fs::create_directories(p.parent_path(), ec);
     std::ofstream out(p, std::ios::binary | std::ios::trunc);
     out << s;
+}
+
+// Blocking (directory scan): call off the scheduler thread.
+void trimCache(const fs::path& dir) {
+    std::vector<std::pair<fs::file_time_type, fs::path>> files;
+    std::error_code ec;
+    for (auto& e : fs::directory_iterator(dir, ec))
+        if (e.is_regular_file(ec)) files.push_back({e.last_write_time(ec), e.path()});
+    if (files.size() <= kMaxCacheFiles) return;
+    std::sort(files.begin(), files.end(), [](auto& a, auto& b) { return a.first > b.first; });
+    for (size_t i = kMaxCacheFiles; i < files.size(); ++i) fs::remove(files[i].second, ec);
+    log::info("lyrics", "cache trimmed to {} files ({} removed)", kMaxCacheFiles, files.size() - kMaxCacheFiles);
+}
+
+fire_and_forget trimCacheAsync(fs::path dir) {
+    co_await resume_background();
+    trimCache(dir);
+}
+
+void touch(const fs::path& p) {
+    std::error_code ec;
+    if (fs::is_regular_file(p, ec)) fs::last_write_time(p, fs::file_time_type::clock::now(), ec);
 }
 
 std::wstring safeFileName(const std::string& s) {
@@ -226,6 +252,7 @@ LyricsService::LyricsService(IScheduler& sched, fs::path cacheDir, Fn onResult)
     : sched_(sched), cacheDir_(std::move(cacheDir)), onResult_(std::move(onResult)) {
     std::error_code ec;
     fs::create_directories(cacheDir_, ec);
+    trimCacheAsync(cacheDir_); // caches from before 1.5.1 were never trimmed
 }
 
 LyricsService::~LyricsService() { *alive_ = false; }
@@ -267,6 +294,7 @@ void LyricsService::cacheCopy(const Result& r) {
     if (!fs::exists(lrc, ec) && !fs::exists(fs::path(stem).replace_extension(L".yrc"), ec)) writeText(lrc, r.lrc);
     auto tr = fs::path(stem).replace_extension(L".tlrc");
     if (!r.translation.empty() && !fs::exists(tr, ec)) writeText(tr, r.translation);
+    trimCacheAsync(cacheDir_);
 }
 
 void LyricsService::offerRemote(const std::string& trackId, const std::string& lrc, const std::string& source,
@@ -279,6 +307,7 @@ void LyricsService::offerRemote(const std::string& trackId, const std::string& l
     if (!translation.empty()) writeText(cacheDir_ / (text::toWide(trackId) + L".tlrc"), translation);
     std::error_code ec;
     fs::remove(cacheDir_ / (text::toWide(trackId) + L".none"), ec); // our own "not found" is outdated
+    trimCacheAsync(cacheDir_);
     if (trackId != cur_.trackId || cur_.status == "found") return;
     log::info("lyrics", "lyrics for {} from the phone ({}, {} lines)", trackId, source.empty() ? "remote" : source,
               parsed.lines.size());
@@ -320,8 +349,12 @@ void LyricsService::request(const media::MediaSessionInfo& t, int64_t neteaseId)
             auto parsed = lyrics::parseYrc(*y);
             std::string asLrc = lyrics::toLrc(parsed);
             r = {t.trackId, "found", "cache", std::move(parsed), std::move(asLrc)};
+            touch(hitYrc); // LRU
+            touch(hitTr);
         } else if (auto s = staleTr ? std::nullopt : readText(hitLrc)) {
             r = {t.trackId, "found", "cache", lyrics::parseLrc(*s), *s};
+            touch(hitLrc);
+            touch(hitTr);
         } else if (auto l = searchLocal(local, t)) {
             r = {t.trackId, "found", "local", lyrics::parseLrc(*l), *l};
             writeText(hitLrc, *l);
@@ -393,6 +426,7 @@ void LyricsService::request(const media::MediaSessionInfo& t, int64_t neteaseId)
             if (auto tr = readText(hitTr); tr && lyrics::mergeTranslation(r.lyrics, lyrics::parseLrc(*tr)) > 0)
                 r.translation = *tr;
         }
+        if (r.source != "cache") trimCache(cache); // something new may have been written
         if (r.status == "found" && r.lyrics.empty()) r.status = "notfound";
         if (r.status == "notfound")
             log::info("lyrics", "no lyrics found for {} ({} - {}){}", t.trackId, t.title, t.artist,

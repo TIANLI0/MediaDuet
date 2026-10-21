@@ -1033,7 +1033,7 @@ namespace winrt::MediaDuetUI::implementation
             transport = StrF(L"TransportWithBackup", { transport, TransportName(cn.secondary) });
         ConnTransportValue().Text(transport);
         ConnRttValue().Text(cn.rttMs >= 0 && cn.status == "connected" ? StrF(L"Milliseconds", { std::to_wstring(cn.rttMs) }) : std::wstring(L"\x2014"));
-        uint64_t now = GetTickCount64();
+        uint64_t now = ::mdui::TickNow();
         ConnSinceValue().Text(cn.status == "connected" && cn.sinceTick > 0 && now >= cn.sinceTick
             ? FormatDuration(static_cast<int64_t>((now - cn.sinceTick) / 1000)) : std::wstring(L"\x2014"));
         ConnTrafficValue().Text(StrF(L"TrafficFormat", { FormatBytes(cn.bytesIn), FormatBytes(cn.bytesOut) }));

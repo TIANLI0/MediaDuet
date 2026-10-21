@@ -30,9 +30,8 @@ import java.io.File
 data class RemoteState(
     val peerId: String,
     val snapshot: MediaSnapshot,
-    /** Monotonic time the snapshot was received. */
-    val receivedAtMs: Long,
-    val rttMs: Long?,
+    /** Our monotonic time at which the snapshot's positions hold (§11.1). */
+    val positionAtMs: Long,
     val connected: Boolean,
 ) {
     fun session(key: String?): MediaSessionInfo? =
@@ -129,8 +128,8 @@ class RemoteMediaStore(
         _state.update { if (it?.peerId == peerId) it.copy(connected = false) else it }
     }
 
-    fun onSnapshot(peerId: String, snapshot: MediaSnapshot, rttMs: Long?) {
-        val st = RemoteState(peerId, snapshot, clock.nowMs(), rttMs, connected = true)
+    fun onSnapshot(peerId: String, snapshot: MediaSnapshot, positionAtMs: Long) {
+        val st = RemoteState(peerId, snapshot, positionAtMs, connected = true)
         _state.value = st
         if (_selectedKey.value != null && snapshot.sessions.none { it.key == _selectedKey.value }) _selectedKey.value = null
         fetchArtworkFor(st)
@@ -146,7 +145,7 @@ class RemoteMediaStore(
 
     fun positionNow(session: MediaSessionInfo): Long? {
         val st = _state.value ?: return null
-        return RemotePosition.at(session, st.receivedAtMs, st.rttMs, clock.nowMs())
+        return RemotePosition.at(session, st.positionAtMs, clock.nowMs())
     }
 
     private fun fetchArtworkFor(st: RemoteState) {

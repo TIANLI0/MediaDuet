@@ -857,10 +857,10 @@ void HostApp::updateSuspension() {
 }
 
 void HostApp::onRemoteSnapshot(const proto::Envelope& e) {
-    auto st = cm_->status();
-    int64_t latency = st.rttMs > 0 ? st.rttMs / 2 : 0;
+    // Positions hold at the phone's `at`, converted to our clock (spec §11.1); older phones: now − RTT/2.
+    int64_t anchor = cm_->remoteAnchor(media::snapshotAt(e.body));
     std::string err;
-    auto snap = media::snapshotFromWire(e.body, sched_.nowMs(), latency, &err);
+    auto snap = media::snapshotFromWire(e.body, anchor, 0, &err);
     if (!snap) {
         log::warn("host", "invalid snapshot from phone: {}", err);
         return;
@@ -1895,6 +1895,7 @@ void HostApp::tickDiagnostics() {
                   {"msgsIn", ls.msgsIn},
                   {"msgsOut", ls.msgsOut},
                   {"rttMs", ls.rttMs},
+                  {"clockErrorMs", ls.clockErrorMs},
                   {"lastCommandLatencyMs", lastCommandLatency_},
                   {"localSessions", local_.sessions.size()},
                   {"remoteSessions", remote_.sessions.size()},

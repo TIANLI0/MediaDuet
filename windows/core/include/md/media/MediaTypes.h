@@ -151,12 +151,14 @@ std::string computeTrackId(const std::string& title, const std::string& artist, 
 // Truncates over-long strings to the protocol limits (spec §6.1).
 void sanitize(MediaSessionInfo& s);
 
-// Wire format (spec §8.3). positionMs is computed at nowMs.
+// Wire format (spec §8.3). positionMs is computed at nowMs (sent as the snapshot's `at`).
 json toWire(const MediaSessionInfo& s, int64_t nowMs);
 json toWire(const MediaSnapshot& s, int64_t nowMs);
 // Parses and validates; anchors positions at receivedAtMs (+ latencyMs).
 std::optional<MediaSessionInfo> sessionFromWire(const json& j, int64_t receivedAtMs, int64_t latencyMs,
                                                 std::string* err = nullptr);
+// The sender's `at` (its monotonic ms for the positions), when present and valid.
+std::optional<int64_t> snapshotAt(const json& j);
 std::optional<MediaSnapshot> snapshotFromWire(const json& j, int64_t receivedAtMs, int64_t latencyMs,
                                               std::string* err = nullptr);
 

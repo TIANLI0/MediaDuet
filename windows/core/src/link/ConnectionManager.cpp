@@ -243,6 +243,7 @@ void ConnectionManager::setPeers(std::vector<PeerRecord> peers) {
             np->bt.pongCheck.bind(&sched_);
             np->lan.pongCheck.bind(&sched_);
             np->promote.bind(&sched_);
+            np->syncBurst.bind(&sched_);
             np->rec = rec;
             peers_[id] = std::move(np);
             continue;
@@ -286,9 +287,11 @@ void ConnectionManager::setSwitchBackDelay(int64_t ms) { cfg_.switchBackDelayMs 
 void ConnectionManager::setMediaActive(bool active) {
     if (mediaActive_ == active) return;
     mediaActive_ = active;
-    for (auto& [id, p] : peers_)
+    for (auto& [id, p] : peers_) {
         for (Slot* s : {&p->bt, &p->lan})
             if (s->conn && s->conn->state() == Connection::State::Up) armHeartbeat(*p, *s);
+        if (active) startSyncBurst(*p);
+    }
 }
 
 // ------------------------------------------------------------------ platform events
@@ -522,6 +525,7 @@ void ConnectionManager::onConnUp(Peer& p, Slot& s, Connection& c, const SessionC
         if (other.conn && other.conn.get() != &c) other.conn->close("session replaced");
         p.primary = nullptr;
         p.session.reset(est.sid);
+        p.clock.reset(); // possibly another process (or boot) on the other side
     }
     log::info("link", "{} link to {} up (sid {}…, {})", toString(s.kind), p.rec.name, est.sid.substr(0, 8),
               est.resumed ? "resumed" : "new session");
@@ -591,6 +595,7 @@ void ConnectionManager::setPrimary(Peer& p, Connection* c) {
             // Same ids: the peer's de-dup window guarantees at-most-once execution.
             for (auto& e : p.session.resendable(cfg_.resendMaxAgeMs)) c->sendEnvelope(e);
         }
+        startSyncBurst(p);
     }
     for (Slot* s : {&p.bt, &p.lan})
         if (s->conn && s->conn->state() == Connection::State::Up) armHeartbeat(p, *s);
@@ -621,6 +626,25 @@ void ConnectionManager::armHeartbeat(Peer& p, Slot& s) {
         ++p->msgsOut;
         armPongCheck(*p, s);
         armHeartbeat(*p, s);
+    });
+}
+
+void ConnectionManager::startSyncBurst(Peer& p) {
+    if (cfg_.syncBurstPings <= 0) return;
+    p.syncPingsLeft = cfg_.syncBurstPings;
+    armSyncBurst(p);
+}
+
+void ConnectionManager::armSyncBurst(Peer& p) {
+    // Liveness stays with the heartbeat; these pings only feed the clock estimate, so a few in a row
+    // let one of them catch a quiet moment on the link.
+    std::string peerId = p.rec.id;
+    p.syncBurst.start(cfg_.syncBurstGapMs, [this, peerId] {
+        Peer* p = find(peerId);
+        if (!p || !p->primary || p->primary->state() != Connection::State::Up || p->syncPingsLeft <= 0) return;
+        p->primary->sendEnvelope(p->session.make(proto::types::Ping, {{"t", sched_.nowMs()}}));
+        ++p->msgsOut;
+        if (--p->syncPingsLeft > 0) armSyncBurst(*p);
     });
 }
 
@@ -681,7 +705,8 @@ void ConnectionManager::onConnEnvelope(Peer& p, Connection& c, proto::Envelope e
     ++p.msgsIn;
     const std::string& t = e.type;
     if (t == proto::types::Ping) {
-        c.sendEnvelope(p.session.make(proto::types::Pong, {{"t", e.body.value("t", int64_t(0))}}, e.id));
+        // rt: our clock as we answer, for the peer's clock estimate (§11.1).
+        c.sendEnvelope(p.session.make(proto::types::Pong, {{"t", e.body.value("t", int64_t(0))}, {"rt", sched_.nowMs()}}, e.id));
         ++p.msgsOut;
         return;
     }
@@ -691,6 +716,8 @@ void ConnectionManager::onConnEnvelope(Peer& p, Connection& c, proto::Envelope e
         if (sent >= 0 && sent <= now && now - sent < 120'000) {
             int64_t rtt = now - sent;
             p.rttMs = p.rttMs < 0 ? rtt : (p.rttMs * 3 + rtt) / 4;
+            if (auto rt = e.body.find("rt"); rt != e.body.end() && rt->is_number_integer())
+                p.clock.addSample(sent, rt->get<int64_t>(), now);
             listener_.onStatusChanged();
         }
         return;
@@ -910,6 +937,13 @@ const std::vector<std::string>* ConnectionManager::peerCaps() const {
     return p ? &p->caps : nullptr;
 }
 
+int64_t ConnectionManager::remoteAnchor(std::optional<int64_t> peerAt) const {
+    int64_t now = sched_.nowMs();
+    const Peer* p = activePeerPtr();
+    if (!p) return now;
+    return p->clock.anchor(peerAt, now, p->rttMs > 0 ? p->rttMs / 2 : 0);
+}
+
 std::string ConnectionManager::remoteLanHost() const {
     for (auto& [id, p] : peers_)
         if (p->lan.conn && p->lan.conn->state() == Connection::State::Up) return p->lan.conn->remoteHost();
@@ -942,6 +976,7 @@ LinkStatus ConnectionManager::status() const {
     st.peerApp = p->app;
     st.lastError = p->lastError;
     st.rttMs = p->rttMs;
+    st.clockErrorMs = p->clock.uncertaintyMs(sched_.nowMs());
     st.msgsIn = p->msgsIn;
     st.msgsOut = p->msgsOut;
     st.peerCaps = p->caps;

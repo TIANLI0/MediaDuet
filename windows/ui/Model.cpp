@@ -162,6 +162,21 @@ namespace mdui
             QueryPerformanceCounter(&c);
             return static_cast<double>(c.QuadPart) * 1000.0 / freq;
         }
+
+        // The host's clock (platform/Scheduler.cpp): interrupt time, GetTickCount64's time base at
+        // sub-millisecond precision.
+        uint64_t RealTick()
+        {
+            using Fn = VOID(WINAPI*)(PULONGLONG);
+            static const Fn precise = [] {
+                HMODULE kb = GetModuleHandleW(L"kernelbase.dll");
+                return kb ? reinterpret_cast<Fn>(GetProcAddress(kb, "QueryInterruptTimePrecise")) : nullptr;
+            }();
+            if (!precise) return GetTickCount64();
+            ULONGLONG t = 0;
+            precise(&t);
+            return t / 10'000;
+        }
     }
 
     namespace testclock
@@ -169,7 +184,7 @@ namespace mdui
         void Freeze()
         {
             g_qpcBase = g_virtualQpc = RealQpcMs();
-            g_tickBase = GetTickCount64();
+            g_tickBase = RealTick();
             g_frozen = true;
         }
         void Advance(double ms) { g_virtualQpc += ms; }
@@ -178,7 +193,7 @@ namespace mdui
 
     uint64_t TickNow()
     {
-        if (!g_frozen) return GetTickCount64();
+        if (!g_frozen) return RealTick();
         return g_tickBase + static_cast<uint64_t>(std::llround(std::max(0.0, g_virtualQpc - g_qpcBase)));
     }
 

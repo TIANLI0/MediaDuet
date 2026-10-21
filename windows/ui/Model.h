@@ -34,7 +34,7 @@ namespace mdui
     // High-resolution monotonic clock in milliseconds (QueryPerformanceCounter). GetTickCount64 only
     // advances in ~16 ms steps, which is too coarse for per-frame lyric animation.
     double QpcNowMs();
-    // GetTickCount64() for position extrapolation (the host's atTick time base). Both clocks can be
+    // The host's clock for position extrapolation (atTick time base: GetTickCount64's, at sub-ms precision). Both clocks can be
     // frozen and stepped by the off-screen render test (--render-test) for deterministic frames.
     uint64_t TickNow();
     namespace testclock

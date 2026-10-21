@@ -66,8 +66,8 @@ fun rememberPlayerView(engine: Engine): PlayerView? {
                 art = artworks[s.artwork?.hash],
                 connected = st.connected,
                 canControl = st.connected && Caps.MEDIA_CONTROL in link.current?.peerCaps.orEmpty(),
-                positionKey = st.receivedAtMs to s.key,
-                positionAt = { now -> RemotePosition.at(s, st.receivedAtMs, st.rttMs, now) },
+                positionKey = st.positionAtMs to s.key,
+                positionAt = { now -> RemotePosition.at(s, st.positionAtMs, now) },
                 deviceName = link.current?.peer?.name ?: link.sessions.firstOrNull { it.peer.id == st.peerId }?.peer?.name,
                 outputLatencyMs = s.outputLatencyMs ?: 0,
             )

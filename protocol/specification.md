@@ -313,7 +313,7 @@ HANDSHAKE frames; everything else in SECURE/CONTROL records.
 | `session.ready` | S→C | `{sid}` |
 | `link.primary` | C→S | `{}` |
 | `ping` | both | `{t: sender monotonic ms}` |
-| `pong` | both | `{t: echoed t}` (with `re`) |
+| `pong` | both | `{t: echoed t, rt?: responder monotonic ms when answering}` (with `re`); `rt` feeds the clock estimate (§11.1) |
 | `device.info` | both | `DeviceInfo` (name change etc.) |
 | `transport.info` | S→C | `{lan:[{host,port}], btAddress?: "AA:BB:…", btName?: string}` — Android cannot read its own MAC (API 23+), so it sends its Bluetooth adapter name; the client maps it to a bonded device that exposes the MediaDuet SDP record |
 | `volume.state` | both | `{level: 0..1, muted: bool, steps?: int}` — sender's media output volume; sent after `session.ready` and on every change (requires cap `volume`) |
@@ -356,6 +356,7 @@ streamed: receivers extrapolate from `positionMs` using a monotonic clock.
 ```json
 {
   "gen": 17,
+  "at": 86400123,
   "active": "com.netease.cloudmusic#1",
   "sessions": [
     {
@@ -383,8 +384,13 @@ streamed: receivers extrapolate from `positionMs` using a monotonic clock.
   snapshots with a `gen` not greater than the last applied one in this session.
 * `status` ∈ `playing`, `paused`, `stopped`, `buffering`, `unknown`.
 * `actions` ⊆ `play`, `pause`, `toggle`, `next`, `previous`, `seek`, `stop`.
-* `positionMs` is the sender's best estimate *at send time*; receivers add
-  `rtt/2` when known. `durationMs`/`positionMs` may be `null`.
+* `at` (optional, integer ≥ 0): the sender's monotonic clock (the one in
+  `ping.t`) at which every `positionMs` of the snapshot holds. Receivers with a
+  clock estimate (§11.1) anchor the positions at `at` converted to their own
+  clock, so neither the snapshot's own transit time nor queueing on the link
+  shifts them. Without `at` or an estimate, `positionMs` is the sender's
+  estimate *at send time* and receivers add `rtt/2` when known.
+  `durationMs`/`positionMs` may be `null`.
 * `trackId` = first 16 hex chars of SHA-256(`title` ‖ 0x1F ‖ `artist` ‖ 0x1F ‖
   `album` ‖ 0x1F ‖ decimal((`durationMs` + 500) div 1000), or "" when unknown),
   over UTF-8. Changes reset lyric timelines.
@@ -550,6 +556,26 @@ Key rules that the protocol supports:
 * A transport with no inbound record for 3 × interval + 5 s is considered dead.
 * Transport-level errors (socket closed, RFCOMM link loss) are handled
   immediately; heartbeats only cover silent failures.
+
+### 11.1 Clock estimate
+
+Both sides estimate the peer's monotonic clock from their own pings, NTP
+style. A ping sent at `t0` (own clock) answered with `rt` (peer clock) and
+received at `t1` gives `offset = rt − (t0 + t1) / 2`, wrong by at most
+`(t1 − t0) / 2`.
+
+* Keep up to 16 samples of the last 10 minutes. The estimate is the sample with
+  the smallest error bound `rtt / 2 + age × 100 ppm` (clock drift), so slow or
+  asymmetric round trips (Wi-Fi power save, Bluetooth sniff mode, a ping queued
+  behind a BLOB) never move it.
+* A sample further from the estimate than both half-RTTs plus 1 s means a clock
+  restarted: drop the older samples. A new link session starts empty.
+* For a quick estimate, send 5 extra pings 600 ms apart on a transport when it
+  becomes the primary and when media starts playing on either side. They are
+  not heartbeats (liveness keeps the intervals above).
+* Snapshot anchor = `at − offset`, at most "now". An anchor more than 10 s in
+  the past is not trusted; the receiver then falls back to "now − rtt/2".
+* Peers that do not send `rt` or `at` keep working with the `rtt/2` estimate.
 
 ## 12. Versioning and extension
 
