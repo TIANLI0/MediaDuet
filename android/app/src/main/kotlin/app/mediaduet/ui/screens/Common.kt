@@ -25,6 +25,13 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.mediaduet.R
@@ -47,11 +54,11 @@ fun ScreenScaffold(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val scroll = rememberScrollState()
+    // The header (back button + title) stays put; only the content scrolls, fading out under it.
     Column(
         Modifier
             .fillMaxSize()
             .statusBarsPadding()
-            .verticalScroll(scroll)
             .padding(horizontal = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -66,9 +73,29 @@ fun ScreenScaffold(
                     Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            content()
-            // Never let content end behind the floating mini player + tab bar.
-            Spacer(Modifier.height(LocalBottomInset.current + 16.dp))
+        }
+        Column(
+            Modifier
+                .fillMaxSize()
+                .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
+                .drawWithContent {
+                    drawContent()
+                    val fade = 18.dp.toPx()
+                    drawRect(
+                        Brush.verticalGradient(0f to Color.Transparent, 1f to Color.Black, endY = fade),
+                        size = Size(size.width, fade),
+                        blendMode = BlendMode.DstIn,
+                    )
+                }
+                .verticalScroll(scroll),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Column(Modifier.widthIn(max = 640.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                Spacer(Modifier.height(18.dp))
+                content()
+                // Never let content end behind the floating mini player + tab bar.
+                Spacer(Modifier.height(LocalBottomInset.current + 16.dp))
+            }
         }
     }
 }

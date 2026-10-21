@@ -450,14 +450,14 @@
   <data name="LyricsOffsetButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>歌词偏移</value></data>
   <data name="LyricsOffsetTitle.Text" xml:space="preserve"><value>歌词偏移</value></data>
   <data name="LyricsEarlierButton.Content" xml:space="preserve"><value>−0.1 秒</value></data>
-  <data name="LyricsEarlierButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>歌词提前显示（[）</value></data>
+  <data name="LyricsEarlierButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>歌词提前显示 (快捷键 [ )</value></data>
   <data name="LyricsEarlierButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>歌词提前 0.1 秒</value></data>
   <data name="LyricsLaterButton.Content" xml:space="preserve"><value>+0.1 秒</value></data>
-  <data name="LyricsLaterButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>歌词延后显示（]）</value></data>
+  <data name="LyricsLaterButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>歌词延后显示 (快捷键 ] )</value></data>
   <data name="LyricsLaterButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>歌词延后 0.1 秒</value></data>
   <data name="LyricsOffsetResetButton.Content" xml:space="preserve"><value>重置</value></data>
   <data name="OffsetSeconds" xml:space="preserve"><value>{0} 秒</value></data>
-  <data name="LyricsOffsetDetail" xml:space="preserve"><value>适用于 {0}。正值表示歌词延后显示。快捷键：[ 和 ]。</value></data>
+  <data name="LyricsOffsetDetail" xml:space="preserve"><value>适用于 {0}。正值表示歌词延后显示。快捷键：英文方括号 [ 和 ]。</value></data>
   <data name="LyricsOffsetLatency" xml:space="preserve"><value>已自动补偿音频输出延迟：{0} 毫秒。</value></data>
   <data name="LyricsOffsetReset" xml:space="preserve"><value>重置</value></data>
   <data name="LyricsOffsetResetFor" xml:space="preserve"><value>重置 {0} 的歌词偏移</value></data>

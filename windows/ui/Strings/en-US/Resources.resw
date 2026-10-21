@@ -450,10 +450,10 @@
   <data name="LyricsOffsetButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Lyrics timing</value></data>
   <data name="LyricsOffsetTitle.Text" xml:space="preserve"><value>Lyrics timing</value></data>
   <data name="LyricsEarlierButton.Content" xml:space="preserve"><value>−0.1 s</value></data>
-  <data name="LyricsEarlierButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Show the lyrics earlier ( [ )</value></data>
+  <data name="LyricsEarlierButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Show the lyrics earlier (shortcut: [ )</value></data>
   <data name="LyricsEarlierButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Show the lyrics 0.1 seconds earlier</value></data>
   <data name="LyricsLaterButton.Content" xml:space="preserve"><value>+0.1 s</value></data>
-  <data name="LyricsLaterButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Show the lyrics later ( ] )</value></data>
+  <data name="LyricsLaterButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Show the lyrics later (shortcut: ] )</value></data>
   <data name="LyricsLaterButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Show the lyrics 0.1 seconds later</value></data>
   <data name="LyricsOffsetResetButton.Content" xml:space="preserve"><value>Reset</value></data>
   <data name="OffsetSeconds" xml:space="preserve"><value>{0} s</value></data>

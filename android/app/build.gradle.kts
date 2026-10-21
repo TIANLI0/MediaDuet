@@ -20,8 +20,8 @@ android {
         applicationId = "app.mediaduet"
         minSdk = 29
         targetSdk = 37
-        versionCode = 11
-        versionName = "1.6.0"
+        versionCode = 12
+        versionName = "1.6.1"
         androidResources.localeFilters += listOf("en", "zh-rCN")
         // Ships for 64-bit ARM phones only. -Pmediaduet.emulatorAbi adds x86_64 for local emulator runs.
         ndk {

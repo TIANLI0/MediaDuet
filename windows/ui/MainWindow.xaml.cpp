@@ -200,6 +200,8 @@ namespace winrt::MediaDuetUI::implementation
             });
             Root().KeyboardAccelerators().Append(accel);
         }
+        // Otherwise XAML shows the accelerator name ("Back") as a tooltip anywhere over Root.
+        Root().KeyboardAcceleratorPlacementMode(Microsoft::UI::Xaml::Input::KeyboardAcceleratorPlacementMode::Hidden);
         // Player shortcuts: Space play/pause, Left/Right seek 5 s, [ / ] lyrics earlier/later.
         // Bubbling KeyDown: focused controls that use these keys themselves (buttons, sliders,
         // text boxes) handle them first.

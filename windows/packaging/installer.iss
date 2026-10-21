@@ -1,12 +1,12 @@
 ; Inno Setup 6 script for MediaDuet (per-user install, no admin rights).
 ; Build the staged folder first:  windows\packaging\package.ps1 -Arch x64
-; Then:  iscc /DArch=x64 /DVersion=1.6.0 windows\packaging\installer.iss
+; Then:  iscc /DArch=x64 /DVersion=1.6.1 windows\packaging\installer.iss
 
 #ifndef Arch
   #define Arch "x64"
 #endif
 #ifndef Version
-  #define Version "1.6.0"
+  #define Version "1.6.1"
 #endif
 #define Staged "..\..\dist\MediaDuet-" + Version + "-win-" + Arch
 

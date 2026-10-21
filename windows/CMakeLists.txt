@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(MediaDuet VERSION 1.6.0 LANGUAGES CXX)
+project(MediaDuet VERSION 1.6.1 LANGUAGES CXX)
 
 if(NOT MSVC)
   message(FATAL_ERROR "MediaDuet for Windows requires MSVC (C++/WinRT, Windows SDK).")

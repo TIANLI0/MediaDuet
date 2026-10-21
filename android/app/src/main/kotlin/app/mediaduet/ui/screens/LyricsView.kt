@@ -3,6 +3,9 @@ package app.mediaduet.ui.screens
 import android.os.Build
 import android.os.SystemClock
 import android.provider.Settings
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
@@ -218,6 +221,8 @@ fun SyncedLyrics(
         }
     }
     val listState = rememberLazyListState()
+    // The "back to current" pill refracts the lyrics under it, not just the page background.
+    val lyricsLayer = rememberLayerBackdrop()
     var browsing by remember { mutableStateOf(false) }
     var programmatic by remember { mutableStateOf(false) }
     var flashIndex by remember { mutableIntStateOf(-1) }
@@ -266,6 +271,7 @@ fun SyncedLyrics(
         LazyColumn(
             Modifier
                 .fillMaxSize()
+                .layerBackdrop(lyricsLayer)
                 // Alpha mask (not decoration): lines dissolve at the top (under the header) and the
                 // bottom (under the floating controls) instead of being cut off.
                 .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
@@ -324,7 +330,7 @@ fun SyncedLyrics(
             exit = fadeOut() + scaleOut(targetScale = 0.9f),
             modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp + bottomObscured),
         ) {
-            GlassButton({ browsing = false }, backdrop, height = 44.dp) {
+            GlassButton({ browsing = false }, rememberCombinedBackdrop(backdrop, lyricsLayer), height = 44.dp) {
                 Text(stringResource(R.string.lyrics_back_to_current), style = MaterialTheme.typography.labelLarge)
             }
         }
@@ -371,7 +377,8 @@ private fun LyricLineItem(
             .then(
                 if (onClick != null) Modifier.clickable(remember { MutableInteractionSource() }, indication = null, onClick = onClick) else Modifier,
             )
-            .padding(vertical = 13.dp)
+            // The layer includes the padding: a blurred or offscreen layer clips at its bounds, and
+            // glyphs (and the blur) reach past the text box.
             .graphicsLayer {
                 this.alpha = alpha
                 scaleX = scale
@@ -379,15 +386,17 @@ private fun LyricLineItem(
                 transformOrigin = TransformOrigin(0f, 0.5f)
                 val r = blurDp.dp.toPx()
                 renderEffect = if (r > 0.5f) BlurEffect(r, r, TileMode.Decal) else null
-            },
+            }
+            .padding(vertical = 7.dp),
     ) {
         Text(
             row.line.text,
             style = lyricStyle,
             color = color,
             onTextLayout = { layout = it },
-            modifier = if (!isActive) Modifier else Modifier
+            modifier = if (!isActive) Modifier.padding(vertical = 6.dp) else Modifier
                 .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
+                .padding(vertical = 6.dp)
                 .drawWithContent {
                     drawContent()
                     val l = layout ?: return@drawWithContent

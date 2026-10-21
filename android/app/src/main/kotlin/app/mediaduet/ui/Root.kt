@@ -79,6 +79,7 @@ import app.mediaduet.service.WorkMode
 import app.mediaduet.ui.screens.ModeWelcome
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 
 /** Shared UI state handed to screens. */
 class UiContext(
@@ -171,15 +172,27 @@ fun MediaDuetRoot(engine: Engine, requestedPage: MutableState<String?>) {
     // predictive-back gesture before they pop. At the root the system takes over (the activity
     // moves to the back, see MainActivity).
     var backProgress by remember { mutableFloatStateOf(0f) }
+    // The page the gesture dragged. On commit it keeps its dragged offset while it slides out
+    // (resetting first made it jump back to full size, then animate: a visible stutter).
+    var backRoute by remember { mutableStateOf<Any?>(Unit) }   // Unit = none; null = Settings root
+    var backCommit by remember { mutableIntStateOf(0) }
     PredictiveBackHandler(enabled = confirm != null || nav.back() != null) { events ->
+        var committed = false
         try {
+            backRoute = nav.route
             events.collect { if (confirm == null && nav.backPopsSettingsPage) backProgress = it.progress }
+            committed = true
             if (confirm != null) confirm = null else nav.back()?.let { nav = it }
         } catch (e: CancellationException) {
             throw e
         } finally {
-            backProgress = 0f
+            if (committed && backProgress > 0f) backCommit++ else backProgress = 0f
         }
+    }
+    LaunchedEffect(backCommit) {
+        if (backCommit == 0) return@LaunchedEffect
+        delay(320)   // the pop transition
+        backProgress = 0f
     }
 
     // Measured floating inset: the mini player (Settings stack only) plus the navigation bar.
@@ -232,7 +245,7 @@ fun MediaDuetRoot(engine: Engine, requestedPage: MutableState<String?>) {
                             Box(
                                 Modifier.graphicsLayer {
                                     // The page on top follows the predictive-back gesture.
-                                    if (backProgress > 0f && r == nav.route) {
+                                    if (backProgress > 0f && r == backRoute) {
                                         translationX = size.width * 0.3f * backProgress
                                         val s = 1f - 0.06f * backProgress
                                         scaleX = s
