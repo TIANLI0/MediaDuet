@@ -118,10 +118,18 @@ class PairingController(private val scope: CoroutineScope, private val clock: Mo
         if (current !== attempt) return
         current = null
         attempt.decision.complete(false)
-        _state.update {
-            it.copy(prompt = null, lastOutcome = Outcome(attempt.id, attempt.peer.name, success, reason))
+        if (success) {
+            windowJob?.cancel()
+            windowJob = null
         }
-        if (success) closeWindow()
+        // One update: whoever sees the outcome also sees pairing mode closed after a success.
+        _state.update {
+            it.copy(
+                prompt = null,
+                lastOutcome = Outcome(attempt.id, attempt.peer.name, success, reason),
+                windowUntilMs = if (success) null else it.windowUntilMs,
+            )
+        }
     }
 
     companion object {
