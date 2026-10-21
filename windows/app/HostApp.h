@@ -3,6 +3,7 @@
 #include "Diagnostics.h"
 #include "HandoffHost.h"
 #include "IpcServer.h"
+#include "ResumeButton.h"
 #include "TrayIcon.h"
 
 #include "Scheduler.h"
@@ -149,6 +150,9 @@ private:
     uint64_t localGen_ = 0;
     void rebuildLocal();
     void executeLocal(const media::MediaCommand& cmd, std::function<void(bool, const std::string&)> done);
+    // Play queues of our own sessions (NetEase's) for the UI: key -> rev + current entry sent.
+    std::map<std::string, std::string> localQueueSent_;
+    void syncLocalQueues();
     std::unique_ptr<platform::SmtcBridge> smtc_;
     std::unique_ptr<platform::AudioActivityMonitor> audio_;
     std::unique_ptr<policy::PlaybackArbiter> arbiter_;
@@ -169,6 +173,18 @@ private:
     bool gated_ = false;
     std::unique_ptr<platform::LyricsService> lyrics_;
     std::unique_ptr<HandoffHost> handoff_;
+    // Taskbar "continue on this PC" for the phone's song (handoff.taskbarResume).
+    std::unique_ptr<ResumeButton> resume_;
+    void updateResumeButton();
+    void onResumeClicked();
+    static constexpr int64_t kResumeOfferMs = 10 * 60'000; // offered this long after the phone paused
+    std::string resumeTrack_;     // key + trackId of the phone's song last seen playing
+    int64_t resumePlayedAt_ = -1; // when it was last seen playing
+    std::string resumeShown_;     // the track the button offers
+    std::string resumeDismissed_; // closed by the user or handed off: not offered again...
+    bool resumeSawPause_ = false; // ...until the track changes or the phone plays it again after a pause
+    std::string resumeRunning_;   // the track a handoff started from the button is moving
+    ScopedTimer resumeExpiry_, resumeFailed_;
     std::unique_ptr<platform::Updater> updater_;
     bool peerHasCap(const char* cap) const;
     std::unique_ptr<platform::LyricsOverlay> overlay_;

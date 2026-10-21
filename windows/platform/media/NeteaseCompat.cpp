@@ -13,6 +13,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -28,6 +29,13 @@ namespace {
 
 constexpr int64_t kScanMs = 5'000;          // look for the NetEase window (cheap FindWindow)
 constexpr wchar_t kClass[] = L"OrpheusBrowserHost";
+// NetEase's player: a few small reads per poll. Its position advances in 10 ms steps every ~30 ms,
+// so a reading is exact; a seek or a stall shows within one poll.
+constexpr int64_t kPollPlayingMs = 500;
+constexpr int64_t kPollIdleMs = 1'000;
+constexpr int64_t kResyncMs = 200;   // re-anchor when the reading leaves the extrapolation by more
+constexpr int kMaxReadFailures = 3;  // then fall back to the estimate
+constexpr int64_t kQueueCheckMs = 2'000; // the play queue file, while NetEase's player is read
 
 std::mutex g_hookMutex;
 std::map<HWINEVENTHOOK, NeteaseCompat*> g_hooks;
@@ -64,7 +72,7 @@ struct NeteaseCompat::Hook {
 };
 
 NeteaseCompat::NeteaseCompat(IScheduler& sched, ArtworkCache& art, std::function<void()> changed)
-    : sched_(sched), art_(art), changed_(std::move(changed)), scanTimer_(&sched) {}
+    : sched_(sched), art_(art), changed_(std::move(changed)), scanTimer_(&sched), pollTimer_(&sched) {}
 
 NeteaseCompat::~NeteaseCompat() {
     *alive_ = false;
@@ -108,6 +116,7 @@ void NeteaseCompat::scan() {
             attach(h, pid);
         }
     }
+    if (hwnd_) checkQueueFile();
     scanTimer_.start(kScanMs, [this] { scan(); });
 }
 
@@ -122,6 +131,159 @@ void NeteaseCompat::attach(HWND hwnd, DWORD pid) {
     }
     log::info("netease", "attached to NetEase Cloud Music (pid {})", pid);
     onTitle();
+    openMemory(pid);
+}
+
+void NeteaseCompat::openMemory(DWORD pid) {
+    uint64_t gen = ++memGen_;
+    std::weak_ptr<bool> alive = alive_;
+    [](NeteaseCompat* self, std::weak_ptr<bool> alive, DWORD pid, uint64_t gen) -> fire_and_forget {
+        co_await resume_background();
+        std::string why;
+        std::shared_ptr<NeteaseMemory> mem = NeteaseMemory::open(pid, &why);
+        self->sched_.post([self, alive, gen, mem, why] {
+            if (alive.expired() || gen != self->memGen_) return;
+            if (!mem) {
+                log::info("netease", "player not readable ({}): position is estimated", why);
+                return;
+            }
+            log::info("netease", "reading the playback position from NetEase's player");
+            self->mem_ = mem;
+            self->memFailures_ = 0;
+            self->memStatus_ = media::PlaybackStatus::Unknown;
+            self->poll();
+        });
+    }(this, alive, pid, gen);
+}
+
+void NeteaseCompat::poll() {
+    if (!mem_) return;
+    int64_t now = sched_.nowMs();
+    if (auto r = mem_->read()) {
+        memFailures_ = 0;
+        using media::PlaybackStatus;
+        PlaybackStatus status = r->status == static_cast<int>(media::netease::PlayerStatus::Playing) ? PlaybackStatus::Playing
+                                : r->status == static_cast<int>(media::netease::PlayerStatus::Paused) ? PlaybackStatus::Paused
+                                                                                                       : PlaybackStatus::Stopped;
+        int64_t pos = std::llround(r->positionSec * 1000.0);
+        std::optional<int64_t> dur;
+        if (r->durationSec > 0) dur = std::llround(r->durationSec * 1000.0);
+        int64_t predicted = memPosMs_ + (memStatus_ == PlaybackStatus::Playing ? now - memAt_ : 0);
+        if (memSeekUntil_ > 0) {
+            // NetEase has not jumped yet: keep showing the target instead of the old position.
+            if (now < memSeekUntil_ && r->songId == memId_ && std::llabs(pos - predicted) > kResyncMs) {
+                pollTimer_.start(150, [this] { poll(); });
+                return;
+            }
+            memSeekUntil_ = 0;
+        }
+        if (status != memStatus_ || dur != memDurationMs_ || r->songId != memId_ || std::llabs(pos - predicted) > kResyncMs) {
+            memStatus_ = status;
+            memPosMs_ = pos;
+            memAt_ = now;
+            memDurationMs_ = dur;
+            memId_ = r->songId;
+            if (changed_) changed_();
+        }
+    } else if (++memFailures_ >= kMaxReadFailures) {
+        log::warn("netease", "NetEase's player stopped answering: position is estimated again");
+        mem_.reset();
+        if (changed_) changed_();
+        return;
+    }
+    if (now - queueCheckedAt_ >= kQueueCheckMs) checkQueueFile();
+    pollTimer_.start(memStatus_ == media::PlaybackStatus::Playing ? kPollPlayingMs : kPollIdleMs, [this] { poll(); });
+}
+
+void NeteaseCompat::checkQueueFile() {
+    queueCheckedAt_ = sched_.nowMs();
+    if (queueLoading_) return;
+    fs::path path = queueFile();
+    WIN32_FILE_ATTRIBUTE_DATA fa{};
+    if (path.empty() || !GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &fa)) {
+        if (queue_) {
+            queue_.reset();
+            queueStamp_ = 0;
+            if (changed_) changed_();
+        }
+        return;
+    }
+    uint64_t stamp = ((static_cast<uint64_t>(fa.ftLastWriteTime.dwHighDateTime) << 32) | fa.ftLastWriteTime.dwLowDateTime) ^
+                     ((static_cast<uint64_t>(fa.nFileSizeHigh) << 32) | fa.nFileSizeLow);
+    if (stamp == queueStamp_) return;
+    queueLoading_ = true;
+    std::weak_ptr<bool> alive = alive_;
+    [](NeteaseCompat* self, std::weak_ptr<bool> alive, fs::path path, uint64_t stamp) -> fire_and_forget {
+        co_await resume_background();
+        std::shared_ptr<const media::netease::PlayingList> list;
+        try {
+            std::ifstream in(path, std::ios::binary);
+            std::stringstream ss;
+            ss << in.rdbuf();
+            if (auto l = media::netease::parsePlayingList(ss.str())) list = std::make_shared<const media::netease::PlayingList>(std::move(*l));
+        } catch (...) {
+        }
+        self->sched_.post([self, alive, stamp, list] {
+            if (alive.expired()) return;
+            self->queueLoading_ = false;
+            if (!list) return; // NetEase is writing it: read again at the next check
+            self->queueStamp_ = stamp;
+            if (self->queue_ && self->queue_->rev == list->rev) return;
+            self->queue_ = list;
+            log::debug("netease", "play queue: {} entries (rev {})", list->entries.size(), list->rev);
+            if (self->changed_) self->changed_();
+        });
+    }(this, alive, std::move(path), stamp);
+}
+
+int64_t NeteaseCompat::activeSongId(const std::string& key) const {
+    if (mem_ && memId_ > 0) return memId_;
+    return key == kKey ? songId_ : supId_;
+}
+
+void NeteaseCompat::applyQueue(media::MediaSessionInfo& s, int64_t activeId) const {
+    if (!queue_ || queue_->entries.empty()) return;
+    media::QueueHint h;
+    h.count = static_cast<int>(queue_->entries.size());
+    h.rev = queue_->rev;
+    if (activeId > 0)
+        for (auto& e : queue_->entries)
+            if (e.id == activeId) {
+                h.activeId = activeId;
+                break;
+            }
+    s.queue = h;
+}
+
+std::optional<media::MediaQueue> NeteaseCompat::queue(const std::string& key) const {
+    if (!handlesQueue(key)) return std::nullopt;
+    int64_t active = activeSongId(key);
+    return media::netease::queueWindow(*queue_, key, active > 0 ? std::optional<int64_t>(active) : std::nullopt);
+}
+
+bool NeteaseCompat::playQueueItem(const std::string& key, int64_t id) {
+    if (!handlesQueue(key) || id <= 0) return false;
+    // NetEase's own web command plays the song; it stays in the queue it is part of.
+    std::wstring uri = text::toWide(handoff::neteaseDesktopPlay(std::to_string(id)));
+    auto h = ShellExecuteW(nullptr, L"open", uri.c_str(), nullptr, nullptr, SW_SHOWNOACTIVATE);
+    if (reinterpret_cast<INT_PTR>(h) <= 32) {
+        log::warn("netease", "play command failed ({})", reinterpret_cast<INT_PTR>(h));
+        return false;
+    }
+    if (mem_) pollTimer_.start(300, [this] { poll(); });
+    return true;
+}
+
+void NeteaseCompat::applyMemory(media::MediaSessionInfo& s, int64_t shownId) const {
+    if (!mem_ || memStatus_ == media::PlaybackStatus::Unknown) return;
+    // The player switches songs a moment before the title follows: keep the old track's values meanwhile.
+    if (shownId > 0 && memId_ > 0 && shownId != memId_) return;
+    if (memStatus_ != media::PlaybackStatus::Stopped) s.status = memStatus_;
+    s.positionMs = memPosMs_;
+    s.positionAtMs = memAt_;
+    if (memDurationMs_) s.durationMs = memDurationMs_;
+    if (memId_ > 0) s.ids.netease = std::to_string(memId_);
+    s.actions |= media::action::Seek;
 }
 
 void NeteaseCompat::detach() {
@@ -131,6 +293,12 @@ void NeteaseCompat::detach() {
         g_hooks.erase(hook_);
     }
     bool had = hwnd_ != nullptr;
+    ++memGen_;
+    pollTimer_.cancel();
+    mem_.reset();
+    memStatus_ = media::PlaybackStatus::Unknown;
+    memId_ = 0;
+    memDurationMs_.reset();
     hook_ = nullptr;
     hwnd_ = nullptr;
     pid_ = 0;
@@ -227,7 +395,9 @@ void NeteaseCompat::supplement(media::MediaSessionInfo& s) {
                 co_await resume_background();
                 auto m = lookupQueue(title, artist);
                 self->sched_.post([self, alive, gen, m] {
-                    if (alive.expired() || gen != self->supGen_ || m.durationMs <= 0) return;
+                    if (alive.expired() || gen != self->supGen_) return;
+                    if (m.id > 0) self->supId_ = m.id;
+                    if (m.durationMs <= 0) return;
                     self->supDuration_ = m.durationMs;
                     log::debug("netease", "duration from the play queue: {} ms", m.durationMs);
                     if (self->changed_) self->changed_();
@@ -245,6 +415,8 @@ void NeteaseCompat::supplement(media::MediaSessionInfo& s) {
     if (supDuration_) pos = std::min(pos, *supDuration_);
     s.positionMs = pos;
     s.positionAtMs = supAt_;
+    applyMemory(s, supId_);
+    applyQueue(s, activeSongId(s.key));
 }
 
 void NeteaseCompat::enrich(const std::string& title, const std::string& artist, uint64_t gen) {
@@ -292,6 +464,8 @@ std::optional<media::MediaSessionInfo> NeteaseCompat::session() const {
                 media::action::Pause;
     s.artwork = artwork_;
     if (songId_ > 0) s.ids.netease = std::to_string(songId_);
+    applyMemory(s, songId_);
+    applyQueue(s, activeSongId(kKey));
     media::sanitize(s);
     s.updateTrackId();
     return s;
@@ -314,20 +488,29 @@ bool NeteaseCompat::seek(const std::string& key, int64_t positionMs) {
         supPos_ = std::max<int64_t>(positionMs, 0);
         supAt_ = now;
     }
+    if (mem_) {
+        // Show the target right away; the next readings confirm it (NetEase takes ~100-300 ms).
+        memPosMs_ = std::max<int64_t>(positionMs, 0);
+        if (memDurationMs_) memPosMs_ = std::min(memPosMs_, *memDurationMs_);
+        memAt_ = now;
+        memSeekUntil_ = now + 3'000;
+        pollTimer_.start(150, [this] { poll(); });
+    }
     if (changed_) changed_();
     return true;
 }
 
 bool NeteaseCompat::execute(media::CommandAction action) {
     if (!hwnd_ || !IsWindow(hwnd_)) return false;
+    bool playing = mem_ && memStatus_ != media::PlaybackStatus::Unknown ? memStatus_ == media::PlaybackStatus::Playing : audible_;
     int cmd = 0;
     switch (action) {
     case media::CommandAction::Play:
-        if (audible_) return true;
+        if (playing) return true;
         cmd = APPCOMMAND_MEDIA_PLAY_PAUSE;
         break;
     case media::CommandAction::Pause:
-        if (!audible_) return true;
+        if (!playing) return true;
         cmd = APPCOMMAND_MEDIA_PLAY_PAUSE;
         break;
     case media::CommandAction::Toggle: cmd = APPCOMMAND_MEDIA_PLAY_PAUSE; break;

@@ -423,7 +423,8 @@ namespace mdui
         }
         else if (type == "queue")
         {
-            auto key = JStr(*message, "key");
+            // Phone sessions, and NetEase's on this PC (its play queue file).
+            auto key = JStr(*message, "side", "remote") + '\x1f' + JStr(*message, "key");
             auto q = message->find("queue");
             if (q == message->end() || !q->is_object()) m_queues.erase(key);
             else m_queues[key] = ParseQueue(*q);
@@ -619,8 +620,7 @@ namespace mdui
 
     Queue const* Controller::QueueFor(Side side, std::string const& key) const
     {
-        if (side != Side::Remote) return nullptr;
-        auto it = m_queues.find(key);
+        auto it = m_queues.find(std::string(SideName(side)) + '\x1f' + key);
         return it == m_queues.end() ? nullptr : &it->second;
     }
 

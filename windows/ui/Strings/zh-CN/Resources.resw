@@ -194,6 +194,9 @@
   <data name="WelcomeStandaloneDesc.Text" xml:space="preserve"><value>为此电脑上播放的内容提供播放器、歌词、桌面歌词和任务栏歌词。无需手机，不进行蓝牙或网络连接。</value></data>
   <data name="WelcomeFootnote.Text" xml:space="preserve"><value>之后可随时在“设置 &gt; 常规”中更改。</value></data>
   <data name="HdrArtwork.Text" xml:space="preserve"><value>封面</value></data>
+  <data name="HdrHandoff.Text" xml:space="preserve"><value>接力</value></data>
+  <data name="SetTaskbarResumeTitle.Text" xml:space="preserve"><value>在任务栏显示手机上的播放</value></data>
+  <data name="SetTaskbarResumeDesc.Text" xml:space="preserve"><value>手机用网易云音乐、QQ 音乐或 Spotify 播放，且这台电脑装有同一款应用时，任务栏会出现一个按钮，点击即在电脑上从相同进度继续播放。</value></data>
   <data name="SetArtworkOnlineTitle.Text" xml:space="preserve"><value>在线查找高清封面</value></data>
   <data name="SetArtworkOnlineDesc.Text" xml:space="preserve"><value>当播放器只提供小尺寸封面时，MediaDuet 会在网易云音乐、QQ 音乐或 iTunes 中查找这首歌（会发送歌名、歌手和专辑）。关闭后，之前找到的封面仍会使用。</value></data>
   <data name="HdrDeveloper.Text" xml:space="preserve"><value>开发者</value></data>
@@ -418,9 +421,9 @@
   <data name="SetTaskbarFontSizeTitle.Text" xml:space="preserve"><value>字号</value></data>
   <data name="CompatIntro.Text" xml:space="preserve"><value>支持不向 Windows 发布播放信息的播放器。</value></data>
   <data name="SetNeteaseDesktopTitle.Text" xml:space="preserve"><value>网易云音乐 Windows 版</value></data>
-  <data name="SetNeteaseDesktopDesc.Text" xml:space="preserve"><value>即使网易云音乐没有发布媒体会话也能识别它：标题来自其窗口，播放状态来自其音频，控制命令发送到其窗口。</value></data>
+  <data name="SetNeteaseDesktopDesc.Text" xml:space="preserve"><value>识别网易云音乐并获取准确的播放进度：标题来自其窗口，播放状态、进度和歌曲来自其播放器（只读），控制和跳转由网易云自己执行。</value></data>
   <data name="CompatLimits.Title" xml:space="preserve"><value>限制</value></data>
-  <data name="CompatLimits.Message" xml:space="preserve"><value>此类播放器的播放进度为估计值，封面和跳转可能不可用。</value></data>
+  <data name="CompatLimits.Message" xml:space="preserve"><value>如果网易云更新后播放器位置变化，在 MediaDuet 适配新版本之前进度会改为估计值，期间无法跳转。</value></data>
   <data name="VolumeMuted" xml:space="preserve"><value>静音</value></data>
   <data name="Pixels" xml:space="preserve"><value>{0} 像素</value></data>
   <data name="Provider_netease" xml:space="preserve"><value>网易云音乐</value></data>

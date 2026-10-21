@@ -12,6 +12,7 @@ import app.mediaduet.protocol.ErrorCode
 import app.mediaduet.protocol.Hex
 import app.mediaduet.protocol.LyricsPush
 import app.mediaduet.protocol.MediaCommand
+import app.mediaduet.protocol.MediaQueue
 import app.mediaduet.protocol.MediaSessionInfo
 import app.mediaduet.protocol.MediaSnapshot
 import app.mediaduet.protocol.PolicyStatus
@@ -73,6 +74,11 @@ class RemoteMediaStore(
     private val _artwork = MutableStateFlow<Map<String, Bitmap>>(emptyMap())
     val artwork: StateFlow<Map<String, Bitmap>> = _artwork
 
+    /** Play queues of PC sessions that expose one (NetEase Cloud Music), by session key. */
+    private val _queues = MutableStateFlow<Map<String, MediaQueue>>(emptyMap())
+    val queues: StateFlow<Map<String, MediaQueue>> = _queues
+    private val queueAsked = HashMap<String, Pair<String, Long>>() // key -> rev asked for, when
+
     private val _policy = MutableStateFlow<PolicyStatus?>(null)
     val policy: StateFlow<PolicyStatus?> = _policy
 
@@ -114,6 +120,8 @@ class RemoteMediaStore(
         if (!resumed || current?.peerId != peerId) {
             // §7: a new session discards peer state; the peer re-sends a full snapshot.
             _state.value = null
+            _queues.value = emptyMap()
+            synchronized(queueAsked) { queueAsked.clear() }
             _policy.value = null
             _volume.value = null
             _sink.value = null
@@ -134,6 +142,47 @@ class RemoteMediaStore(
         if (_selectedKey.value != null && snapshot.sessions.none { it.key == _selectedKey.value }) _selectedKey.value = null
         fetchArtworkFor(st)
         pruneArtwork(snapshot)
+        syncQueues(peerId, snapshot)
+    }
+
+    /**
+     * Keeps the PC sessions' queues current: fetched again when a session's `rev` changes; a new
+     * current entry alone only moves `activeId` (§8.3). Queues of sessions without one are dropped.
+     */
+    private fun syncQueues(peerId: String, snapshot: MediaSnapshot) {
+        // Snapshots and queues both arrive on the link dispatcher: no concurrent writer.
+        val now = clock.nowMs()
+        val have = _queues.value
+        val next = HashMap<String, MediaQueue>()
+        for (s in snapshot.sessions) {
+            val hint = s.queue ?: continue
+            val q = have[s.key]
+            if (q != null && q.rev == hint.rev) {
+                next[s.key] = if (q.activeId != hint.activeId) q.copy(activeId = hint.activeId) else q
+                continue
+            }
+            if (q != null) next[s.key] = q // shown until the new list arrives
+            val ask = synchronized(queueAsked) {
+                val last = queueAsked[s.key]
+                if (last != null && last.first == hint.rev && now - last.second < QUEUE_RETRY_MS) false
+                else { queueAsked[s.key] = hint.rev to now; true }
+            }
+            if (ask) link.requestQueue(peerId, s.key)
+        }
+        if (next != have) _queues.value = next
+    }
+
+    fun onQueue(queue: MediaQueue) {
+        val hint = _state.value?.snapshot?.sessions?.firstOrNull { it.key == queue.key }?.queue ?: return
+        // A newer current entry than the list was made with comes from the snapshot.
+        _queues.update { it + (queue.key to if (queue.rev == hint.rev) queue.copy(activeId = hint.activeId) else queue) }
+    }
+
+    /** Plays entry [id] of PC session [key]'s queue. */
+    suspend fun playQueueItem(key: String, id: Long): CommandResult {
+        val session = _state.value?.snapshot?.sessions?.firstOrNull { it.key == key } ?: return CommandResult.failure(ErrorCode.NO_SESSION)
+        if (session.queue == null) return CommandResult.failure(ErrorCode.ACTION_UNSUPPORTED)
+        return link.sendCommand(MediaCommand(key, Action.PLAY_QUEUE_ITEM, null, MediaCommand.ORIGIN_USER, "android_ui", queueId = id))
     }
 
     fun select(key: String?) {
@@ -267,6 +316,7 @@ class RemoteMediaStore(
     companion object {
         private const val TAG = "MD/Remote"
         const val REQUEST_RETRY_MS = 20_000L
+        const val QUEUE_RETRY_MS = 10_000L
         const val DISK_CACHE_BYTES = 16L * 1024 * 1024
     }
 }

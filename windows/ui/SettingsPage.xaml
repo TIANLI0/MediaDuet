@@ -886,6 +886,18 @@
                                     <ToggleSwitch x:Name="ArtworkOnlineToggle" Grid.Column="2" />
                                 </Grid>
                             </Border>
+                            <TextBlock x:Uid="HdrHandoff" Style="{StaticResource SectionHeaderStyle}" />
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE977;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetTaskbarResumeTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="SetTaskbarResumeDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                    <ToggleSwitch x:Name="TaskbarResumeToggle" Grid.Column="2" />
+                                </Grid>
+                            </Border>
                         </StackPanel>
 
                         <!-- ================= Audio ================= -->

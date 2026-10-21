@@ -19,7 +19,7 @@ MediaDuet 连接你的 **Windows 电脑和 Android 手机**，让你在任意一
 - **手机听歌，电脑切歌。** 手机放在一旁，在电脑上查看歌名、封面和进度，暂停、切歌或调节音量；也可以反过来，用手机控制电脑上的音乐和视频。
 - **电脑有声音时，让手机音乐先停一停。** 例如耳机同时连接电脑和手机：电脑开始播放视频或游戏声音时，自动暂停手机音乐；电脑安静后再恢复。你手动暂停的音乐会保持暂停。
 - **把歌词放到方便看的地方。** 在电脑播放器、桌面悬浮窗、任务栏或手机上看同步歌词，支持逐字高亮和译文，也可以手动调整歌词时间。
-- **换台设备，接着听。** 把当前歌曲交给另一台设备上的网易云音乐、QQ 音乐或 Spotify，尝试从当前进度继续播放。效果取决于目标播放器和曲库，详见下方说明。
+- **换台设备，接着听。** 把当前歌曲交给另一台设备上的网易云音乐、QQ 音乐或 Spotify，尝试从当前进度继续播放。手机在播放时，电脑任务栏会出现一个「在电脑上继续」按钮，点一下就接着放。效果取决于目标播放器和曲库，详见下方说明。
 - **只用一台设备也有用。** 选择“仅此电脑”或“仅此手机”，就能控制本机播放、查看歌词；电脑端还能使用桌面歌词和任务栏歌词。
 
 此外，还支持 Windows 键盘媒体键控制手机播放、迷你播放器、电脑应用单独调音量，以及在软件内检查和安装更新。
@@ -189,7 +189,7 @@ macOS / Linux 使用 `./gradlew`。Debug APK 位于 `android/app/build/outputs/a
 - **Remote controls:** view track information, pause, skip, seek and adjust volume on the other device, where supported by the player.
 - **Automatic pause and resume:** PC video or game audio can pause phone music and let it resume when the PC goes quiet. Music you paused yourself stays paused. Choose PC-first, phone-first, latest-started, custom priorities, or turn this off.
 - **Lyrics:** synced lyrics and translations in both apps, plus desktop and taskbar lyrics on Windows.
-- **Handoff:** try to continue a song on the other device using NetEase Cloud Music, QQ Music or Spotify. Results depend on the target app and catalogue; some targets only open the song or search results. See [compatibility](docs/compatibility.md).
+- **Handoff:** try to continue a song on the other device using NetEase Cloud Music, QQ Music or Spotify. Results depend on the target app and catalogue; some targets only open the song or search results. While the phone plays, a taskbar button on the PC continues the song there in one click. See [compatibility](docs/compatibility.md).
 - **One device is enough:** choose “This PC only” or “This phone only” for local controls and lyrics.
 
 ### Get started

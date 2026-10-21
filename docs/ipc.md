@@ -414,14 +414,30 @@ Unknown keys are preserved. Defaults:
   `right` stay at the steady end of the area (screen edge, Widgets, tray) while
   the task icons change; `offset` shifts it away from that edge in physical
   pixels; `width`/`fontSize` in DIPs.
-* `compat.neteaseDesktop`: NetEase Cloud Music for Windows support when it does
-  not publish a media session (title from its window, state from its audio,
-  control via its window). Such sessions carry `"source":"compat"` and
-  `"positionEstimated":true`. When NetEase publishes its own media session (its
-  "Windows media controls" option) without a timeline, the host fills in the
-  duration from NetEase's local play queue and an estimated position (time
-  playing since the track changed); that session is flagged
-  `"positionEstimated":true` as well and cannot seek.
+* `compat.neteaseDesktop`: NetEase Cloud Music for Windows support. Without a
+  media session of its own: title from its window, control via its window
+  (`"source":"compat"`). With its own media session (its "Windows media
+  controls" option, no timeline) the host fills in what is missing. In both
+  cases state, position, duration and song id are read from NetEase's audio
+  player in `cloudmusic.dll` (located by code signature, `PROCESS_VM_READ`
+  only, polled every 0.5 s while playing), and seeking uses NetEase's
+  `orpheus://` web command. NetEase's play queue (its local `playingList`
+  file, re-read when it changes) is exposed as the session's `queue`: the
+  phone fetches it with `media.queue.get` and the UI gets it as a `queue`
+  message with `"side":"local"`; `playQueueItem` (`queueId` = song id) plays
+  the entry with the same web command. Builds where the player is not found fall back to
+  the duration from NetEase's local play queue and a position estimated from
+  the time playing since the track changed; those sessions are flagged
+  `"positionEstimated":true` and cannot seek.
+* `handoff.taskbarResume` (default `true`): while the phone's active session
+  plays in NetEase Cloud Music, QQ Music or Spotify (or paused it less than
+  10 minutes ago) and this PC has the same app, the host shows a taskbar
+  button of its own (the app's icon with a phone badge, the cover as its
+  thumbnail). Clicking it runs `handoff.start` for that session into the same
+  app (the button shows progress, red on failure). Its thumbnail has previous /
+  play-pause / next for the phone's player. "Close window" hides it until
+  the track changes or the phone plays it again after a pause. The UI's
+  handoff button is likewise only offered for sessions of these apps.
 * `policy.priorities` maps an app id (Windows exe name or AUMID, or Android
   package) to an integer priority (higher wins) for `custom` mode.
 * `policy.blacklist` / `whitelist`: Windows process names (e.g. `chrome.exe`).

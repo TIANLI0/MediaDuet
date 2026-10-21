@@ -470,6 +470,7 @@ class Engine private constructor(private val app: Context) : LinkHost {
     override fun onPeerSnapshot(peerId: String, snapshot: MediaSnapshot, positionAtMs: Long) = remote.onSnapshot(peerId, snapshot, positionAtMs)
     override fun onBlobChunk(peerId: String, chunk: BlobChunk) = remote.onChunk(chunk)
     override fun onArtworkNotFound(peerId: String, hash: String) = remote.onArtworkNotFound(hash)
+    override fun onPeerQueue(peerId: String, queue: MediaQueue) = remote.onQueue(queue)
     override fun onLyrics(peerId: String, lyrics: LyricsPush) =
         this.lyrics.onPcLyrics(lyrics.trackId, remote.parseLyrics(lyrics), remote.sessionForTrack(lyrics.trackId)?.let(LyricsRepository::songOf))
     override fun onLyricsNone(peerId: String, trackId: String) =

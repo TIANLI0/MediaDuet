@@ -1273,7 +1273,8 @@ private fun CustomActionButtons(p: PlayerParts) {
 @Composable
 private fun QueueSheet(ui: UiContext, view: PlayerView?, open: Boolean, onClose: () -> Unit) {
     val queues by ui.engine.media.queues.collectAsStateWithLifecycle()
-    val queue = view?.takeIf { it.side == Side.PHONE }?.let { queues[it.key] }
+    val pcQueues by ui.engine.remote.queues.collectAsStateWithLifecycle()
+    val queue = view?.let { if (it.side == Side.PHONE) queues[it.key] else pcQueues[it.key] }
     val reduced = rememberReducedMotion()
     val glass = LocalGlass.current
     val haptics = LocalHapticFeedback.current

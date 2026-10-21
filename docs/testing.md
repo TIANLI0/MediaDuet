@@ -7,9 +7,9 @@ with step-by-step procedures.
 
 ## 1. Unit tests
 
-| Suite | Command | Result (2026-10-21) |
+| Suite | Command | Result (2026-10-22) |
 |-------|---------|--------------------|
-| Windows core (doctest) | `cmake -S windows -B windows/build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build windows/build && windows\build\md_tests.exe` | **155 / 155 passed, 1095 assertions** |
+| Windows core (doctest) | `cmake -S windows -B windows/build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build windows/build && windows\build\md_tests.exe` | **161 / 161 passed, 1147 assertions** |
 | Android (JUnit, JVM) | `cd android && ./gradlew :app:testDebugUnitTest` | **165 / 165 passed** |
 | WinUI logic (headless, doctest) | see `windows/ui/README.md` (`windows/ui/tests/ui_logic_tests.cpp`, built with `cl`, no window) | **16 / 16 passed** |
 | Android lint | `./gradlew :app:lintDebug` | 0 errors (MissingTranslation, HardcodedText, plurals are errors); 3 warnings in older code (ChromeOsAbiSupport, 2 × UseKtx) |
@@ -116,6 +116,9 @@ The Android agent ran the same flows on **Android 17 (API 37)** with
 | E55 | Android in-app update end to end: a 1.4.0 build signed with the release key on a headless API 37 emulator | ✅ the automatic check finds 1.4.1 (About shows it); download + checksum + package check; "install unknown apps" prompt; back in the app the system "Update this app?" dialog; confirmed: `versionCode 7 → 8`, `versionName 1.4.1`. The emulator's Play Protect blocked the first attempt (`INSTALL_FAILED_VERIFICATION_FAILURE`, now shown to the user as such) |
 | E53 | Taskbar lyrics: line changes scroll like a list (the preview below moves up and grows into the current line, a new preview enters), other changes roll the whole block; a long translation scrolls sideways with its line's karaoke progress; animations follow *Animations* / *Low power* | ✅ `MediaDuetOverlayDemo` frame sequences (`taskbar_roll_*`, `taskbar_tr_*`), off-screen |
 | E56 | 1.5.1: lyrics / progress across devices shifted by link latency (user report): the receiver anchored a snapshot at its arrival + RTT/2 (Android: one ping every 15 s), so one slow snapshot (Wi-Fi power save, a queue behind artwork) stayed off until the next one. Now NTP-style clock estimate from pongs (`rt`, best of 16 samples by RTT/2 + drift) and the sender's `at` in snapshots (§11.1), sync bursts on primary change / media start, sub-ms host clock (`QueryInterruptTimePrecise`); PC lyrics cache capped at 600 files, least recently used out, like the phone | ✅ core `test_clock_sync` + connection-manager tests (phone clock +1 000 000 ms mapped exactly; older phone without `rt` keeps RTT/2), Android `ClockSyncTest` + link test (anchor within 50 ms over the loopback link); WinUI Release build. **Unverified on hardware** (Wi-Fi / Bluetooth latency) |
+| E57 | 1.6.0: NetEase Cloud Music for Windows position, state, duration and song id read from its player (`cloudmusic.dll` signatures, `PROCESS_VM_READ` only) instead of estimated; seeking via `orpheus://` | ✅ NetEase 3.1.41: both signatures match once, statics in `.data`; reader opens in ~23 ms, position steps 10 ms every ~30 ms; dev host on the user's PC: phone seek on the PC's NetEase jumps and stays (user-verified), no `position back` log lines; unit tests for pattern search, song id, plausibility |
+| E58 | 1.6.0: taskbar "continue on this PC" button while the phone plays NetEase / QQ Music / Spotify (own AUMID, app icon + phone badge, cover thumbnail, progress / error state, Close = dismiss for the song); UI handoff button only for those apps | ✅ user-verified on the dev host with the phone playing NetEase |
+| E59 | 1.6.0: NetEase's play queue (local `playingList`) as the session `queue` for the phone (`media.queue.get`) and the PC UI; `playQueueItem` via `orpheus://`; prev / play-pause / next under the taskbar button's thumbnail | ✅ unit tests (display order, rev, 300-entry window); the real 524-entry queue parsed with the current song found. ⚠️ not yet run on the phone |
 
 ### Measured resource use (Windows 11, 20 logical CPUs, Release x64)
 

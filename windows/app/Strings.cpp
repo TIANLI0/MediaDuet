@@ -58,6 +58,13 @@ const std::map<std::string_view, Entry>& table() {
         {"ui.missing", {L"MediaDuetUI.exe was not found next to MediaDuet.exe. Reinstall MediaDuet.",
                         L"未在 MediaDuet.exe 同目录找到 MediaDuetUI.exe，请重新安装 MediaDuet。"}},
         {"already", {L"MediaDuet is already running.", L"MediaDuet 已在运行。"}},
+        {"resume.title", {L"Continue “%s” on this PC – %s", L"在电脑上继续播放「%s」– %s"}},
+        {"resume.badge", {L"Playing on your phone", L"正在手机上播放"}},
+        {"thumb.play", {L"Play", L"播放"}},
+        {"thumb.pause", {L"Pause", L"暂停"}},
+        {"app.netease", {L"NetEase Cloud Music", L"网易云音乐"}},
+        {"app.qqmusic", {L"QQ Music", L"QQ 音乐"}},
+        {"app.spotify", {L"Spotify", L"Spotify"}},
     };
     return t;
 }

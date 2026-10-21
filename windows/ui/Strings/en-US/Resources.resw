@@ -194,6 +194,9 @@
   <data name="WelcomeStandaloneDesc.Text" xml:space="preserve"><value>A player with lyrics, desktop lyrics and taskbar lyrics for what plays on this PC. No phone, no Bluetooth or network connections.</value></data>
   <data name="WelcomeFootnote.Text" xml:space="preserve"><value>You can change this at any time in Settings &gt; General.</value></data>
   <data name="HdrArtwork.Text" xml:space="preserve"><value>Cover art</value></data>
+  <data name="HdrHandoff.Text" xml:space="preserve"><value>Handoff</value></data>
+  <data name="SetTaskbarResumeTitle.Text" xml:space="preserve"><value>Continue from the phone on the taskbar</value></data>
+  <data name="SetTaskbarResumeDesc.Text" xml:space="preserve"><value>While the phone plays in NetEase Cloud Music, QQ Music or Spotify and this PC has the same app, a taskbar button continues the song here at the same position.</value></data>
   <data name="SetArtworkOnlineTitle.Text" xml:space="preserve"><value>Look up high-resolution covers online</value></data>
   <data name="SetArtworkOnlineDesc.Text" xml:space="preserve"><value>When a player only provides a small cover, MediaDuet searches NetEase Cloud Music, QQ Music or iTunes for the song (sends its title, artist and album). Covers found before are still used when this is off.</value></data>
   <data name="HdrDeveloper.Text" xml:space="preserve"><value>Developer</value></data>
@@ -418,9 +421,9 @@
   <data name="SetTaskbarFontSizeTitle.Text" xml:space="preserve"><value>Font size</value></data>
   <data name="CompatIntro.Text" xml:space="preserve"><value>Support for players that do not publish their playback to Windows.</value></data>
   <data name="SetNeteaseDesktopTitle.Text" xml:space="preserve"><value>NetEase Cloud Music for Windows</value></data>
-  <data name="SetNeteaseDesktopDesc.Text" xml:space="preserve"><value>Recognises NetEase Cloud Music although it does not publish a media session: the title comes from its window, the playback state from its audio, and controls are sent to its window.</value></data>
+  <data name="SetNeteaseDesktopDesc.Text" xml:space="preserve"><value>Recognises NetEase Cloud Music and its exact playback position: the title comes from its window, the state, position and song from its player (read only), and controls and seeking are sent to NetEase itself.</value></data>
   <data name="CompatLimits.Title" xml:space="preserve"><value>Limitations</value></data>
-  <data name="CompatLimits.Message" xml:space="preserve"><value>The playback position of such players is estimated, and artwork and seeking may be unavailable.</value></data>
+  <data name="CompatLimits.Message" xml:space="preserve"><value>If a NetEase update moves its player, the position is estimated again until MediaDuet supports that version, and seeking is unavailable meanwhile.</value></data>
   <data name="VolumeMuted" xml:space="preserve"><value>Muted</value></data>
   <data name="Pixels" xml:space="preserve"><value>{0} px</value></data>
   <data name="Provider_netease" xml:space="preserve"><value>NetEase Cloud Music</value></data>

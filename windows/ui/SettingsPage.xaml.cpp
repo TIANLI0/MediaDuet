@@ -245,6 +245,7 @@ namespace winrt::MediaDuetUI::implementation
         Bind(TaskbarWidthBox(), "taskbar.width", 360);
         Bind(TaskbarFontSizeBox(), "taskbar.fontSize", 13);
         Bind(NeteaseDesktopToggle(), "compat.neteaseDesktop", true);
+        Bind(TaskbarResumeToggle(), "handoff.taskbarResume", true);
         Bind(UpdateAutoToggle(), "update.auto", true);
 
         // Every switch: knob at the right edge, our own "On"/"Off" label (MediaDuet's language) left
@@ -254,7 +255,7 @@ namespace winrt::MediaDuetUI::implementation
                  OverlayLockToggle(), OverlayClickThroughToggle(), OverlayAutoHideToggle(), OverlayKaraokeToggle(),
                  OverlayTwoLinesToggle(), SmtcToggle(), A2dpToggle(), LanSendToggle(), DiagnosticsToggle(),
                  HeadsetAssistToggle(), TaskbarEnabledToggle(), NeteaseDesktopToggle(), TranslationToggle(), OverlayTopmostToggle(),
-                 OverlayHideFullscreenToggle(), LatencyAutoToggle(), ArtworkOnlineToggle(), UpdateAutoToggle() };
+                 OverlayHideFullscreenToggle(), LatencyAutoToggle(), ArtworkOnlineToggle(), UpdateAutoToggle(), TaskbarResumeToggle() };
 
         // ---- Commands that are not settings
         OverlayShowToggle().Toggled([this](auto&&, auto&&) {

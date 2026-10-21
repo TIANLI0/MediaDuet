@@ -98,6 +98,8 @@ void HostApp::init() {
     appVolTimer_.bind(&sched_);
     volumeAnswerTimer_.bind(&sched_);
     lyricsGraceTimer_.bind(&sched_);
+    resumeExpiry_.bind(&sched_);
+    resumeFailed_.bind(&sched_);
 
     art_ = std::make_unique<platform::ArtworkCache>(platform::cacheDir() / L"art");
     art_->prune();
@@ -173,6 +175,8 @@ void HostApp::init() {
                                                        pushState();
                                                        sendLyricsToUi();
                                                        for (auto& [k, q] : queues_) sendQueueToUi(q);
+                                                       localQueueSent_.clear();
+                                                       syncLocalQueues();
                                                        if (!pendingShow_.empty()) {
                                                            ipc_->send(json{{"type", "show"}, {"window", pendingShow_}}.dump());
                                                            pendingShow_.clear();
@@ -291,6 +295,21 @@ void HostApp::init() {
                         if (ipc_ && ipc_->connected())
                             ipc_->send(json{{"type", "handoff"}, {"outcome", handoff::toJson(o)}}.dump(-1, ' ', false, json::error_handler_t::replace));
                     }});
+    resume_ = std::make_unique<ResumeButton>(ResumeButton::Callbacks{[this] { onResumeClicked(); },
+                                                                     [this] {
+                                                                         resumeDismissed_ = resumeShown_;
+                                                                         resumeSawPause_ = false;
+                                                                     },
+                                                                     [this](ResumeButton::Control c) {
+                                                                         const auto* s = remoteValid_ ? remote_.activeSession() : nullptr;
+                                                                         if (!s) return;
+                                                                         CommandAction a = c == ResumeButton::Control::Previous ? CommandAction::Previous
+                                                                                           : c == ResumeButton::Control::Next   ? CommandAction::Next
+                                                                         : s->supports(CommandAction::Toggle)                   ? CommandAction::Toggle
+                                                                         : s->isPlaying()                                       ? CommandAction::Pause
+                                                                                                                                : CommandAction::Play;
+                                                                         sendUserCommand(Side::Remote, s->key, a, std::nullopt, "taskbar");
+                                                                     }});
     overlay_ = std::make_unique<platform::LyricsOverlay>(
         sched_, platform::LyricsOverlay::Callbacks{
                     [this](int x, int y) {
@@ -661,6 +680,18 @@ void HostApp::onEnvelope(const std::string& peerId, const proto::Envelope& e, ui
         sendQueueToUi(*q);
         return;
     }
+    if (t == proto::types::MediaQueueGet) {
+        // The play queue of one of our sessions: only NetEase's (its local play queue file).
+        std::string key = e.body.value("key", std::string());
+        if (auto q = netease_->queue(key)) {
+            json body = media::toJson(*q);
+            if (!q->activeId) body.erase("activeId");
+            cm_->send(proto::types::MediaQueue, std::move(body), e.id);
+        } else {
+            cm_->send(proto::types::Error, proto::errorBody("not_found", "no play queue"), e.id);
+        }
+        return;
+    }
     if (t == proto::types::AudioSinkSet) {
         // The phone's "play on this PC" switch (Bluetooth A2DP into Windows).
         bool enable = e.body.value("enable", false);
@@ -770,6 +801,17 @@ void HostApp::rebuildLocal() {
 
 void HostApp::executeLocal(const media::MediaCommand& cmd, std::function<void(bool, const std::string&)> done) {
     std::string key = cmd.key.value_or(local_.active.value_or(""));
+    if (cmd.action == media::CommandAction::PlayQueueItem && netease_->handlesQueue(key)) {
+        bool ok = netease_->playQueueItem(key, cmd.queueId.value_or(0));
+        if (done) done(ok, ok ? "" : "not_found");
+        return;
+    }
+    if (cmd.action == media::CommandAction::Seek && netease_->handlesSeek(key)) {
+        // NetEase's sessions have no timeline to seek with: its own web command does it.
+        bool ok = netease_->seek(key, cmd.positionMs.value_or(0));
+        if (done) done(ok, ok ? "" : "internal");
+        return;
+    }
     if (key == platform::NeteaseCompat::kKey) {
         bool ok = netease_->execute(cmd.action);
         if (done) done(ok, ok ? "" : "action_unsupported");
@@ -786,6 +828,7 @@ void HostApp::onLocalSnapshot(const media::MediaSnapshot& snap) {
     if (auto* r = remote_.activeSession()) anyPlaying |= r->isPlaying();
     cm_->setMediaActive(anyPlaying);
     sendLocalSnapshot();
+    syncLocalQueues();
     updateFocus();
     if (handoff_) handoff_->onLocalSnapshot();
     markDirty();
@@ -794,6 +837,92 @@ void HostApp::onLocalSnapshot(const media::MediaSnapshot& snap) {
 bool HostApp::peerHasCap(const char* cap) const {
     const auto* caps = cm_->peerCaps();
     return caps && std::find(caps->begin(), caps->end(), cap) != caps->end();
+}
+
+void HostApp::updateResumeButton() {
+    if (!resume_ || !handoff_) return;
+    const MediaSessionInfo* s = remoteValid_ ? remote_.activeSession() : nullptr;
+    int64_t now = sched_.nowMs();
+    std::string track = s ? s->key + '\x1f' + s->trackId : std::string();
+    if (s && s->isPlaying()) {
+        if (!resumeDismissed_.empty() && (track != resumeDismissed_ || resumeSawPause_)) resumeDismissed_.clear();
+        resumeTrack_ = track;
+        resumePlayedAt_ = now;
+    } else if (!resumeDismissed_.empty() && track == resumeDismissed_) {
+        resumeSawPause_ = true;
+    }
+    if (!resumeRunning_.empty()) return; // keeps its progress until the handoff ends
+
+    // The phone's song in a music app this PC has too, playing or paused a moment ago, that
+    // this PC is not already playing.
+    std::optional<handoff::App> app = s ? handoff::appOfSession(s->appId) : std::nullopt;
+    const auto& apps = handoff_->localApps();
+    bool recent = s && (s->isPlaying() || (track == resumeTrack_ && resumePlayedAt_ >= 0 && now - resumePlayedAt_ < kResumeOfferMs));
+    bool pcPlaysIt = false;
+    if (s)
+        for (auto& l : local_.sessions) pcPlaysIt |= l.isPlaying() && handoff::shows(l, handoff::songOf(*s));
+    bool offer = settings_.get<bool>("handoff.taskbarResume", true) && !standalone_ && cm_->isUp() &&
+                 peerHasCap(proto::caps::Handoff) && s && !s->title.empty() && app &&
+                 std::find(apps.begin(), apps.end(), *app) != apps.end() && recent && track != resumeDismissed_ &&
+                 !pcPlaysIt && !handoff_->busy();
+    if (!offer) {
+        resumeExpiry_.cancel();
+        resumeShown_.clear();
+        resume_->hide();
+        return;
+    }
+    if (!s->isPlaying()) resumeExpiry_.start(kResumeOfferMs - (now - resumePlayedAt_) + 100, [this] { updateResumeButton(); });
+    else resumeExpiry_.cancel();
+
+    const wchar_t* appName = *app == handoff::App::Netease   ? tr("app.netease")
+                             : *app == handoff::App::QqMusic ? tr("app.qqmusic")
+                                                             : tr("app.spotify");
+    std::wstring title = tr("resume.title");
+    for (const std::wstring& v : {text::toWide(s->title), std::wstring(appName)})
+        if (auto at = title.find(L"%s"); at != std::wstring::npos) title.replace(at, 2, v);
+    ResumeButton::Offer o;
+    o.id = track + '\x1f' + (s->artwork ? s->artwork->hash : std::string());
+    o.title = std::move(title);
+    o.iconFile = handoff_->appExe(*app);
+    if (s->artwork && art_->has(s->artwork->hash)) o.artwork = art_->pathFor(s->artwork->hash);
+    o.badgeTip = tr("resume.badge");
+    // The phone's player under the thumbnail.
+    auto& c = o.controls;
+    c.previous = s->supports(CommandAction::Previous);
+    c.next = s->supports(CommandAction::Next);
+    c.playPause = s->supports(CommandAction::Toggle) || s->supports(CommandAction::Play) || s->supports(CommandAction::Pause);
+    c.playing = s->isPlaying();
+    c.previousTip = tr("previous");
+    c.nextTip = tr("next");
+    c.playTip = tr("thumb.play");
+    c.pauseTip = tr("thumb.pause");
+    resumeShown_ = track;
+    resume_->show(o);
+}
+
+void HostApp::onResumeClicked() {
+    const MediaSessionInfo* s = remoteValid_ ? remote_.activeSession() : nullptr;
+    if (!s || !resumeRunning_.empty() || !handoff_) return;
+    std::string track = s->key + '\x1f' + s->trackId;
+    if (track != resumeShown_) return; // the offer is about to change
+    log::info("host", "continue {} on this PC (taskbar)", s->key);
+    resumeRunning_ = track;
+    resumeFailed_.cancel();
+    resume_->setState(ResumeButton::State::Working);
+    // The phone's own app; the handoff seeks it to the phone's live position.
+    handoff_->start(handoff::Device::Phone, s->key, handoff::appOfSession(s->appId), [this, track](const handoff::Outcome& o) {
+        resumeRunning_.clear();
+        if (o.ok) {
+            resumeDismissed_ = track;
+            resumeSawPause_ = false;
+            resume_->setState(ResumeButton::State::Idle);
+        } else {
+            log::info("host", "taskbar handoff failed: {}", o.error);
+            resume_->setState(ResumeButton::State::Failed);
+            resumeFailed_.start(4'000, [this] { resume_->setState(ResumeButton::State::Idle); });
+        }
+        updateResumeButton();
+    });
 }
 
 std::string HostApp::processFor(const MediaSessionInfo& s) const {
@@ -829,6 +958,18 @@ void HostApp::sendLocalSnapshot() {
     if (!cm_->isUp()) return;
     auto d = decoratedLocal();
     if (lastSentValid_ && d.equivalent(lastSentLocal_)) return;
+    if (lastSentValid_) {
+        // A position that goes back on the same track without a seek shows as a jump on the phone.
+        int64_t now = sched_.nowMs();
+        for (auto& s : d.sessions)
+            for (auto& o : lastSentLocal_.sessions)
+                if (s.key == o.key && s.trackId == o.trackId && s.isPlaying() && o.isPlaying()) {
+                    auto a = s.positionAt(now), b = o.positionAt(now);
+                    if (a && b && *b - *a > 1'500)
+                        log::info("host", "{} position back by {} ms ({})", s.key, *b - *a,
+                                  netease_->positionEstimated(s.key) ? "estimated" : "reported");
+                }
+    }
     d.gen = ++localWireGen_;
     if (cm_->send(proto::types::MediaSnapshot, media::toWire(d, sched_.nowMs()))) {
         lastSentLocal_ = d;
@@ -923,6 +1064,30 @@ void HostApp::requestQueues() {
         if (req.first == s.queue->rev && now - req.second < 10'000) continue;
         req = {s.queue->rev, now};
         cm_->send(proto::types::MediaQueueGet, {{"key", s.key}});
+    }
+}
+
+void HostApp::syncLocalQueues() {
+    if (!ipc_ || !ipc_->connected()) return;
+    for (auto it = localQueueSent_.begin(); it != localQueueSent_.end();) {
+        const auto* s = local_.find(it->first);
+        if (s && s->queue && netease_->handlesQueue(it->first)) {
+            ++it;
+            continue;
+        }
+        ipc_->send(json{{"type", "queue"}, {"side", "local"}, {"key", it->first}, {"queue", nullptr}}.dump());
+        it = localQueueSent_.erase(it);
+    }
+    for (auto& s : local_.sessions) {
+        if (!s.queue || !netease_->handlesQueue(s.key)) continue;
+        std::string sent = s.queue->rev + ':' + std::to_string(s.queue->activeId.value_or(0));
+        auto& last = localQueueSent_[s.key];
+        if (last == sent) continue;
+        auto q = netease_->queue(s.key);
+        if (!q) continue;
+        last = sent;
+        ipc_->send(json{{"type", "queue"}, {"side", "local"}, {"key", s.key}, {"queue", media::toJson(*q)}}
+                       .dump(-1, ' ', false, json::error_handler_t::replace));
     }
 }
 
@@ -1660,6 +1825,7 @@ void HostApp::markDirty() {
 void HostApp::pushState() {
     dirty_ = false;
     updateTray();
+    updateResumeButton();
     if (!ipc_ || !ipc_->connected()) return;
     ipc_->send(buildState().dump(-1, ' ', false, json::error_handler_t::replace));
 }

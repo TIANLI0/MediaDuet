@@ -261,7 +261,7 @@ namespace winrt::MediaDuetUI::implementation
             if (!u.latest.empty()) Controller::Get().SetSetting("ui.updateDismissed", u.latest);
         });
         HandoffBar().Closed([this](auto&&, auto&&) { m_handoffResultShown = false; });
-        // The player's own buttons / its play queue (phone sessions).
+        // The player's own buttons (phone sessions) / its play queue (phone sessions, NetEase on this PC).
         QueueFlyout().Opening([this](auto&&, auto&&) { FillQueue(); });
         QueueList().ItemClick([this](auto&&, ItemClickEventArgs const& e) {
             auto item = e.ClickedItem().try_as<FrameworkElement>();
@@ -1752,6 +1752,8 @@ namespace winrt::MediaDuetUI::implementation
     {
         auto const& st = Controller::Get().Model();
         if (!s || st.standalone || s->title.empty() || st.connection.status != "connected") return false;
+        // Only songs that play in a music app (NetEase, QQ Music, Spotify), not browsers or videos.
+        if (HandoffAppOf(s->appId).empty()) return false;
         auto const& apps = s->side == Side::Local ? st.handoff.remoteApps : st.handoff.localApps;
         return !apps.empty();
     }

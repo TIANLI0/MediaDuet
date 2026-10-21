@@ -150,7 +150,7 @@ namespace mdui
         HostLink m_link{ HostLink::Connecting };
         uint64_t m_hostLaunchDeadline{ 0 };
         State m_state;
-        std::map<std::string, Queue> m_queues;   // remote session key -> queue
+        std::map<std::string, Queue> m_queues;   // side + '\x1f' + session key -> queue
         Lyrics m_lyrics;
         json m_diagnostics = json::object();
         std::string m_hostVersion;

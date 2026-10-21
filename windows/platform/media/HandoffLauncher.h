@@ -27,6 +27,8 @@ public:
     const std::vector<handoff::App>& apps() const { return apps_; }
     // Returns true when the list changed.
     bool refresh();
+    // The app's executable (for its icon); empty when unknown (e.g. Spotify from the Store).
+    std::filesystem::path exePath(handoff::App app) const;
 
     struct Launched {
         bool ok = false;
@@ -40,7 +42,7 @@ public:
 private:
     IScheduler& sched_;
     std::vector<handoff::App> apps_;
-    std::filesystem::path qqExe_;
+    std::filesystem::path qqExe_, neteaseExe_, spotifyExe_;
     std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
 };
 

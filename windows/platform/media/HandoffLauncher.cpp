@@ -52,10 +52,15 @@ bool isFile(const std::filesystem::path& p) {
 
 std::string fileName(const std::filesystem::path& p) { return text::toLowerAscii(text::toUtf8(p.filename().wstring())); }
 
-bool protocolHandledBy(const wchar_t* scheme, const char* exeName) {
+std::filesystem::path protocolHandler(const wchar_t* scheme) {
     std::wstring key = std::wstring(scheme) + L"\\shell\\open\\command";
     auto exe = exeOf(regString(HKEY_CLASSES_ROOT, key.c_str(), nullptr));
-    return isFile(exe) && fileName(exe) == exeName;
+    return isFile(exe) ? exe : std::filesystem::path();
+}
+
+bool protocolHandledBy(const wchar_t* scheme, const char* exeName) {
+    auto exe = protocolHandler(scheme);
+    return !exe.empty() && fileName(exe) == exeName;
 }
 
 bool protocolRegistered(const wchar_t* scheme) {
@@ -99,16 +104,27 @@ HandoffLauncher::~HandoffLauncher() { *alive_ = false; }
 
 bool HandoffLauncher::refresh() {
     std::vector<App> apps;
-    if (protocolHandledBy(L"orpheus", "cloudmusic.exe")) apps.push_back(App::Netease);
+    neteaseExe_ = protocolHandledBy(L"orpheus", "cloudmusic.exe") ? protocolHandler(L"orpheus") : std::filesystem::path();
+    if (!neteaseExe_.empty()) apps.push_back(App::Netease);
     qqExe_ = findQqMusic();
     if (!qqExe_.empty()) apps.push_back(App::QqMusic);
     if (protocolRegistered(L"spotify")) apps.push_back(App::Spotify);
+    spotifyExe_ = protocolHandledBy(L"spotify", "spotify.exe") ? protocolHandler(L"spotify") : std::filesystem::path();
     if (apps == apps_) return false;
     apps_ = std::move(apps);
     std::string names;
     for (auto a : apps_) names += std::string(names.empty() ? "" : ", ") + handoff::toString(a);
     log::info("handoff", "music apps on this PC: {}", names.empty() ? "none" : names);
     return true;
+}
+
+std::filesystem::path HandoffLauncher::exePath(App app) const {
+    switch (app) {
+    case App::Netease: return neteaseExe_;
+    case App::QqMusic: return qqExe_;
+    case App::Spotify: return spotifyExe_;
+    }
+    return {};
 }
 
 void HandoffLauncher::launch(App app, const handoff::Song& song, const media::CatalogIds& ids,

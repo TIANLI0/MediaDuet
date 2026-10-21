@@ -48,6 +48,10 @@ public:
                std::function<void(const handoff::Outcome&)> done);
     // state.handoff for the UI (docs/ipc.md).
     nlohmann::json stateJson() const;
+    // Music apps on this PC, and the executable of one (for its icon).
+    const std::vector<handoff::App>& localApps() const { return launcher_.apps(); }
+    std::filesystem::path appExe(handoff::App app) const { return launcher_.exePath(app); }
+    bool busy() const { return coord_->status().active; }
 
     // How long the PC waits for the opened song to play before reporting "opened".
     static constexpr int64_t kLocalWaitMs = 25'000;

@@ -79,6 +79,8 @@ interface LinkHost {
 
     /** The play queue of our session [key] for `media.queue.get`, or null (answered not_found). */
     fun mediaQueue(key: String): MediaQueue? = null
+    /** The peer answered our `media.queue.get` (the play queue of one of its sessions). */
+    fun onPeerQueue(peerId: String, queue: MediaQueue) = Unit
     suspend fun onAudioOffer(peerId: String, offer: AudioOffer, baseKey: ByteArray): JsonObject
     fun onAudioStop(peerId: String, streamId: String, reason: String)
 
@@ -478,6 +480,7 @@ class LinkManager(
             MsgType.LYRICS_NONE -> host.onLyricsNone(peerId, env.body.requireString("trackId", 64))
             MsgType.POLICY_STATUS -> host.onPolicyStatus(peerId, PolicyStatus.parse(env.body))
             MsgType.AUDIO_SINK_STATE -> host.onSinkState(peerId, SinkState.parse(env.body))
+            MsgType.MEDIA_QUEUE -> host.onPeerQueue(peerId, MediaQueue.parse(env.body))
             MsgType.MEDIA_QUEUE_GET -> {
                 val queue = host.mediaQueue(env.body.requireString("key", StrLimit.SESSION_KEY))
                 if (queue == null) send(session, conn, MsgType.ERROR, ErrorInfo(ErrorCode.NOT_FOUND).toJson(), env.id)
@@ -686,6 +689,14 @@ class LinkManager(
             val env = send(session, null, MsgType.ARTWORK_GET, buildJsonObject { put("hash", ref.hash) }) ?: return@launch
             session.artworkRequests[env.id] = ref.hash
             if (session.artworkRequests.size > 64) session.artworkRequests.remove(session.artworkRequests.keys.min())
+        }
+    }
+
+    /** Asks the peer for the play queue of its session [key] (`media.queue.get`); the answer comes as `media.queue`. */
+    fun requestQueue(peerId: String, key: String) {
+        scope.launch(dispatcher) {
+            val session = sessions.values.firstOrNull { it.peer.id == peerId && it.isConnected } ?: return@launch
+            send(session, null, MsgType.MEDIA_QUEUE_GET, buildJsonObject { put("key", key) })
         }
     }
 

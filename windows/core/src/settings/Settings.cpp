@@ -34,6 +34,7 @@ json defaults() {
   },
   "smtcBridge": true,
   "compat": {"neteaseDesktop": true},
+  "handoff": {"taskbarResume": true},
   "artwork": {"online": true},
   "taskbar": {"enabled": true, "content": "auto", "position": "left", "align": "auto", "offset": 0, "width": 360, "fontSize": 13},
   "lyrics": {
