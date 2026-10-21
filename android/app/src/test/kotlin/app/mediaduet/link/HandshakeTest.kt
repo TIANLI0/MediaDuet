@@ -72,8 +72,9 @@ class HandshakeTest {
             assertTrue(c.isClosedByPeer())
             assertArrayEquals(secrets.pairingKey, trust.key(peer.id))
         }
+        // The outcome is recorded after pair.result is sent and the connection closed: wait for it.
+        assertEquals(true, waitFor { pairing.state.value.lastOutcome }.success)
         assertFalse(pairing.isOpen())
-        assertEquals(true, pairing.state.value.lastOutcome?.success)
     }
 
     @Test
@@ -118,7 +119,7 @@ class HandshakeTest {
             assertTrue(c.isClosedByPeer())
         }
         assertNull(trust.key(peer.id))
-        assertEquals("rejected", pairing.state.value.lastOutcome?.reason)
+        assertEquals("rejected", waitFor { pairing.state.value.lastOutcome }.reason)
     }
 
     @Test
