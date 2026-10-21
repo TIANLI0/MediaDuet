@@ -36,6 +36,12 @@ constexpr int64_t kPollIdleMs = 1'000;
 constexpr int64_t kResyncMs = 200;   // re-anchor when the reading leaves the extrapolation by more
 constexpr int kMaxReadFailures = 3;  // then fall back to the estimate
 constexpr int64_t kQueueCheckMs = 2'000; // the play queue file, while NetEase's player is read
+// A NetEase that just started has no player to read yet: try again a few times.
+constexpr int kMaxMemTries = 6;
+constexpr int64_t kMemRetryMs = 3'000;
+// How long after a web command NetEase may still raise its window.
+constexpr int64_t kGuardMs = 2'500;
+constexpr int64_t kGuardPollMs = 16;
 
 std::mutex g_hookMutex;
 std::map<HWINEVENTHOOK, NeteaseCompat*> g_hooks;
@@ -56,6 +62,23 @@ fs::path queueFile() {
     return out;
 }
 
+/** NetEase's main window: of its OrpheusBrowserHost windows the one with a title ("Song - Artist");
+ *  the others (desktop lyrics, mini player, tray helpers) ignore media commands. */
+HWND mainWindow() {
+    HWND first = nullptr, h = nullptr;
+    while ((h = FindWindowExW(nullptr, h, kClass, nullptr)) != nullptr) {
+        if (!first) first = h;
+        if (GetWindowTextLengthW(h) > 0) return h;
+    }
+    return first;
+}
+
+DWORD windowPid(HWND h) {
+    DWORD pid = 0;
+    if (h) GetWindowThreadProcessId(h, &pid);
+    return pid;
+}
+
 } // namespace
 
 struct NeteaseCompat::Hook {
@@ -72,7 +95,8 @@ struct NeteaseCompat::Hook {
 };
 
 NeteaseCompat::NeteaseCompat(IScheduler& sched, ArtworkCache& art, std::function<void()> changed)
-    : sched_(sched), art_(art), changed_(std::move(changed)), scanTimer_(&sched), pollTimer_(&sched) {}
+    : sched_(sched), art_(art), changed_(std::move(changed)), scanTimer_(&sched), pollTimer_(&sched),
+      memRetryTimer_(&sched), guardTimer_(&sched) {}
 
 NeteaseCompat::~NeteaseCompat() {
     *alive_ = false;
@@ -108,13 +132,16 @@ void NeteaseCompat::setAudible(bool audible) {
 void NeteaseCompat::scan() {
     if (!enabled_) return;
     if (hwnd_ && !IsWindow(hwnd_)) detach();
-    if (!hwnd_) {
-        HWND h = FindWindowW(kClass, nullptr);
-        if (h) {
-            DWORD pid = 0;
-            GetWindowThreadProcessId(h, &pid);
-            attach(h, pid);
+    if (hwnd_ && GetWindowTextLengthW(hwnd_) == 0) {
+        // Attached to a helper window (NetEase was starting): move to the main one once it is up.
+        HWND main = mainWindow();
+        if (main && main != hwnd_ && windowPid(main) == pid_ && GetWindowTextLengthW(main) > 0) {
+            hwnd_ = main;
+            onTitle();
         }
+    }
+    if (!hwnd_) {
+        if (HWND h = mainWindow()) attach(h, windowPid(h));
     }
     if (hwnd_) checkQueueFile();
     scanTimer_.start(kScanMs, [this] { scan(); });
@@ -131,10 +158,19 @@ void NeteaseCompat::attach(HWND hwnd, DWORD pid) {
     }
     log::info("netease", "attached to NetEase Cloud Music (pid {})", pid);
     onTitle();
+    memTries_ = 0;
     openMemory(pid);
 }
 
+void NeteaseCompat::retryMemory() {
+    if (!hwnd_ || mem_ || memTries_ >= kMaxMemTries) return;
+    memRetryTimer_.start(kMemRetryMs, [this] {
+        if (hwnd_ && !mem_) openMemory(pid_);
+    });
+}
+
 void NeteaseCompat::openMemory(DWORD pid) {
+    ++memTries_;
     uint64_t gen = ++memGen_;
     std::weak_ptr<bool> alive = alive_;
     [](NeteaseCompat* self, std::weak_ptr<bool> alive, DWORD pid, uint64_t gen) -> fire_and_forget {
@@ -144,7 +180,8 @@ void NeteaseCompat::openMemory(DWORD pid) {
         self->sched_.post([self, alive, gen, mem, why] {
             if (alive.expired() || gen != self->memGen_) return;
             if (!mem) {
-                log::info("netease", "player not readable ({}): position is estimated", why);
+                log::info("netease", "player not readable ({}, try {}): position is estimated", why, self->memTries_);
+                self->retryMemory();
                 return;
             }
             log::info("netease", "reading the playback position from NetEase's player");
@@ -188,6 +225,9 @@ void NeteaseCompat::poll() {
     } else if (++memFailures_ >= kMaxReadFailures) {
         log::warn("netease", "NetEase's player stopped answering: position is estimated again");
         mem_.reset();
+        memStatus_ = media::PlaybackStatus::Unknown;
+        memTries_ = 0;
+        retryMemory();
         if (changed_) changed_();
         return;
     }
@@ -264,12 +304,7 @@ std::optional<media::MediaQueue> NeteaseCompat::queue(const std::string& key) co
 bool NeteaseCompat::playQueueItem(const std::string& key, int64_t id) {
     if (!handlesQueue(key) || id <= 0) return false;
     // NetEase's own web command plays the song; it stays in the queue it is part of.
-    std::wstring uri = text::toWide(handoff::neteaseDesktopPlay(std::to_string(id)));
-    auto h = ShellExecuteW(nullptr, L"open", uri.c_str(), nullptr, nullptr, SW_SHOWNOACTIVATE);
-    if (reinterpret_cast<INT_PTR>(h) <= 32) {
-        log::warn("netease", "play command failed ({})", reinterpret_cast<INT_PTR>(h));
-        return false;
-    }
+    if (!runQuietly(text::toWide(handoff::neteaseDesktopPlay(std::to_string(id))))) return false;
     if (mem_) pollTimer_.start(300, [this] { poll(); });
     return true;
 }
@@ -295,11 +330,15 @@ void NeteaseCompat::detach() {
     bool had = hwnd_ != nullptr;
     ++memGen_;
     pollTimer_.cancel();
+    memRetryTimer_.cancel();
     mem_.reset();
     memStatus_ = media::PlaybackStatus::Unknown;
     memId_ = 0;
     memDurationMs_.reset();
     hook_ = nullptr;
+    guardTimer_.cancel();
+    if (guard_.locked) LockSetForegroundWindow(LSFW_UNLOCK);
+    guard_ = {};
     hwnd_ = nullptr;
     pid_ = 0;
     title_.clear();
@@ -474,12 +513,7 @@ std::optional<media::MediaSessionInfo> NeteaseCompat::session() const {
 bool NeteaseCompat::seek(const std::string& key, int64_t positionMs) {
     // NetEase's own web command (orpheus://, handled by `cloudmusic.exe --webcmd`, forwarded to
     // the running instance): its media session has no timeline to seek with.
-    std::wstring uri = text::toWide(handoff::neteaseDesktopSeek(positionMs));
-    auto h = ShellExecuteW(nullptr, L"open", uri.c_str(), nullptr, nullptr, SW_SHOWNOACTIVATE);
-    if (reinterpret_cast<INT_PTR>(h) <= 32) {
-        log::warn("netease", "seek command failed ({})", reinterpret_cast<INT_PTR>(h));
-        return false;
-    }
+    if (!runQuietly(text::toWide(handoff::neteaseDesktopSeek(positionMs)))) return false;
     int64_t now = sched_.nowMs();
     if (key == kKey) {
         posMs_ = std::max<int64_t>(positionMs, 0);
@@ -500,8 +534,57 @@ bool NeteaseCompat::seek(const std::string& key, int64_t positionMs) {
     return true;
 }
 
+bool NeteaseCompat::runQuietly(const std::wstring& uri) {
+    // `cloudmusic.exe --webcmd` hands the command to the running instance, which then shows and
+    // activates its window. Remember how the window was and put it back if the command raised it;
+    // while we hold the foreground (the PC window), nobody else may take it meanwhile.
+    HWND fg = GetForegroundWindow();
+    bool netFront = hwnd_ && fg && windowPid(fg) == pid_;
+    if (hwnd_ && !netFront) {
+        if (!guard_.until) {
+            guard_.foreground = fg;
+            guard_.visible = IsWindowVisible(hwnd_) != FALSE;
+            guard_.iconic = IsIconic(hwnd_) != FALSE;
+        }
+        if (!guard_.locked && fg && windowPid(fg) == GetCurrentProcessId())
+            guard_.locked = LockSetForegroundWindow(LSFW_LOCK) != FALSE;
+        guard_.until = sched_.nowMs() + kGuardMs;
+    }
+    auto h = ShellExecuteW(nullptr, L"open", uri.c_str(), nullptr, nullptr, SW_SHOWNOACTIVATE);
+    if (reinterpret_cast<INT_PTR>(h) <= 32) {
+        log::warn("netease", "web command failed ({})", reinterpret_cast<INT_PTR>(h));
+        return false;
+    }
+    if (guard_.until) guardWindow();
+    return true;
+}
+
+void NeteaseCompat::guardWindow() {
+    if (hwnd_ && IsWindow(hwnd_)) {
+        if (!guard_.visible && IsWindowVisible(hwnd_)) {
+            ShowWindow(hwnd_, SW_HIDE);   // it was in the tray
+        } else if (guard_.visible && guard_.iconic && !IsIconic(hwnd_)) {
+            ShowWindow(hwnd_, SW_SHOWMINNOACTIVE);
+        }
+        // The window the user was in gets the focus back.
+        HWND fg = GetForegroundWindow();
+        if (guard_.foreground && fg != guard_.foreground && windowPid(fg) == pid_ && IsWindow(guard_.foreground))
+            SetForegroundWindow(guard_.foreground);
+    }
+    if (hwnd_ && sched_.nowMs() < guard_.until) {
+        guardTimer_.start(kGuardPollMs, [this] { guardWindow(); });
+        return;
+    }
+    if (guard_.locked) LockSetForegroundWindow(LSFW_UNLOCK);
+    guard_ = {};
+}
+
 bool NeteaseCompat::execute(media::CommandAction action) {
-    if (!hwnd_ || !IsWindow(hwnd_)) return false;
+    if (hwnd_ && !IsWindow(hwnd_)) detach();   // NetEase restarted: do not wait for the next scan
+    if (!hwnd_) {
+        if (HWND h = mainWindow()) attach(h, windowPid(h));
+    }
+    if (!hwnd_) return false;
     bool playing = mem_ && memStatus_ != media::PlaybackStatus::Unknown ? memStatus_ == media::PlaybackStatus::Playing : audible_;
     int cmd = 0;
     switch (action) {
@@ -518,6 +601,7 @@ bool NeteaseCompat::execute(media::CommandAction action) {
     case media::CommandAction::Previous: cmd = APPCOMMAND_MEDIA_PREVIOUSTRACK; break;
     default: return false;
     }
+    log::info("netease", "media command {} ({})", cmd, playing ? "playing" : "paused");
     SendMessageTimeoutW(hwnd_, WM_APPCOMMAND, reinterpret_cast<WPARAM>(hwnd_), MAKELPARAM(0, cmd | FAPPCOMMAND_KEY),
                         SMTO_ABORTIFHUNG, 500, nullptr);
     return true;

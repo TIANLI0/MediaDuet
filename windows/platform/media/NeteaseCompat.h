@@ -77,6 +77,10 @@ private:
     void onTitle();
     void enrich(const std::string& title, const std::string& artist, uint64_t gen);
     void openMemory(DWORD pid);
+    void retryMemory();
+    /** Runs NetEase's web command without NetEase coming to the front (see the .cpp). */
+    bool runQuietly(const std::wstring& uri);
+    void guardWindow();
     void poll();
     // Re-reads the play queue when the file changed (cheap stat; parsing on a worker thread).
     void checkQueueFile();
@@ -122,6 +126,11 @@ private:
     uint64_t memGen_ = 0; // invalidates an open() in flight on detach
     ScopedTimer pollTimer_;
     int memFailures_ = 0;
+    int memTries_ = 0;   // opens since attach (NetEase just started: its player is not up yet)
+    ScopedTimer memRetryTimer_;
+    // While a web command runs: NetEase's window state before it, restored if the command raised it.
+    struct Guard { HWND foreground = nullptr; bool visible = false, iconic = false; int64_t until = 0; bool locked = false; } guard_;
+    ScopedTimer guardTimer_;
     media::PlaybackStatus memStatus_ = media::PlaybackStatus::Unknown;
     int64_t memPosMs_ = 0, memAt_ = 0; // position at memAt_ (our clock)
     std::optional<int64_t> memDurationMs_;
