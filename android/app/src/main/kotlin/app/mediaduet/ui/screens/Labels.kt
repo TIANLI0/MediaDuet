@@ -7,7 +7,15 @@ import androidx.compose.ui.res.stringResource
 import app.mediaduet.R
 import app.mediaduet.link.TransportKind
 import app.mediaduet.protocol.Action
+import app.mediaduet.protocol.PeerPolicy
 import app.mediaduet.protocol.PlayStatus
+import app.mediaduet.policy.PeerArbiter
+import app.mediaduet.ui.components.AppIcons
+import androidx.compose.ui.graphics.vector.ImageVector
+
+/** Icon of a paired / connected device by its platform (§6.2). */
+@Composable
+fun platformIcon(platform: String): ImageVector = if (platform == "android") AppIcons.Devices else AppIcons.Computer
 
 /** Localised labels for protocol values and units shown in the UI. */
 
@@ -51,6 +59,7 @@ fun pairingReasonLabel(reason: String?): String = when (reason) {
     "busy" -> stringResource(R.string.reason_busy)
     "connection_lost" -> stringResource(R.string.reason_connection_lost)
     "peer_error" -> stringResource(R.string.reason_peer_error)
+    "unreachable" -> stringResource(R.string.reason_unreachable)
     else -> stringResource(R.string.reason_other, reason ?: stringResource(R.string.placeholder_none))
 }
 
@@ -72,6 +81,44 @@ fun policyWhatLabel(what: String): String = when (what) {
     "pause_local" -> stringResource(R.string.policy_what_pause_local)
     "resume_local" -> stringResource(R.string.policy_what_resume_local)
     else -> what
+}
+
+/** Android peer arbitration modes (§13). */
+@Composable
+fun peerModeLabel(mode: String): String = stringResource(
+    when (mode) {
+        PeerPolicy.MODE_OFF -> R.string.peer_mode_off
+        PeerPolicy.MODE_PRIORITY -> R.string.peer_mode_priority
+        else -> R.string.peer_mode_latest
+    },
+)
+
+@Composable
+fun peerPriorityLabel(priority: Int): String = stringResource(
+    when (priority) {
+        0 -> R.string.peer_priority_low
+        2 -> R.string.peer_priority_high
+        else -> R.string.peer_priority_normal
+    },
+)
+
+/** What an Android peer is doing, from its `policy.peer`. */
+@Composable
+fun peerStateLabel(p: PeerPolicy): String = stringResource(
+    when {
+        p.call -> R.string.peer_state_call
+        p.playing -> R.string.peer_state_playing
+        p.pausedAt > 0 -> R.string.peer_state_waiting
+        else -> R.string.peer_state_idle
+    },
+)
+
+@Composable
+fun peerReasonLabel(reason: String): String = when (reason) {
+    PeerArbiter.REASON_PEER_PLAYING -> stringResource(R.string.peer_reason_playing)
+    PeerArbiter.REASON_PEER_CALL -> stringResource(R.string.peer_reason_call)
+    PeerArbiter.REASON_PEERS_IDLE -> stringResource(R.string.peer_reason_idle)
+    else -> reason
 }
 
 @Composable

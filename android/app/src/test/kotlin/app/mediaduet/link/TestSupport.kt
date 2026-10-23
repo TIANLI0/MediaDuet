@@ -130,6 +130,18 @@ class FakeHost(val device: DeviceInfo) : LinkHost {
     }
 
     override fun bluetoothName() = btName
+
+    val peerPolicies = CopyOnWriteArrayList<app.mediaduet.protocol.PeerPolicy>()
+    var policyState: app.mediaduet.protocol.PeerPolicy? = null
+    val peerEndpoints = CopyOnWriteArrayList<List<LanEndpoint>>()
+    override fun peerPolicy() = policyState
+    override fun onPeerPolicy(peerId: String, policy: app.mediaduet.protocol.PeerPolicy) {
+        peerPolicies += policy
+    }
+
+    override fun onPeerTransportInfo(peerId: String, endpoints: List<LanEndpoint>) {
+        peerEndpoints += endpoints
+    }
 }
 
 /** Accepts loopback connections and hands them to the LinkManager under test. */

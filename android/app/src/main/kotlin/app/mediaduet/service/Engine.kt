@@ -28,6 +28,7 @@ import app.mediaduet.protocol.VolumeSet
 import app.mediaduet.protocol.VolumeState
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
+import app.mediaduet.protocol.Action
 import app.mediaduet.protocol.AudioOffer
 import app.mediaduet.protocol.BlobChunk
 import app.mediaduet.protocol.Caps
@@ -38,8 +39,18 @@ import app.mediaduet.protocol.LanEndpoint
 import app.mediaduet.protocol.LyricsPush
 import app.mediaduet.protocol.MediaCommand
 import app.mediaduet.protocol.MediaSnapshot
+import app.mediaduet.protocol.PeerPolicy
 import app.mediaduet.protocol.PolicyStatus
 import app.mediaduet.protocol.SinkState
+import app.mediaduet.media.CallMonitor
+import app.mediaduet.policy.ArbiterAction
+import app.mediaduet.policy.ArbiterLastAction
+import app.mediaduet.policy.ArbiterSession
+import app.mediaduet.policy.Cancellable
+import app.mediaduet.policy.PeerArbiter
+import app.mediaduet.policy.PeerArbiterConfig
+import app.mediaduet.policy.PolicyTimer
+import app.mediaduet.transport.PeerDiscovery
 import app.mediaduet.protocol.MediaQueue
 import app.mediaduet.lyrics.LyricsNotifier
 import app.mediaduet.lyrics.LyricsRepository
@@ -103,9 +114,18 @@ class Engine private constructor(private val app: Context) : LinkHost {
         deviceId = settings.deviceId,
         deviceName = { settings.deviceName.value },
         onAccept = link::accept,
-        onLanChanged = link::broadcastTransportInfo,
+        onLanChanged = {
+            link.broadcastTransportInfo()
+            discovery.restart()
+            dialer.nudge()
+        },
     )
     val remote = RemoteMediaStore(scope, clock, link, app.cacheDir)
+    /** Other Android devices nearby (DNS-SD), for pairing and reconnecting (§13). */
+    val discovery = PeerDiscovery(app, settings.deviceId)
+    /** Dials paired Android devices (the one with the smaller id dials). */
+    val dialer = PeerDialer(scope, settings.deviceId, link, trust, discovery, settings)
+    private val calls = CallMonitor(app, scope)
     /** Lyrics from the PC and the phone's own lookup (see [LyricsRepository]). */
     val lyrics = LyricsRepository(scope, app.filesDir, settings.onlineLyrics, onFound = { trackId, lrc, tr, source ->
         // The PC's own lookup may miss what the phone found (other match rules / endpoints).
@@ -189,6 +209,135 @@ class Engine private constructor(private val app: Context) : LinkHost {
     /** Local sessions as currently captured (for the "Phone media" screen). */
     val localStates: StateFlow<List<LocalSessionState>> = _localStates
 
+    // ---- Arbitration with other Android devices (§13) --------------------------------------------
+
+    /** All arbiter calls and its timers run here (it is not thread-safe). */
+    private val arbiterDispatcher = Dispatchers.Default.limitedParallelism(1)
+    private val _peerState = MutableStateFlow<PeerPolicy?>(null)
+    private val _peerPolicies = MutableStateFlow<Map<String, PeerPolicy>>(emptyMap())
+    /** The latest `policy.peer` of each connected Android device. */
+    val peerPolicies: StateFlow<Map<String, PeerPolicy>> = _peerPolicies
+    private val _arbiterLastAction = MutableStateFlow<ArbiterLastAction?>(null)
+    /** What the Android arbitration did last on this device (Settings › Arbitration). */
+    val arbiterLastAction: StateFlow<ArbiterLastAction?> = _arbiterLastAction
+
+    private val arbiter: PeerArbiter = PeerArbiter(
+        selfId = settings.deviceId,
+        timer = PolicyTimer { delayMs, block ->
+            val job = scope.launch(arbiterDispatcher) {
+                delay(delayMs)
+                block()
+                _arbiterLastAction.value = arbiterLastActionNow()
+            }
+            Cancellable { job.cancel() }
+        },
+        nowMs = clock::nowMs,
+        wallMs = System::currentTimeMillis,
+        execute = ::executeArbiterAction,
+        publish = { p ->
+            _peerState.value = p
+            link.broadcastPeerPolicy(p)
+        },
+    )
+
+    /** Only call on [arbiterDispatcher]. */
+    private fun arbiterLastActionNow(): ArbiterLastAction? = arbiter.lastAction
+
+    private fun onArbiter(block: PeerArbiter.() -> Unit) {
+        scope.launch(arbiterDispatcher) {
+            arbiter.block()
+            _arbiterLastAction.value = arbiter.lastAction
+        }
+    }
+
+    private fun executeArbiterAction(a: ArbiterAction) {
+        MdLog.i(TAG, "peer arbitration: ${a.kind} ${a.key} (${a.reason})")
+        scope.launch(Dispatchers.Main) {
+            val action = if (a.kind == ArbiterAction.Kind.PAUSE) Action.PAUSE else Action.PLAY
+            var r = media.execute(MediaCommand(a.key, action, null, MediaCommand.ORIGIN_POLICY, a.reason))
+            // Players that only take play/pause as a toggle.
+            if (!r.ok && r.error?.code == ErrorCode.ACTION_UNSUPPORTED) {
+                r = media.execute(MediaCommand(a.key, Action.TOGGLE, null, MediaCommand.ORIGIN_POLICY, a.reason))
+            }
+            if (!r.ok) MdLog.w(TAG, "peer arbitration ${a.kind} failed: ${r.error?.code}")
+            requestSnapshot()
+        }
+    }
+
+    private fun startPeerArbitration() {
+        scope.launch {
+            settings.peerPolicy.collect { p ->
+                onArbiter { setConfig(PeerArbiterConfig(mode = p.mode, priority = p.priority, autoResume = p.autoResume, pauseForCalls = p.pauseForCalls)) }
+            }
+        }
+        scope.launch {
+            _localStates.collect { states ->
+                val now = clock.nowMs()
+                val sessions = states.map { ArbiterSession(it.key, it.packageName, it.toSessionInfo(now).trackId, it.status) }
+                onArbiter { onLocalSessions(sessions) }
+            }
+        }
+        calls.start()
+        scope.launch { calls.active.collect { active -> onArbiter { onLocalCall(active) } } }
+    }
+
+    /** A command for a local session from the UI or a peer; [key] null = the active session. */
+    private fun noteLocalCommand(key: String?, action: String, policy: Boolean) {
+        val k = key ?: SnapshotBuilder.pickActive(media.states)?.key ?: return
+        onArbiter { onLocalCommand(k, action, policy) }
+    }
+
+    // ---- Peer focus: which connected device the player shows ---------------------------------
+
+    /** The last state of each peer, so the player can switch between connected devices. */
+    private class PeerCache {
+        var snapshot: Pair<MediaSnapshot, Long>? = null
+        var volume: VolumeState? = null
+        var policy: PolicyStatus? = null
+        var sink: SinkState? = null
+        var handoff: List<HandoffApp> = emptyList()
+    }
+
+    private val routeLock = Any()
+    private val peerCache = HashMap<String, PeerCache>()
+    /** The peer whose state [remote] currently holds. */
+    private var routedPeer: String? = null
+
+    /**
+     * Caches [update] for [peerId] and applies it to the player's state when that peer is the
+     * focused one (switching the player over to it first if needed).
+     */
+    private fun routePeer(peerId: String, update: PeerCache.() -> Unit, apply: () -> Unit) = synchronized(routeLock) {
+        peerCache.getOrPut(peerId) { PeerCache() }.update()
+        if (peerId != link.status.value.current?.peer?.id) return@synchronized
+        if (routedPeer != peerId) switchRemoteTo(peerId) else apply()
+    }
+
+    private fun switchRemoteTo(peerId: String) {
+        routedPeer = peerId
+        remote.onSessionStarted(peerId, resumed = false)
+        val c = peerCache[peerId] ?: PeerCache()
+        c.snapshot?.let { (s, at) -> remote.onSnapshot(peerId, s, at) }
+        c.volume?.let(remote::onPeerVolume)
+        c.policy?.let(remote::onPolicyStatus)
+        c.sink?.let(remote::onSinkState)
+        _pcHandoffApps.value = c.handoff
+        MdLog.i(TAG, "player follows ${link.status.value.current?.peer?.name}")
+    }
+
+    private fun startPeerFocus() {
+        scope.launch {
+            link.status.map { it.current?.peer?.id }.distinctUntilChanged().collect { id ->
+                synchronized(routeLock) { if (id != null && id != routedPeer) switchRemoteTo(id) }
+            }
+        }
+        // Forget the addresses of devices that are no longer paired.
+        scope.launch { trust.peers.collect { peers -> settings.forgetPeerEndpoints(peers.map { it.id }.toSet()) } }
+    }
+
+    /** Shows [peerId]'s media in the player (null: automatic, a PC first). */
+    fun focusPeer(peerId: String?) = link.setFocus(peerId)
+
     // ---- Handoff (§8.7): continue a song on the other device -----------------------------------
 
     private val handoffExecutor by lazy { HandoffExecutor(app, media, _localStates) }
@@ -267,6 +416,9 @@ class Engine private constructor(private val app: Context) : LinkHost {
         }, packages, androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED)
         startTargetResolver()
         startLyricsRequests()
+        startPeerFocus()
+        startPeerArbitration()
+        dialer.start()
         lyricsNotifier.start()
         // Work mode: listen for / talk to PCs only when linked.
         scope.launch {
@@ -274,6 +426,7 @@ class Engine private constructor(private val app: Context) : LinkHost {
             settings.mode.map { it.linked }.distinctUntilChanged().collect { linked ->
                 if (linked) {
                     transports.start()
+                    dialer.nudge()
                     // At start-up the service is started by its usual triggers (activity, listener, boot).
                     if (!first) LinkService.start(app, "mode")
                 } else {
@@ -395,14 +548,16 @@ class Engine private constructor(private val app: Context) : LinkHost {
         add(Caps.POLICY_CLIENT)
         add(Caps.VOLUME)
         add(Caps.HANDOFF)
+        add(Caps.POLICY_PEER)
         if (settings.audioReceiveEnabled.value) add(Caps.AUDIO_RECV_PCM)
     }
 
     override fun handoffApps(): List<String> = _phoneHandoffApps.value.map { it.id }
 
     override fun onPeerHandoffApps(peerId: String, apps: JsonElement?) {
-        _pcHandoffApps.value = HandoffApp.listFrom(apps)
-        MdLog.i(TAG, "PC music apps for handoff: ${_pcHandoffApps.value.joinToString { it.id }.ifEmpty { "none" }}")
+        val list = HandoffApp.listFrom(apps)
+        MdLog.i(TAG, "PC music apps for handoff: ${list.joinToString { it.id }.ifEmpty { "none" }}")
+        routePeer(peerId, { handoff = list }) { _pcHandoffApps.value = list }
     }
 
     override suspend fun onHandoffPlay(peerId: String, body: JsonObject, progress: suspend (String) -> Unit): JsonObject {
@@ -425,6 +580,7 @@ class Engine private constructor(private val app: Context) : LinkHost {
         SnapshotBuilder.build(gen.incrementAndGet(), media.states, clock.nowMs(), currentOutputLatency()).also { _lastSentSnapshot.value = it }
 
     override suspend fun executeCommand(peerId: String, command: MediaCommand): CommandResult {
+        noteLocalCommand(command.key, command.action, policy = command.origin == MediaCommand.ORIGIN_POLICY)
         val result = withContext(Dispatchers.Main) { media.execute(command) }
         requestSnapshot()
         return result
@@ -442,7 +598,7 @@ class Engine private constructor(private val app: Context) : LinkHost {
         Notifications.cancel(app, Notifications.ID_VOLUME)
         return r.state
     }
-    override fun onPeerVolume(peerId: String, state: VolumeState) = remote.onPeerVolume(state)
+    override fun onPeerVolume(peerId: String, state: VolumeState) = routePeer(peerId, { volume = state }) { remote.onPeerVolume(state) }
     override fun bluetoothName(): String? = transports.bluetoothName()
 
     /** Executes a user command on a phone session directly through its MediaController. */
@@ -453,6 +609,7 @@ class Engine private constructor(private val app: Context) : LinkHost {
         customAction: String? = null,
         queueId: Long? = null,
     ): CommandResult {
+        noteLocalCommand(key, action, policy = false)
         val result = withContext(Dispatchers.Main) {
             media.execute(MediaCommand(key, action, positionMs, MediaCommand.ORIGIN_USER, "android_ui", customAction, queueId))
         }
@@ -462,25 +619,49 @@ class Engine private constructor(private val app: Context) : LinkHost {
 
     override fun lanEndpoints(): List<LanEndpoint> = transports.lanEndpoints()
 
-    override fun onSessionStarted(peer: DeviceInfo, resumed: Boolean, peerCaps: Set<String>) =
-        remote.onSessionStarted(peer.id, resumed)
-
-    override fun onPeerDisconnected(peerId: String) {
-        _pcHandoffApps.value = emptyList()
-        remote.onDisconnected(peerId)
-        audio.stopForPeer(peerId)
+    override fun onSessionStarted(peer: DeviceInfo, resumed: Boolean, peerCaps: Set<String>) = synchronized(routeLock) {
+        // §7: a new session discards the peer's state; it re-sends everything.
+        if (!resumed) peerCache.remove(peer.id)
+        if (peer.id != link.status.value.current?.peer?.id) return@synchronized
+        if (routedPeer == peer.id) remote.onSessionStarted(peer.id, resumed) else switchRemoteTo(peer.id)
     }
 
-    override fun onPeerSnapshot(peerId: String, snapshot: MediaSnapshot, positionAtMs: Long) = remote.onSnapshot(peerId, snapshot, positionAtMs)
+    override fun onPeerDisconnected(peerId: String) {
+        synchronized(routeLock) {
+            if (routedPeer == peerId) {
+                _pcHandoffApps.value = emptyList()
+                remote.onDisconnected(peerId)
+            }
+        }
+        audio.stopForPeer(peerId)
+        _peerPolicies.value = _peerPolicies.value - peerId
+        onArbiter { onPeerGone(peerId) }
+    }
+
+    override fun peerPolicy(): PeerPolicy? = _peerState.value
+
+    override fun onPeerPolicy(peerId: String, policy: PeerPolicy) {
+        _peerPolicies.value = _peerPolicies.value + (peerId to policy)
+        onArbiter { onPeer(peerId, policy) }
+    }
+
+    override fun onPeerTransportInfo(peerId: String, endpoints: List<LanEndpoint>) {
+        if (endpoints.isNotEmpty()) settings.rememberPeerEndpoints(peerId, endpoints)
+    }
+
+    override fun onPeerSnapshot(peerId: String, snapshot: MediaSnapshot, positionAtMs: Long) =
+        routePeer(peerId, { this.snapshot = snapshot to positionAtMs }) { remote.onSnapshot(peerId, snapshot, positionAtMs) }
     override fun onBlobChunk(peerId: String, chunk: BlobChunk) = remote.onChunk(chunk)
     override fun onArtworkNotFound(peerId: String, hash: String) = remote.onArtworkNotFound(hash)
-    override fun onPeerQueue(peerId: String, queue: MediaQueue) = remote.onQueue(queue)
+    override fun onPeerQueue(peerId: String, queue: MediaQueue) {
+        if (peerId == routedPeer) remote.onQueue(queue)
+    }
     override fun onLyrics(peerId: String, lyrics: LyricsPush) =
         this.lyrics.onPcLyrics(lyrics.trackId, remote.parseLyrics(lyrics), remote.sessionForTrack(lyrics.trackId)?.let(LyricsRepository::songOf))
     override fun onLyricsNone(peerId: String, trackId: String) =
         lyrics.onPcNone(trackId, remote.sessionForTrack(trackId)?.let(LyricsRepository::songOf))
-    override fun onPolicyStatus(peerId: String, status: PolicyStatus) = remote.onPolicyStatus(status)
-    override fun onSinkState(peerId: String, state: SinkState) = remote.onSinkState(state)
+    override fun onPolicyStatus(peerId: String, status: PolicyStatus) = routePeer(peerId, { policy = status }) { remote.onPolicyStatus(status) }
+    override fun onSinkState(peerId: String, state: SinkState) = routePeer(peerId, { sink = state }) { remote.onSinkState(state) }
     override fun mediaQueue(key: String): MediaQueue? = media.queues.value[key]?.let { fitRecord(it) }
 
     /** Shrinks the queue window (keeping the current entry) until it fits one control record. */

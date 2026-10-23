@@ -24,6 +24,9 @@ makes *outgoing* connections no inbound firewall rule is needed.
 Roles only affect connection setup. After the handshake the protocol is fully
 symmetric: either side may send any message type permitted by §6.
 
+Two Android devices can also be linked; one of them then takes the client role
+(§13).
+
 ### 1.1 Bluetooth Classic RFCOMM
 
 * Service UUID: `5f3a8c2e-7d41-4b9a-9c61-2e8d0f6b4a17`
@@ -36,7 +39,8 @@ symmetric: either side may send any message type permitted by §6.
 ### 1.2 TCP (LAN)
 
 * DNS-SD service type: `_mediaduet._tcp`, domain `local`.
-* TXT record: `v=1`, `id=<deviceId>` (§3.1), `n=<urlencoded device name, ≤ 40 bytes>`.
+* TXT record: `v=1`, `id=<deviceId>` (§3.1), `n=<urlencoded device name, ≤ 40 bytes>`,
+  `p=android` (optional: the advertiser's platform).
 * Default port **47321**; if busy the server binds an ephemeral port and advertises it.
 * Manual connection uses `host:port` entered by the user (default port 47321).
 * LAN traffic is always encrypted (§5). TLS is not used; see §4.4 for the rationale.
@@ -338,6 +342,7 @@ HANDSHAKE frames; everything else in SECURE/CONTROL records.
 | `handoff.play` | C→S | `{app, song:{title, artist, album, durationMs}, ids?}` — play this song in `app` on the phone; answered with `handoff.result` with `re`, possibly after `handoff.progress` |
 | `handoff.progress` | S→C | `{state:"tap_to_continue"}` with `re` — the phone asks its user to tap a notification (Android does not let a background app open another app) |
 | `handoff.result` | both | `{ok, state?, key?, error?:{code}}` with `re` — the answer to `handoff.play` / `handoff.start` (§8.7) |
+| `policy.peer` | both | `PeerPolicy` (§13.2) — Android ↔ Android arbitration state; sent after `session.ready` and on every change (requires cap `policy.peer`) |
 | `bye` | both | `{reason}` — orderly disconnect (user disconnect, app exit) |
 
 `error.code` values: `not_paired`, `auth_failed`, `version_unsupported`,
@@ -533,9 +538,10 @@ Each record's plaintext is `u64_be(senderMonotonicMicros) ‖ PCM s16le interlea
 
 ## 10. Arbitration semantics (informative; normative for the Windows engine)
 
-The arbitration engine runs on the **client (Windows)** only, to avoid two
-engines fighting. Android reports state and executes commands; it can request a
-mode change with `policy.config`. See `docs/architecture.md` §Arbitration.
+Between a PC and a phone the arbitration engine runs on the **client (Windows)**
+only, to avoid two engines fighting. Android reports state and executes commands;
+it can request a mode change with `policy.config`. See `docs/architecture.md`
+§Arbitration. Android devices arbitrate among themselves differently (§13.2).
 
 Key rules that the protocol supports:
 
@@ -584,4 +590,73 @@ received at `t1` gives `offset = rt − (t0 + t1) / 2`, wrong by at most
   depends on a capability the peer did not announce.
 * v1 capability strings: `media.source`, `media.control`, `artwork`, `lyrics`,
   `policy.host`, `policy.client`, `audio.a2dp_sink`, `audio.recv.pcm`,
-  `audio.send.pcm`, `smtc.bridge`, `notif.bridge`, `volume`, `handoff`.
+  `audio.send.pcm`, `smtc.bridge`, `notif.bridge`, `volume`, `handoff`,
+  `policy.peer`.
+
+---
+
+## 13. Android ↔ Android
+
+### 13.1 Linking
+
+* Any Android device may connect to another one as the **client** (§1): it finds
+  it with DNS-SD (§1.2) and connects over TCP; Bluetooth RFCOMM is not used
+  between Android devices.
+* Pairing (§3.3) is started by the user on either device; that device is the
+  client, the other one must have its pairing window open. Both show the SAS.
+* After pairing, of two Android devices **the one with the smaller `deviceId`**
+  (lexicographic) dials and reconnects (back-off 2 s → 60 s, ±20 %); the other
+  only listens. This keeps one link session per pair.
+* The client sends `link.primary {}` on its connection; the server sends
+  `session.ready` and `transport.info` as usual. The client keeps the reported
+  LAN endpoints to find the server again.
+* A device may hold sessions with a PC and several Android devices at once. The
+  player shows one of them at a time; handoff and the PC audio receiver are PC
+  features and are only offered for a connected PC.
+
+### 13.2 Arbitration (`policy.peer`)
+
+Every Android device runs its own engine but **only pauses and resumes its own
+media sessions**; no device sends `media.command {origin:"policy"}` to another
+Android device. Since no session has two controllers, engines cannot fight.
+
+`PeerPolicy`:
+
+```json
+{"mode":"latest","priority":1,"call":false,"playing":true,"cause":"user",
+ "onsetAt":1760000000000,"pausedAt":0,"app":"com.netease.cloudmusic"}
+```
+
+| Field | Meaning |
+|-------|---------|
+| `mode` | `off`, `latest` (the newest user-started playback wins), `priority` (higher wins; ties: newest). Unknown → `latest` |
+| `priority` | 0 (low) … 2 (high) |
+| `call` | the sender is in a phone / VoIP call |
+| `playing` | a session of the sender plays (or buffers) |
+| `cause` | `user`: a person started the current playback; `policy`: an automatic resume; `none` while not playing |
+| `onsetAt` | sender wall clock (ms) of the last user-started playback; identifies it |
+| `pausedAt` | > 0 while the sender holds sessions it paused for a peer and will resume (wall clock of that pause) |
+| `app` | optional: app id of the playing session |
+
+Rules (each device, about its own sessions):
+
+1. A peer's new user-started playback (`playing` with `cause:"user"` and an
+   `onsetAt` not seen before) pauses what plays here when this device yields:
+   `latest` → when the peer's `onsetAt` ≥ ours; `priority` → when the peer's
+   priority is higher, or equal and its `onsetAt` ≥ ours. Of two playbacks
+   started at about the same time (messages crossing) only the older one yields.
+2. A peer's call (`call` turning true) pauses what plays here in every mode
+   except `off` (setting "pause for calls").
+3. Automatic resumes (`cause:"policy"`) never make a peer yield.
+4. When no peer plays or calls, sessions paused by rule 1 / 2 are resumed after
+   3 s. Of several waiting devices the one with the latest `pausedAt` resumes
+   first (ties: larger `deviceId`); the others keep waiting while it plays.
+5. Pauses the engine did not cause (the user, the app, a PC's arbitration) are
+   never undone; changing track while paused counts as a user decision; a pause
+   or resume without effect within 4 s is not retried (a failed resume clears
+   `pausedAt`).
+6. The first `policy.peer` of a connection is a baseline: existing state, not a
+   new playback. A peer that disconnects is not a reason to resume.
+
+A PC's commands with `origin:"policy"` are attributed as such: a playback the
+PC resumed is reported with `cause:"policy"`.

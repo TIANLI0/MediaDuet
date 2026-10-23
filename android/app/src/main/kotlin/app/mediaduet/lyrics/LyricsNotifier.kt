@@ -175,8 +175,9 @@ class LyricsNotifier(
             )
         if (frame.translation != null) b.setStyle(Notification.BigTextStyle().bigText(frame.translation))
         if (Build.VERSION.SDK_INT >= 36) {
-            b.setRequestPromotedOngoing(true)
             b.setShortCriticalText(line ?: NOTE)
+            // Live Updates arrived in Android 16 QPR2 (36.1); 36.0 has no such method.
+            if (Build.VERSION.SDK_INT_FULL >= Build.VERSION_CODES_FULL.BAKLAVA_1) b.setRequestPromotedOngoing(true)
         }
         try {
             context.getSystemService(NotificationManager::class.java).notify(Notifications.ID_LYRICS, b.build())

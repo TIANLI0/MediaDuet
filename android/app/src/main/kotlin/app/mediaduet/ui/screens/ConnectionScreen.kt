@@ -17,7 +17,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -85,6 +88,23 @@ fun ConnectionPage(ui: UiContext, onBack: () -> Unit) {
                         )
                     }
                 }
+                // Several devices at once (a PC and Android devices): choose the one the player shows.
+                val others = link.connectedSessions.filter { it.sid != current.sid }
+                if (others.isNotEmpty()) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(stringResource(R.string.conn_also_connected), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    for (o in others) {
+                        InfoRow(
+                            o.peer.name,
+                            subtitle = listOfNotNull(
+                                o.transports.firstOrNull()?.let { transportLabel(it.kind) },
+                                o.rttMs?.let { stringResource(R.string.conn_rtt, it) },
+                            ).joinToString(stringResource(R.string.list_separator)),
+                            leading = { Icon(platformIcon(o.peer.platform), null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                            trailing = { TextButton({ engine.focusPeer(o.peer.id) }) { Text(stringResource(R.string.conn_show_in_player)) } },
+                        )
+                    }
+                }
             } else {
                 Text(stringResource(R.string.conn_waiting_title), style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(4.dp))
@@ -122,8 +142,18 @@ fun ConnectionPage(ui: UiContext, onBack: () -> Unit) {
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    stringResource(R.string.pairing_steps_android, deviceName),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
+
+        // ---- other Android devices (§13) ----------------------------------------------------
+        SectionHeader(stringResource(R.string.nearby_header))
+        NearbyDevicesCard(ui)
 
         // ---- trusted devices ---------------------------------------------------------------
         SectionHeader(stringResource(R.string.trusted_header))
@@ -151,7 +181,7 @@ fun ConnectionPage(ui: UiContext, onBack: () -> Unit) {
                         },
                         p.appVersion.takeIf { it.isNotBlank() }?.let { stringResource(R.string.version_value, it) },
                     ).joinToString(stringResource(R.string.list_separator)),
-                    leading = { Icon(AppIcons.Computer, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                    leading = { Icon(platformIcon(p.platform), null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) },
                     trailing = {
                         TextButton({
                             ui.confirm(
@@ -233,6 +263,58 @@ fun ConnectionPage(ui: UiContext, onBack: () -> Unit) {
         PhoneMediaSection(ui)
     }
 }
+
+/**
+ * Android devices running MediaDuet on the network (DNS-SD; searched only while this page is
+ * open) that are not paired yet. Pairing asks the other device, which must have pairing mode open.
+ */
+@Composable
+private fun NearbyDevicesCard(ui: UiContext) {
+    val engine = ui.engine
+    val nearby by engine.discovery.devices.collectAsStateWithLifecycle()
+    val peers by engine.trust.peers.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+    var pairingWith by remember { mutableStateOf<String?>(null) }
+    DisposableEffect(Unit) {
+        engine.discovery.acquire(DISCOVERY_HOLDER)
+        onDispose { engine.discovery.release(DISCOVERY_HOLDER) }
+    }
+    val unpaired = nearby.filter { d -> peers.none { it.id == d.id } }.sortedBy { it.name }
+    GlassCard(ui.backdrop, Modifier.fillMaxWidth()) {
+        Text(stringResource(R.string.nearby_text), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (unpaired.isEmpty()) {
+            Spacer(Modifier.height(8.dp))
+            Text(stringResource(R.string.nearby_searching), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        for (d in unpaired) {
+            val busy = pairingWith == d.id
+            InfoRow(
+                d.name,
+                subtitle = stringResource(R.string.lan_endpoint, d.host, d.port),
+                leading = { Icon(AppIcons.Devices, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                trailing = {
+                    TextButton(
+                        {
+                            pairingWith = d.id
+                            engine.pairing.clearOutcome()
+                            scope.launch {
+                                val failure = engine.dialer.pair(d)
+                                // Failures after the code was shown are reported by the pairing overlay.
+                                if (failure != null && engine.pairing.state.value.lastOutcome == null) {
+                                    engine.pairing.reportOutgoingFailure(d.name, failure)
+                                }
+                                pairingWith = null
+                            }
+                        },
+                        enabled = pairingWith == null,
+                    ) { Text(stringResource(if (busy) R.string.nearby_pairing else R.string.nearby_pair)) }
+                },
+            )
+        }
+    }
+}
+
+private const val DISCOVERY_HOLDER = "connection-page"
 
 @Composable
 private fun CompanionCard(ui: UiContext) {

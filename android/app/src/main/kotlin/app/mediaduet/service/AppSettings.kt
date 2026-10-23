@@ -13,7 +13,10 @@ import app.mediaduet.protocol.StrLimit
 import app.mediaduet.protocol.truncateCodePoints
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import app.mediaduet.protocol.LanEndpoint
+import app.mediaduet.protocol.PeerPolicy
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -162,7 +165,49 @@ class AppSettings(context: Context) {
         _audioReceive.value = enabled
     }
 
-    private val _autoUpdateCheck = MutableStateFlow(prefs.getBoolean(KEY_UPDATE_AUTO, true))
+    private val _peerPolicy = MutableStateFlow(
+        PeerPolicySettings(
+            mode = prefs.getString(KEY_PEER_MODE, null)?.takeIf { it in PeerPolicy.MODES } ?: PeerPolicy.MODE_LATEST,
+            priority = prefs.getInt(KEY_PEER_PRIORITY, 1).coerceIn(PeerPolicy.MIN_PRIORITY, PeerPolicy.MAX_PRIORITY),
+            autoResume = prefs.getBoolean(KEY_PEER_RESUME, true),
+            pauseForCalls = prefs.getBoolean(KEY_PEER_CALLS, true),
+        ),
+    )
+    /** Arbitration with other Android devices (§13): how this device yields to their playback. */
+    val peerPolicy: StateFlow<PeerPolicySettings> = _peerPolicy
+
+    fun setPeerPolicy(p: PeerPolicySettings) {
+        prefs.edit {
+            putString(KEY_PEER_MODE, p.mode)
+            putInt(KEY_PEER_PRIORITY, p.priority)
+            putBoolean(KEY_PEER_RESUME, p.autoResume)
+            putBoolean(KEY_PEER_CALLS, p.pauseForCalls)
+        }
+        _peerPolicy.value = p
+    }
+
+    /** Last known LAN endpoints of paired Android devices we dial (by device id). */
+    @Synchronized
+    fun peerEndpoints(peerId: String): List<LanEndpoint> = decodeEndpoints(prefs.getString(KEY_PEER_ENDPOINTS, null))[peerId].orEmpty()
+
+    /** Puts [endpoints] first in [peerId]'s list (at most 6 kept). */
+    @Synchronized
+    fun rememberPeerEndpoints(peerId: String, endpoints: List<LanEndpoint>) {
+        val all = decodeEndpoints(prefs.getString(KEY_PEER_ENDPOINTS, null)).toMutableMap()
+        val next = (endpoints + all[peerId].orEmpty()).distinct().take(6)
+        if (next == all[peerId]) return
+        all[peerId] = next
+        prefs.edit { putString(KEY_PEER_ENDPOINTS, encodeEndpoints(all)) }
+    }
+
+    @Synchronized
+    fun forgetPeerEndpoints(keep: Set<String>) {
+        val all = decodeEndpoints(prefs.getString(KEY_PEER_ENDPOINTS, null))
+        if (all.keys.all { it in keep }) return
+        prefs.edit { putString(KEY_PEER_ENDPOINTS, encodeEndpoints(all.filterKeys { it in keep })) }
+    }
+
+    private val _autoUpdateCheck =MutableStateFlow(prefs.getBoolean(KEY_UPDATE_AUTO, true))
     /** Look for a new MediaDuet version on GitHub once a day (Settings > About). */
     val autoUpdateCheck: StateFlow<Boolean> = _autoUpdateCheck
 
@@ -200,7 +245,36 @@ class AppSettings(context: Context) {
         const val KEY_UPDATE_AUTO = "update.auto"
         const val KEY_UPDATE_CHECKED = "update.checkedAt"
         const val KEY_UPDATE_NOTIFIED = "update.notified"
+        const val KEY_PEER_MODE = "peer.policy.mode"
+        const val KEY_PEER_PRIORITY = "peer.policy.priority"
+        const val KEY_PEER_RESUME = "peer.policy.autoResume"
+        const val KEY_PEER_CALLS = "peer.policy.calls"
+        const val KEY_PEER_ENDPOINTS = "peer.endpoints"
     }
+}
+
+/** Settings › Arbitration › Android devices (see [app.mediaduet.policy.PeerArbiter]). */
+data class PeerPolicySettings(
+    val mode: String = PeerPolicy.MODE_LATEST,
+    val priority: Int = 1,
+    val autoResume: Boolean = true,
+    val pauseForCalls: Boolean = true,
+)
+
+/** Endpoints map <-> JSON `{"<id>":["host:port", …]}` (invalid entries are dropped). */
+internal fun encodeEndpoints(map: Map<String, List<LanEndpoint>>): String =
+    JsonObject(map.mapValues { (_, list) -> JsonArray(list.map { JsonPrimitive("${it.host}|${it.port}") }) }).toString()
+
+internal fun decodeEndpoints(s: String?): Map<String, List<LanEndpoint>> {
+    if (s.isNullOrEmpty()) return emptyMap()
+    val o = runCatching { Json.parseToJsonElement(s) as? JsonObject }.getOrNull() ?: return emptyMap()
+    return o.mapValues { (_, v) ->
+        (v as? JsonArray).orEmpty().mapNotNull { e ->
+            val parts = (e as? JsonPrimitive)?.takeIf { it.isString }?.content?.split('|') ?: return@mapNotNull null
+            val port = parts.getOrNull(1)?.toIntOrNull()?.takeIf { it in 1..65535 } ?: return@mapNotNull null
+            parts[0].takeIf { it.isNotBlank() }?.let { LanEndpoint(it, port) }
+        }
+    }.filterValues { it.isNotEmpty() }
 }
 
 /** Synced lyrics text size: a scale on the lyrics style (translations scale along). */

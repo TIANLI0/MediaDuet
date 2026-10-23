@@ -26,6 +26,8 @@ class PairingController(private val scope: CoroutineScope, private val clock: Mo
         val sas: String,
         val transport: TransportKind,
         val localAccepted: Boolean,
+        /** We asked the peer to pair (Android ↔ Android, §13); otherwise the peer asked us. */
+        val outgoing: Boolean = false,
     )
 
     data class Outcome(val attemptId: Int, val peerName: String, val success: Boolean, val reason: String?)
@@ -84,7 +86,11 @@ class PairingController(private val scope: CoroutineScope, private val clock: Mo
         a.decision.complete(false)
     }
 
-    fun clearOutcome() = _state.update { it.copy(lastOutcome = null) }
+    /** A pairing we asked for failed before the SAS was shown (unreachable, pairing mode closed …). */
+    fun reportOutgoingFailure(peerName: String, reason: String) =
+        _state.update { it.copy(lastOutcome = Outcome(0, peerName, false, reason)) }
+
+    fun clearOutcome() =_state.update { it.copy(lastOutcome = null) }
 
     inner class Attempt internal constructor(val id: Int, val peer: DeviceInfo) {
         internal val decision = CompletableDeferred<Boolean>()
@@ -103,6 +109,24 @@ class PairingController(private val scope: CoroutineScope, private val clock: Mo
         _state.update {
             it.copy(
                 prompt = Prompt(attempt.id, peer.id, peer.name, peer.platform, sas, transport, localAccepted = false),
+                lastOutcome = null,
+            )
+        }
+        return attempt
+    }
+
+    /**
+     * Starts an attempt we initiated as the client (pairing with another Android device, §13):
+     * no pairing window is needed on this side. Returns null while another attempt runs.
+     */
+    @Synchronized
+    internal fun beginOutgoing(peer: DeviceInfo, sas: String, transport: TransportKind): Attempt? {
+        if (current != null) return null
+        val attempt = Attempt(++attemptCounter, peer)
+        current = attempt
+        _state.update {
+            it.copy(
+                prompt = Prompt(attempt.id, peer.id, peer.name, peer.platform, sas, transport, localAccepted = false, outgoing = true),
                 lastOutcome = null,
             )
         }

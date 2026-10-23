@@ -35,6 +35,7 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.mediaduet.R
 import app.mediaduet.ui.LocalBottomInset
@@ -53,6 +54,7 @@ fun ScreenScaffold(
     subtitle: String? = null,
     backdrop: Backdrop? = null,
     onBack: (() -> Unit)? = null,
+    maxWidth: Dp = 640.dp,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val scroll = rememberScrollState()
@@ -64,7 +66,7 @@ fun ScreenScaffold(
             .padding(horizontal = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Column(Modifier.widthIn(max = 640.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+        Column(Modifier.widthIn(max = maxWidth).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
             Spacer(Modifier.height(12.dp))
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 // Back button and title share one row; the subtitle runs full width beneath.
@@ -107,7 +109,7 @@ fun ScreenScaffold(
                 .verticalScroll(scroll),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Column(Modifier.widthIn(max = 640.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+            Column(Modifier.widthIn(max = maxWidth).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                 Spacer(Modifier.height(18.dp))
                 content()
                 // Never let content end behind the floating mini player + tab bar.

@@ -67,8 +67,8 @@
     <string name="conn_primary">主通道</string>
     <string name="conn_rtt">延迟 %1$d 毫秒</string>
     <string name="conn_since">已连接 %1$s</string>
-    <string name="conn_waiting_title">等待电脑连接</string>
-    <string name="conn_waiting_text">由电脑主动连接手机。请保持蓝牙开启或处于同一网络。</string>
+    <string name="conn_waiting_title">等待设备连接</string>
+    <string name="conn_waiting_text">电脑会主动连接本机，已配对的安卓设备也会自动连接。请保持蓝牙开启或处于同一网络。</string>
     <string name="pairing_header">配对</string>
     <string name="pairing_mode">配对模式</string>
     <string name="pairing_mode_hint">开启后在电脑上发起配对。5 分钟后自动关闭。</string>
@@ -76,7 +76,7 @@
     <string name="pairing_success">已与 %1$s 配对</string>
     <string name="pairing_failed">与 %1$s 配对失败：%2$s</string>
     <string name="trusted_header">受信任的电脑</string>
-    <string name="trusted_empty">尚未配对任何电脑。</string>
+    <string name="trusted_empty">尚未配对任何设备。</string>
     <string name="trusted_connected">已连接</string>
     <string name="trusted_last_seen">上次连接 %1$s</string>
     <string name="trusted_revoke">移除</string>
@@ -161,7 +161,7 @@
     <string name="settings_policy_header">播放仲裁</string>
     <string name="settings_policy_current">电脑当前模式：%1$s</string>
     <string name="settings_policy_unknown">电脑尚未报告仲裁模式。</string>
-    <string name="settings_policy_text">由电脑决定哪一端继续播放，你可以在这里请求切换模式。</string>
+    <string name="settings_policy_text">多台设备同时播放时，决定由哪一台继续播放。</string>
     <string name="settings_policy_unavailable">连接运行仲裁引擎的电脑后才能切换模式。</string>
     <string name="settings_policy_sent">请求已发送到电脑。</string>
     <string name="settings_policy_failed">无法发送请求。</string>
@@ -240,7 +240,7 @@
     <string name="source_title">播放来源</string>
     <string name="this_phone">手机</string>
     <string name="banner_access">媒体访问未开启，点按修复</string>
-    <string name="banner_pair">配对电脑即可开始</string>
+    <string name="banner_pair">配对电脑或其他设备即可开始</string>
     <string name="summary_all_set">已就绪</string>
     <string name="summary_translations_on">显示翻译</string>
     <string name="summary_translations_off">不显示翻译</string>
@@ -278,7 +278,7 @@
     <string name="target_auto_text">跟随最近开始播放的一方</string>
 
     <!-- Round 3: interaction -->
-    <string name="pill_pc_disconnected">电脑未连接 · 点按连接</string>
+    <string name="pill_pc_disconnected">设备未连接 · 点按连接</string>
     <string name="sheet_pc_disconnected_text">前往连接设置</string>
     <string name="lyrics_back_to_current">回到当前歌词</string>
     <string name="a11y_open_player">打开播放器</string>
@@ -444,4 +444,42 @@
     <string name="update_err_signature">当前安装的 MediaDuet 签名不同（例如调试版）。请先卸载，再从发布页面安装新版本。</string>
     <string name="update_err_blocked">安装被系统安全检查（例如 Google Play 保护机制）拦截。可以在拦截提示的“更多详情”里选择“仍然安装”，或从发布页面手动安装。</string>
     <string name="update_err_storage">存储空间不足，无法安装更新。</string>
+    <string name="nearby_header">其他安卓设备</string>
+    <string name="nearby_text">与同一网络中运行 MediaDuet 的手机或平板配对。请先在那台设备上打开“配对模式”。</string>
+    <string name="nearby_searching">正在搜索局域网…</string>
+    <string name="nearby_pair">配对</string>
+    <string name="nearby_pairing">正在连接…</string>
+    <string name="reason_unreachable">无法连接到该设备</string>
+    <string name="pair_dialog_text_outgoing">正在通过%2$s与 %1$s 配对。请确认对方显示相同的配对码。</string>
+    <string name="pairing_steps_android">从另一台安卓设备配对：在那台设备上打开 设置 › 连接，在“其他安卓设备”中选择“%1$s”。</string>
+    <string name="conn_also_connected">同时连接</string>
+    <string name="conn_show_in_player">在播放器中显示</string>
+    <string name="settings_policy_pc_header">电脑</string>
+    <string name="settings_policy_pc_text">电脑决定它与本机之间由谁继续播放，你可以在这里请求切换模式。</string>
+    <string name="peer_policy_text">每台安卓设备自行决定：另一台开始播放时是否暂停，对方停止后再恢复。适用于已配对的手机和平板。</string>
+    <string name="peer_mode_off">关闭</string>
+    <string name="peer_mode_latest">后播放者优先</string>
+    <string name="peer_mode_priority">按优先级</string>
+    <string name="peer_priority_title">本设备优先级</string>
+    <string name="peer_priority_text">优先级高的设备继续播放；优先级相同时后播放者优先。</string>
+    <string name="peer_priority_low">低</string>
+    <string name="peer_priority_normal">中</string>
+    <string name="peer_priority_high">高</string>
+    <string name="peer_auto_resume">之后自动恢复</string>
+    <string name="peer_auto_resume_text">对方停止播放后，继续播放被暂停的内容</string>
+    <string name="peer_calls">通话时暂停</string>
+    <string name="peer_calls_text">另一台设备通话时暂停本机播放（不受模式影响）</string>
+    <string name="peer_last_action">最近：%1$s · %2$s</string>
+    <string name="peer_last_failed">未生效</string>
+    <string name="peer_what_pause">已暂停本机</string>
+    <string name="peer_what_resume">已恢复本机</string>
+    <string name="peer_reason_playing">另一台设备开始播放</string>
+    <string name="peer_reason_call">另一台设备正在通话</string>
+    <string name="peer_reason_idle">其他设备已停止播放</string>
+    <string name="peer_state_playing">正在播放</string>
+    <string name="peer_state_call">通话中</string>
+    <string name="peer_state_waiting">等待恢复</string>
+    <string name="peer_state_idle">空闲</string>
+    <string name="peer_none_connected">未连接其他安卓设备。</string>
+    <string name="peer_policy_header_android">其他安卓设备</string>
 </resources>

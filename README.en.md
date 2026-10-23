@@ -20,7 +20,7 @@ For example, listen to music on your phone while working at your PC: skip tracks
 | What you want to do | What MediaDuet offers |
 | --- | --- |
 | Control the other device | Track information, artwork, play/pause, skipping, seeking and volume, where supported by the player |
-| Avoid overlapping playback | Automatic pause and resume with PC-first, phone-first, latest-started or custom priorities; music you paused yourself stays paused |
+| Avoid overlapping playback | Automatic pause and resume with PC-first, phone-first, latest-started or custom priorities; music you paused yourself stays paused. Phones and tablets paired with each other arbitrate among themselves too |
 | See lyrics | Synced lyrics, word highlighting and translations in both apps; desktop and taskbar lyrics on Windows |
 | Continue on another device | Handoff through NetEase Cloud Music, QQ Music or Spotify, with an attempt to resume at the current position |
 | Use just one device | “This PC only” or “This phone only” for local controls and lyrics, without pairing |

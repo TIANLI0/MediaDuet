@@ -52,10 +52,12 @@ import app.mediaduet.BuildConfig
 import app.mediaduet.R
 import app.mediaduet.audio.AudioReceiver
 import app.mediaduet.protocol.Caps
+import app.mediaduet.protocol.PeerPolicy
 import app.mediaduet.protocol.PolicyStatus
 import app.mediaduet.service.AppLanguage
 import app.mediaduet.service.Notifications
 import app.mediaduet.service.PermissionChecks
+import app.mediaduet.ui.LocalTwoPane
 import app.mediaduet.ui.SettingsRoute
 import app.mediaduet.ui.UiContext
 import app.mediaduet.ui.components.AppIcons
@@ -81,8 +83,10 @@ fun SettingsRoot(ui: UiContext, onBack: () -> Unit) {
     val audioOn by engine.settings.audioReceiveEnabled.collectAsStateWithLifecycle()
     val audio by engine.audio.status.collectAsStateWithLifecycle()
     val mode by engine.settings.mode.collectAsStateWithLifecycle()
+    val peerSettings by engine.settings.peerPolicy.collectAsStateWithLifecycle()
     val linked = mode.linked
     val current = link.current
+    val twoPane = LocalTwoPane.current
     val p = ui.permissions
     val missing = listOf(
         !p.listenerAccess,
@@ -91,7 +95,7 @@ fun SettingsRoot(ui: UiContext, onBack: () -> Unit) {
         p.localNetworkRequired && !p.localNetwork,
     ).count { it }
 
-    ScreenScaffold(stringResource(R.string.settings_title), backdrop = ui.backdrop, onBack = onBack) {
+    ScreenScaffold(stringResource(R.string.settings_title), backdrop = ui.backdrop, onBack = onBack, maxWidth = if (twoPane) 480.dp else 640.dp) {
         SectionHeader(stringResource(R.string.mode_header))
         WorkModeCard(ui)
         GlassCard(ui.backdrop, Modifier.fillMaxWidth(), contentPadding = PaddingValues(vertical = 4.dp)) {
@@ -101,25 +105,29 @@ fun SettingsRoot(ui: UiContext, onBack: () -> Unit) {
                     val primary = s.transports.firstOrNull { it.primary } ?: s.transports.firstOrNull()
                     listOfNotNull(primary?.let { transportLabel(it.kind) }, s.peer.name).joinToString(stringResource(R.string.list_separator))
                 } ?: stringResource(R.string.conn_disconnected),
+                selected = twoPane && ui.nav.route == SettingsRoute.CONNECTION,
             ) { ui.openSettings(SettingsRoute.CONNECTION) }
             if (linked) RowDivider()
             NavRow(
                 AppIcons.Shield, stringResource(R.string.permissions_title),
                 if (missing == 0) stringResource(R.string.summary_all_set) else pluralStringResource(R.plurals.summary_missing, missing, missing),
                 attention = missing > 0,
+                selected = twoPane && ui.nav.route == SettingsRoute.PERMISSIONS,
             ) { ui.openSettings(SettingsRoute.PERMISSIONS) }
         }
         GlassCard(ui.backdrop, Modifier.fillMaxWidth(), contentPadding = PaddingValues(vertical = 4.dp)) {
             if (linked) {
                 NavRow(
                     AppIcons.Tune, stringResource(R.string.settings_policy_header),
-                    policy?.let { policyModeLabel(it.mode) } ?: stringResource(R.string.placeholder_none),
+                    policy?.let { policyModeLabel(it.mode) } ?: peerModeLabel(peerSettings.mode),
+                    selected = twoPane && ui.nav.route == SettingsRoute.ARBITRATION,
                 ) { ui.openSettings(SettingsRoute.ARBITRATION) }
                 RowDivider()
             }
             NavRow(
                 AppIcons.QuoteBubble, stringResource(R.string.settings_lyrics_header),
                 stringResource(if (translations) R.string.summary_translations_on else R.string.summary_translations_off),
+                selected = twoPane && ui.nav.route == SettingsRoute.LYRICS,
             ) { ui.openSettings(SettingsRoute.LYRICS) }
             RowDivider()
             if (linked) {
@@ -132,18 +140,21 @@ fun SettingsRoot(ui: UiContext, onBack: () -> Unit) {
                             else -> R.string.summary_on
                         },
                     ),
+                    selected = twoPane && ui.nav.route == SettingsRoute.AUDIO,
                 ) { ui.openSettings(SettingsRoute.AUDIO) }
                 RowDivider()
             }
             NavRow(
                 AppIcons.Globe, stringResource(R.string.settings_language_header),
                 languageLabel(remember { AppLanguage.current(context) }),
+                selected = twoPane && ui.nav.route == SettingsRoute.LANGUAGE,
             ) { ui.openSettings(SettingsRoute.LANGUAGE) }
         }
         GlassCard(ui.backdrop, Modifier.fillMaxWidth(), contentPadding = PaddingValues(vertical = 4.dp)) {
             NavRow(
                 AppIcons.Pulse, stringResource(R.string.settings_diagnostics_header),
                 current?.rttMs?.let { stringResource(R.string.rtt_ms, it) } ?: stringResource(R.string.placeholder_none),
+                selected = twoPane && ui.nav.route == SettingsRoute.DIAGNOSTICS,
             ) { ui.openSettings(SettingsRoute.DIAGNOSTICS) }
             RowDivider()
             val update by engine.updater.state.collectAsStateWithLifecycle()
@@ -152,17 +163,19 @@ fun SettingsRoot(ui: UiContext, onBack: () -> Unit) {
                 AppIcons.Info, stringResource(R.string.about_title),
                 newVersion?.let { stringResource(R.string.update_summary_available, it) } ?: BuildConfig.VERSION_NAME,
                 attention = newVersion != null,
+                selected = twoPane && ui.nav.route == SettingsRoute.ABOUT,
             ) { ui.openSettings(SettingsRoute.ABOUT) }
         }
     }
 }
 
 @Composable
-private fun NavRow(icon: ImageVector, title: String, summary: String, attention: Boolean = false, onClick: () -> Unit) {
+private fun NavRow(icon: ImageVector, title: String, summary: String, attention: Boolean = false, selected: Boolean = false, onClick: () -> Unit) {
     val glass = LocalGlass.current
     Row(
         Modifier
             .fillMaxWidth()
+            .background(if (selected) glass.fill else Color.Transparent)
             .clickable(role = Role.Button, onClick = onClick)
             .heightIn(min = 60.dp)
             .padding(horizontal = 20.dp, vertical = 16.dp),
@@ -253,11 +266,17 @@ fun ArbitrationPage(ui: UiContext, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     val link by engine.link.status.collectAsStateWithLifecycle()
     val policy by engine.remote.policy.collectAsStateWithLifecycle()
-    val current = link.current
+    // The PC section is about a connected (or the focused) PC; Android devices arbitrate themselves.
+    val pc = link.connectedSessions.firstOrNull { Caps.POLICY_HOST in it.peerCaps }
     ScreenScaffold(stringResource(R.string.settings_policy_header), stringResource(R.string.settings_policy_text), ui.backdrop, onBack) {
+        SectionHeader(stringResource(R.string.peer_policy_header_android))
+        PeerArbitrationCard(ui)
+        SectionHeader(stringResource(R.string.settings_policy_pc_header))
         GlassCard(ui.backdrop, Modifier.fillMaxWidth()) {
-            val canConfigure = current != null && Caps.POLICY_HOST in current.peerCaps
+            val canConfigure = pc != null && pc.sid == link.current?.sid
             var feedback by remember { mutableStateOf<String?>(null) }
+            Text(stringResource(R.string.settings_policy_pc_text), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(12.dp))
             Text(
                 policy?.let { stringResource(R.string.settings_policy_current, policyModeLabel(it.mode)) }
                     ?: stringResource(R.string.settings_policy_unknown),
@@ -293,6 +312,89 @@ fun ArbitrationPage(ui: UiContext, onBack: () -> Unit) {
                 Spacer(Modifier.height(8.dp))
                 Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+        }
+    }
+}
+
+/**
+ * Settings › Arbitration › Other Android devices: this device's mode and priority (sent to its
+ * peers as `policy.peer`), what the connected Android devices are doing and the last action here.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PeerArbitrationCard(ui: UiContext) {
+    val engine = ui.engine
+    val settings = engine.settings
+    val cfg by settings.peerPolicy.collectAsStateWithLifecycle()
+    val peers by engine.peerPolicies.collectAsStateWithLifecycle()
+    val link by engine.link.status.collectAsStateWithLifecycle()
+    val last by engine.arbiterLastAction.collectAsStateWithLifecycle()
+    GlassCard(ui.backdrop, Modifier.fillMaxWidth()) {
+        Text(stringResource(R.string.peer_policy_text), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(16.dp))
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            for (mode in PeerPolicy.MODES) {
+                GlassButton({ settings.setPeerPolicy(cfg.copy(mode = mode)) }, ui.backdrop, height = 36.dp, selected = cfg.mode == mode) {
+                    Text(peerModeLabel(mode), style = MaterialTheme.typography.labelLarge)
+                }
+            }
+        }
+        if (cfg.mode == PeerPolicy.MODE_PRIORITY) {
+            Spacer(Modifier.height(16.dp))
+            Text(stringResource(R.string.peer_priority_title), style = MaterialTheme.typography.bodyLarge)
+            Text(stringResource(R.string.peer_priority_text), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(8.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (prio in PeerPolicy.MIN_PRIORITY..PeerPolicy.MAX_PRIORITY) {
+                    GlassButton({ settings.setPeerPolicy(cfg.copy(priority = prio)) }, ui.backdrop, height = 36.dp, selected = cfg.priority == prio) {
+                        Text(peerPriorityLabel(prio), style = MaterialTheme.typography.labelLarge)
+                    }
+                }
+            }
+        }
+        if (cfg.mode != PeerPolicy.MODE_OFF) {
+            Spacer(Modifier.height(8.dp))
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
+            InfoRow(
+                stringResource(R.string.peer_auto_resume),
+                subtitle = stringResource(R.string.peer_auto_resume_text),
+                trailing = {
+                    LiquidToggle({ cfg.autoResume }, { settings.setPeerPolicy(cfg.copy(autoResume = it)) }, ui.backdrop, contentDescription = stringResource(R.string.peer_auto_resume))
+                },
+                onClick = { settings.setPeerPolicy(cfg.copy(autoResume = !cfg.autoResume)) },
+                role = Role.Switch,
+            )
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
+            InfoRow(
+                stringResource(R.string.peer_calls),
+                subtitle = stringResource(R.string.peer_calls_text),
+                trailing = {
+                    LiquidToggle({ cfg.pauseForCalls }, { settings.setPeerPolicy(cfg.copy(pauseForCalls = it)) }, ui.backdrop, contentDescription = stringResource(R.string.peer_calls))
+                },
+                onClick = { settings.setPeerPolicy(cfg.copy(pauseForCalls = !cfg.pauseForCalls)) },
+                role = Role.Switch,
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
+        val connected = link.connectedSessions.filter { it.peer.id in peers }
+        if (connected.isEmpty()) {
+            Spacer(Modifier.height(8.dp))
+            Text(stringResource(R.string.peer_none_connected), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        for (s in connected) {
+            val pp = peers.getValue(s.peer.id)
+            InfoRow(
+                s.peer.name,
+                subtitle = listOf(peerStateLabel(pp), peerModeLabel(pp.mode)).joinToString(stringResource(R.string.list_separator)),
+                leading = { Icon(platformIcon(s.peer.platform), null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+            )
+        }
+        last?.let { a ->
+            Spacer(Modifier.height(4.dp))
+            val what = stringResource(if (a.what == "pause") R.string.peer_what_pause else R.string.peer_what_resume)
+            val reason = peerReasonLabel(a.reason) + if (a.failed) stringResource(R.string.list_separator) + stringResource(R.string.peer_last_failed) else ""
+            Text(stringResource(R.string.peer_last_action, what, reason), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

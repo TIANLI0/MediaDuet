@@ -42,6 +42,12 @@ import kotlinx.coroutines.delay
 /** Height of everything floating at the bottom (mini player on the Settings stack + nav bar). */
 val LocalBottomInset = compositionLocalOf { 160.dp }
 
+/** True when Settings shows its list and the open page side by side (tablets, wide windows). */
+val LocalTwoPane = compositionLocalOf { false }
+
+/** Window width from which Settings uses two panes (Material "expanded"). */
+val TWO_PANE_MIN_WIDTH = 840.dp
+
 data class Toast(val id: Long, val text: String)
 
 data class ConfirmRequest(

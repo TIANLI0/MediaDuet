@@ -29,6 +29,7 @@ class NsdAdvertiser(context: Context) {
             setPort(port)
             setAttribute("v", "1")
             setAttribute("id", deviceId)
+            setAttribute("p", "android")
             setAttribute("n", encodeTxtName(deviceName))
         }
         val l = object : NsdManager.RegistrationListener {

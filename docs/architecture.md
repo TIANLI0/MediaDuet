@@ -67,6 +67,7 @@ compiled into the product.
 ## Link policy (ConnectionManager)
 
 * Windows is always the client (no inbound firewall rules); Android is the server.
+  Between two Android devices the one with the smaller device id is the client.
 * Auto mode keeps **LAN as primary** and Bluetooth as a hot-standby **secondary**
   when both are up (Bluetooth RFCOMM measured noticeably slower on real phones).
   Bulk artwork prefers the LAN connection.
@@ -152,6 +153,22 @@ Loop and conflict prevention:
 
 Modes: off, Windows first (default), Android first, latest wins, custom
 priorities (higher wins, ties → latest).
+
+### Between Android devices (PeerArbiter)
+
+Phones and tablets linked to each other (protocol §13) do not use a central
+engine. Each runs `policy/PeerArbiter` and only ever pauses or resumes **its own**
+sessions; it publishes its state (`policy.peer`: mode, priority, playing, cause,
+call, `onsetAt`, `pausedAt`) and reads its peers'. A peer's new user-started
+playback or call makes it yield according to its mode (off / latest wins / by
+priority); automatic resumes never do. When every peer is idle the device that
+paused last resumes first. Expectations, intents and "never undo a user pause"
+work as on Windows. Pure Kotlin with an injected timer (`PeerArbiterTest`).
+
+Of two Android devices the one with the smaller device id dials
+(`service/PeerDialer`, DNS-SD via `transport/PeerDiscovery`); the other listens.
+`link/ClientHandshake` is the Android implementation of the client side of
+pairing and the session handshake.
 
 ## Security summary
 

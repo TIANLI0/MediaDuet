@@ -22,6 +22,7 @@ import app.mediaduet.protocol.LyricsPush
 import app.mediaduet.protocol.MediaCommand
 import app.mediaduet.protocol.MediaSnapshot
 import app.mediaduet.protocol.MsgType
+import app.mediaduet.protocol.PeerPolicy
 import app.mediaduet.protocol.PolicyStatus
 import app.mediaduet.protocol.SinkState
 import app.mediaduet.protocol.MediaQueue
@@ -30,6 +31,7 @@ import app.mediaduet.protocol.VolumeSet
 import app.mediaduet.protocol.VolumeState
 import app.mediaduet.protocol.truncateCodePoints
 import app.mediaduet.protocol.optLong
+import app.mediaduet.protocol.optArray
 import app.mediaduet.protocol.optString
 import app.mediaduet.protocol.requireString
 import app.mediaduet.util.MdLog
@@ -107,6 +109,12 @@ interface LinkHost {
             put("ok", false)
             put("error", ErrorInfo(ErrorCode.UNSUPPORTED).toJson())
         }
+
+    /** Our arbitration state for Android peers (`policy.peer`, §13.2), null when not arbitrating. */
+    fun peerPolicy(): PeerPolicy? = null
+    fun onPeerPolicy(peerId: String, policy: PeerPolicy) = Unit
+    /** The LAN endpoints of a peer we dialled (`transport.info`), to find it again. */
+    fun onPeerTransportInfo(peerId: String, endpoints: List<LanEndpoint>) = Unit
 }
 
 data class TransportStatus(
@@ -125,14 +133,35 @@ data class SessionStatus(
     val rttMs: Long?,
     val attachedAtMs: Long,
     val resumeCount: Int,
+    /** We dialled this peer (another Android device). */
+    val outgoing: Boolean = false,
 ) {
     val connected: Boolean get() = transports.isNotEmpty()
 }
 
-data class LinkStatus(val sessions: List<SessionStatus> = emptyList()) {
-    /** The session the UI focuses on: connected, most recently attached. */
+data class LinkStatus(
+    val sessions: List<SessionStatus> = emptyList(),
+    /** The peer the user chose to show in the player ([LinkManager.setFocus]), if any. */
+    val focusId: String? = null,
+) {
+    /**
+     * The session the UI focuses on (player, mirror, PC features): the chosen peer when connected,
+     * else the most recently attached PC, else the most recently attached device.
+     */
     val current: SessionStatus?
-        get() = sessions.filter { it.connected }.maxByOrNull { it.attachedAtMs }
+        get() {
+            val connected = sessions.filter { it.connected }
+            return connected.firstOrNull { it.peer.id == focusId }
+                ?: connected.filter { it.peer.platform == PLATFORM_WINDOWS }.maxByOrNull { it.attachedAtMs }
+                ?: connected.maxByOrNull { it.attachedAtMs }
+        }
+
+    val connectedSessions: List<SessionStatus> get() = sessions.filter { it.connected }
+
+    companion object {
+        const val PLATFORM_WINDOWS = "windows"
+        const val PLATFORM_ANDROID = "android"
+    }
 }
 
 /**
@@ -160,6 +189,12 @@ class LinkManager(
     /** True while media plays on either side; shortens the primary heartbeat interval (§11). */
     val anyPlaying = MutableStateFlow(false)
 
+    /** Dispatcher only: the peer the UI focuses on (see [LinkStatus.current]). */
+    private var focusId: String? = null
+
+    /** Dispatcher only: the last session id per peer we dialled, offered as `resume` (§7). */
+    private val dialledSids = HashMap<String, String>()
+
     /** Accepts a freshly connected transport stream (called from any thread). */
     fun accept(stream: TransportStream) {
         val conn = Connection(stream, scope, counters, clock)
@@ -167,6 +202,76 @@ class LinkManager(
         conn.start()
         scope.launch(dispatcher) { handle(conn) }
     }
+
+    /**
+     * Dials the paired Android device [peerId] over [stream] (client role, §13). Returns the
+     * handshake result; on success the session keeps running in the background.
+     */
+    suspend fun dial(stream: TransportStream, peerId: String): HandshakeResult =
+        outgoing(stream) { conn ->
+            val r = clientHandshake().session(conn, peerId, dialledSids[peerId])
+            if (r is HandshakeResult.Failed && r.reason == ErrorCode.NOT_PAIRED) {
+                // §3.4: the peer forgot us; stop reconnecting.
+                MdLog.w(TAG, "peer $peerId no longer knows us: removing the pairing")
+                trust.remove(peerId)
+            }
+            r
+        }
+
+    /** Asks the Android device on [stream] to pair (it must have pairing mode open, §13). */
+    suspend fun pairWith(stream: TransportStream): HandshakeResult =
+        outgoing(stream) { conn -> clientHandshake().pair(conn) }
+
+    private suspend fun outgoing(stream: TransportStream, handshake: suspend (Connection) -> HandshakeResult): HandshakeResult {
+        val conn = Connection(stream, scope, counters, clock)
+        MdLog.i(TAG, "dialled $conn")
+        conn.start()
+        val result = CompletableDeferred<HandshakeResult>()
+        scope.launch(dispatcher) {
+            val r = try {
+                handshake(conn)
+            } catch (e: CancellationException) {
+                conn.close("cancelled")
+                result.complete(HandshakeResult.Failed("cancelled"))
+                throw e
+            } catch (e: Exception) {
+                MdLog.e(TAG, "$conn client handshake crashed", e)
+                conn.close("handshake error")
+                HandshakeResult.Failed("internal")
+            }
+            result.complete(r)
+            when (r) {
+                is HandshakeResult.Failed -> counters.handshakesFailed.incrementAndGet()
+                is HandshakeResult.Paired -> counters.handshakesOk.incrementAndGet()
+                is HandshakeResult.Session -> {
+                    counters.handshakesOk.incrementAndGet()
+                    dialledSids[r.peer.id] = r.sid
+                    runSession(conn, r, outgoing = true)
+                }
+            }
+        }
+        return result.await()
+    }
+
+    private fun clientHandshake() = ClientHandshake(
+        localDevice = host::localDevice,
+        trust = trust,
+        pairing = pairing,
+        capabilities = host::capabilities,
+        clock = clock,
+        wallClock = wallClock,
+    )
+
+    /** Chooses the peer the player and the PC features follow (null: automatic). */
+    fun setFocus(peerId: String?) {
+        scope.launch(dispatcher) {
+            focusId = peerId
+            publishStatus()
+        }
+    }
+
+    /** True while a connected session with [peerId] exists. */
+    fun isConnected(peerId: String): Boolean = _status.value.sessions.any { it.peer.id == peerId && it.connected }
 
     // ----------------------------------------------------------------------------------------
     // SessionResolver
@@ -229,7 +334,7 @@ class LinkManager(
         }
     }
 
-    private suspend fun runSession(conn: Connection, hs: HandshakeResult.Session) {
+    private suspend fun runSession(conn: Connection, hs: HandshakeResult.Session, outgoing: Boolean = false) {
         val now = clock.nowMs()
         val existing = sessions[hs.sid]
         val session: LinkSession
@@ -246,7 +351,7 @@ class LinkManager(
                 old.connections.forEach { it.closeAfterFlush("superseded by new session") }
             }
             sessions.entries.removeAll { it.value.peer.id == hs.peer.id && it.key != hs.sid }
-            session = LinkSession(hs.sid, hs.peer, hs.version, hs.peerCaps, now)
+            session = LinkSession(hs.sid, hs.peer, hs.version, hs.peerCaps, now, outgoing)
             sessions[hs.sid] = session
         }
         session.connections.add(conn)
@@ -258,11 +363,17 @@ class LinkManager(
         publishStatus()
         host.onSessionStarted(hs.peer, hs.resumed, hs.peerCaps)
 
-        send(session, conn, MsgType.SESSION_READY, buildJsonObject { put("sid", session.sid) })
-        sendTransportInfo(session, conn)
+        if (outgoing) {
+            // As the client we designate the primary transport (§7); the server greets with session.ready.
+            send(session, conn, MsgType.LINK_PRIMARY, buildJsonObject { })
+        } else {
+            send(session, conn, MsgType.SESSION_READY, buildJsonObject { put("sid", session.sid) })
+            sendTransportInfo(session, conn)
+        }
         host.freshSnapshot()?.let { send(session, conn, MsgType.MEDIA_SNAPSHOT, it.toJson()) }
         if (Caps.VOLUME in session.peerCaps) host.volumeState()?.let { send(session, conn, MsgType.VOLUME_STATE, it.toJson()) }
         if (Caps.HANDOFF in session.peerCaps) send(session, conn, MsgType.HANDOFF_APPS, handoffAppsBody())
+        if (Caps.POLICY_PEER in session.peerCaps) host.peerPolicy()?.let { send(session, conn, MsgType.POLICY_PEER, it.toJson()) }
 
         val heartbeat = scope.launch(dispatcher) { heartbeat(session, conn) }
         try {
@@ -411,6 +522,9 @@ class LinkManager(
                     publishStatus()
                 }
             }
+            MsgType.SESSION_READY -> MdLog.d(TAG, "session ${session.sid.take(8)} ready")
+            MsgType.TRANSPORT_INFO -> if (session.outgoing) host.onPeerTransportInfo(peerId, parseLanEndpoints(env.body))
+            MsgType.POLICY_PEER -> host.onPeerPolicy(peerId, PeerPolicy.parse(env.body))
             MsgType.LINK_PRIMARY -> {
                 session.setPrimary(conn)
                 MdLog.i(TAG, "primary transport is now $conn")
@@ -617,6 +731,14 @@ class LinkManager(
         }
     }
 
+    /** Sends our arbitration state to every connected Android peer that announced `policy.peer`. */
+    fun broadcastPeerPolicy(policy: PeerPolicy) {
+        scope.launch(dispatcher) {
+            sessions.values.filter { it.isConnected && Caps.POLICY_PEER in it.peerCaps }
+                .forEach { send(it, null, MsgType.POLICY_PEER, policy.toJson()) }
+        }
+    }
+
     /** Sends our volume to every connected peer that announced `volume`. */
     fun broadcastVolume(state: VolumeState) {
         scope.launch(dispatcher) {
@@ -647,7 +769,7 @@ class LinkManager(
     }
 
     private fun currentSession(): LinkSession? =
-        sessions.values.filter { it.isConnected }.maxByOrNull { it.attachedAtMs }
+        _status.value.current?.let { sessions[it.sid] }?.takeIf { it.isConnected }
 
     private sealed interface Prepared {
         class Immediate(val result: CommandResult) : Prepared
@@ -868,10 +990,21 @@ class LinkManager(
                     rttMs = s.rttMs,
                     attachedAtMs = s.attachedAtMs,
                     resumeCount = s.resumeCount,
+                    outgoing = s.outgoing,
                 )
             },
+            focusId,
         )
     }
+
+    /** `transport.info.lan` of a peer we dialled; malformed entries are skipped. */
+    private fun parseLanEndpoints(body: JsonObject): List<LanEndpoint> =
+        body.optArray("lan").orEmpty().mapNotNull { e ->
+            val o = e as? JsonObject ?: return@mapNotNull null
+            val host = runCatching { o.optString("host", 64) }.getOrNull()?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val port = runCatching { o.optLong("port") }.getOrNull()?.takeIf { it in 1..65535 } ?: return@mapNotNull null
+            LanEndpoint(host, port.toInt())
+        }.take(8)
 
     companion object {
         /** Lyrics records above this stay off the link (a control record is at most 64 KiB). */

@@ -17,6 +17,10 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -58,6 +62,7 @@ import app.mediaduet.service.PermissionSnapshot
 import app.mediaduet.ui.components.AppIcons
 import app.mediaduet.ui.components.FlowingArtwork
 import app.mediaduet.ui.screens.AboutPage
+import app.mediaduet.ui.screens.BrandMark
 import app.mediaduet.ui.screens.ArbitrationPage
 import app.mediaduet.ui.screens.AudioPage
 import app.mediaduet.ui.screens.ConnectionPage
@@ -228,41 +233,54 @@ fun MediaDuetRoot(engine: Engine, requestedPage: MutableState<String?>) {
                 ) { section ->
                     when (section) {
                         Section.NOW -> PlayerScreen(ui)
-                        Section.SETTINGS -> AnimatedContent(
-                            targetState = nav.route,
-                            transitionSpec = {
-                                when {
-                                    reduced -> fadeIn(snap()) togetherWith fadeOut(snap())
-                                    targetState != null ->
-                                        slideInHorizontally(tween(300)) { it } togetherWith (slideOutHorizontally(tween(300)) { -it / 4 } + fadeOut(tween(300)))
-                                    else ->
-                                        (slideInHorizontally(tween(300)) { -it / 4 } + fadeIn(tween(300))) togetherWith slideOutHorizontally(tween(300)) { it }
-                                }
-                            },
-                            label = "settings",
-                        ) { r ->
-                            val back = { nav = nav.copy(route = null) }
-                            Box(
-                                Modifier.graphicsLayer {
-                                    // The page on top follows the predictive-back gesture.
-                                    if (backProgress > 0f && r == backRoute) {
-                                        translationX = size.width * 0.3f * backProgress
-                                        val s = 1f - 0.06f * backProgress
-                                        scaleX = s
-                                        scaleY = s
+                        Section.SETTINGS -> BoxWithConstraints(Modifier.fillMaxSize()) {
+                            // Tablets / wide windows: the list stays on the left, the open page on the right.
+                            val twoPane = maxWidth >= TWO_PANE_MIN_WIDTH
+                            CompositionLocalProvider(LocalTwoPane provides twoPane) {
+                                val pages: @Composable (Boolean) -> Unit = { inPane ->
+                                    AnimatedContent(
+                                        targetState = nav.route,
+                                        transitionSpec = {
+                                            when {
+                                                reduced -> fadeIn(snap()) togetherWith fadeOut(snap())
+                                                inPane -> fadeIn(tween(220)) togetherWith fadeOut(tween(160))
+                                                targetState != null ->
+                                                    slideInHorizontally(tween(300)) { it } togetherWith (slideOutHorizontally(tween(300)) { -it / 4 } + fadeOut(tween(300)))
+                                                else ->
+                                                    (slideInHorizontally(tween(300)) { -it / 4 } + fadeIn(tween(300))) togetherWith slideOutHorizontally(tween(300)) { it }
+                                            }
+                                        },
+                                        label = "settings",
+                                    ) { r ->
+                                        val back = { nav = nav.copy(route = null) }
+                                        Box(
+                                            Modifier.graphicsLayer {
+                                                // The page on top follows the predictive-back gesture.
+                                                if (backProgress > 0f && r == backRoute) {
+                                                    translationX = size.width * 0.3f * backProgress
+                                                    val s = 1f - 0.06f * backProgress
+                                                    scaleX = s
+                                                    scaleY = s
+                                                }
+                                            },
+                                        ) {
+                                            when {
+                                                r == null && inPane -> SettingsPlaceholder()
+                                                r == null -> SettingsRoot(ui) { nav = nav.showPlayer() }
+                                                else -> SettingsPage(ui, r, back)
+                                            }
+                                        }
                                     }
-                                },
-                            ) {
-                                when (r) {
-                                    null -> SettingsRoot(ui) { nav = nav.showPlayer() }
-                                    SettingsRoute.CONNECTION -> ConnectionPage(ui, back)
-                                    SettingsRoute.PERMISSIONS -> PermissionsPage(ui, back)
-                                    SettingsRoute.ARBITRATION -> ArbitrationPage(ui, back)
-                                    SettingsRoute.LYRICS -> LyricsDisplayPage(ui, back)
-                                    SettingsRoute.AUDIO -> AudioPage(ui, back)
-                                    SettingsRoute.LANGUAGE -> LanguagePage(ui, back)
-                                    SettingsRoute.DIAGNOSTICS -> DiagnosticsPage(ui, back)
-                                    SettingsRoute.ABOUT -> AboutPage(ui, back)
+                                }
+                                if (twoPane) {
+                                    Row(Modifier.fillMaxSize()) {
+                                        Box(Modifier.width(SETTINGS_LIST_WIDTH).fillMaxHeight()) {
+                                            SettingsRoot(ui) { nav = nav.showPlayer() }
+                                        }
+                                        Box(Modifier.weight(1f).fillMaxHeight()) { pages(true) }
+                                    }
+                                } else {
+                                    pages(false)
                                 }
                             }
                         }
@@ -295,6 +313,32 @@ fun MediaDuetRoot(engine: Engine, requestedPage: MutableState<String?>) {
         }
     }
 }
+
+/** One Settings sub-page. */
+@Composable
+private fun SettingsPage(ui: UiContext, route: SettingsRoute, back: () -> Unit) {
+    when (route) {
+        SettingsRoute.CONNECTION -> ConnectionPage(ui, back)
+        SettingsRoute.PERMISSIONS -> PermissionsPage(ui, back)
+        SettingsRoute.ARBITRATION -> ArbitrationPage(ui, back)
+        SettingsRoute.LYRICS -> LyricsDisplayPage(ui, back)
+        SettingsRoute.AUDIO -> AudioPage(ui, back)
+        SettingsRoute.LANGUAGE -> LanguagePage(ui, back)
+        SettingsRoute.DIAGNOSTICS -> DiagnosticsPage(ui, back)
+        SettingsRoute.ABOUT -> AboutPage(ui, back)
+    }
+}
+
+/** The detail pane of two-pane Settings while no page is open: the app's mark, quietly. */
+@Composable
+private fun SettingsPlaceholder() {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        BrandMark(Modifier.size(72.dp).graphicsLayer { alpha = 0.35f })
+    }
+}
+
+/** Width of the Settings list in the two-pane layout. */
+private val SETTINGS_LIST_WIDTH = 420.dp
 
 /**
  * The backdrop layer: the current artwork as a slowly flowing, heavily blurred colour field

@@ -65,7 +65,7 @@ fun PairingOverlay(engine: Engine, backdrop: Backdrop, onRetry: () -> Unit) {
                     Text(stringResource(R.string.pair_dialog_title), style = MaterialTheme.typography.titleLarge)
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        stringResource(R.string.pair_dialog_text, p.peerName, transportLabel(p.transport)),
+                        stringResource(if (p.outgoing) R.string.pair_dialog_text_outgoing else R.string.pair_dialog_text, p.peerName, transportLabel(p.transport)),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

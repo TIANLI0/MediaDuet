@@ -38,6 +38,8 @@ class PlayerView(
     val fallback: Boolean = false,
     /** Delay between the reported position and audible sound on the playing device (ms). */
     val outputLatencyMs: Int = 0,
+    /** `windows` / `android` for the other device's sessions. */
+    val devicePlatform: String? = null,
 ) {
     val key: String get() = info.key
     val playing: Boolean get() = info.status == PlayStatus.PLAYING || info.status == PlayStatus.BUFFERING
@@ -70,6 +72,7 @@ fun rememberPlayerView(engine: Engine): PlayerView? {
                 positionAt = { now -> RemotePosition.at(s, st.positionAtMs, now) },
                 deviceName = link.current?.peer?.name ?: link.sessions.firstOrNull { it.peer.id == st.peerId }?.peer?.name,
                 outputLatencyMs = s.outputLatencyMs ?: 0,
+                devicePlatform = link.sessions.firstOrNull { it.peer.id == st.peerId }?.peer?.platform,
             )
         }
         Side.PHONE -> {

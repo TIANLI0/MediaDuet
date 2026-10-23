@@ -17,6 +17,8 @@ class LinkSession(
     val version: Int,
     var peerCaps: Set<String>,
     createdAtMs: Long,
+    /** We dialled the peer (client role, Android ↔ Android §13); otherwise the peer dialled us. */
+    val outgoing: Boolean = false,
 ) {
     val connections = mutableListOf<Connection>()
     var primary: Connection? = null

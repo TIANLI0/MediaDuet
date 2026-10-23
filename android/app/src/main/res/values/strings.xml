@@ -77,8 +77,8 @@
     <string name="conn_primary">primary</string>
     <string name="conn_rtt">RTT %1$d ms</string>
     <string name="conn_since">for %1$s</string>
-    <string name="conn_waiting_title">Waiting for your PC</string>
-    <string name="conn_waiting_text">The PC connects to this phone. Keep Bluetooth on or stay on the same network.</string>
+    <string name="conn_waiting_title">Waiting for a device</string>
+    <string name="conn_waiting_text">Your PC connects to this device; paired Android devices connect by themselves. Keep Bluetooth on or stay on the same network.</string>
     <string name="pairing_header">Pairing</string>
     <string name="pairing_mode">Pairing mode</string>
     <string name="pairing_mode_hint">Turn on, then start pairing on the PC. Closes automatically after 5 minutes.</string>
@@ -86,7 +86,7 @@
     <string name="pairing_success">Paired with %1$s</string>
     <string name="pairing_failed">Pairing with %1$s failed: %2$s</string>
     <string name="trusted_header">Trusted PCs</string>
-    <string name="trusted_empty">No PC paired yet.</string>
+    <string name="trusted_empty">No device paired yet.</string>
     <string name="trusted_connected">Connected now</string>
     <string name="trusted_last_seen">Last seen %1$s</string>
     <string name="trusted_revoke">Remove</string>
@@ -174,7 +174,7 @@
     <string name="settings_policy_header">Playback arbitration</string>
     <string name="settings_policy_current">PC mode: %1$s</string>
     <string name="settings_policy_unknown">The PC has not reported its arbitration mode.</string>
-    <string name="settings_policy_text">The PC decides which side keeps playing. You can request a different mode here.</string>
+    <string name="settings_policy_text">Decide which device keeps playing when more than one plays.</string>
     <string name="settings_policy_unavailable">Connect to a PC that runs the arbitration engine to change the mode.</string>
     <string name="settings_policy_sent">Request sent to the PC.</string>
     <string name="settings_policy_failed">Could not send the request.</string>
@@ -264,7 +264,7 @@
     <string name="source_title">Playing on</string>
     <string name="this_phone">This phone</string>
     <string name="banner_access">Media access is off — tap to fix</string>
-    <string name="banner_pair">Pair your PC to get started</string>
+    <string name="banner_pair">Pair a PC or another device to get started</string>
     <string name="summary_all_set">All set</string>
     <string name="summary_translations_on">Translations on</string>
     <string name="summary_translations_off">Translations off</string>
@@ -303,7 +303,7 @@
     <string name="target_auto_text">Follows whatever started playing most recently</string>
 
     <!-- Round 3: interaction -->
-    <string name="pill_pc_disconnected">PC not connected · Tap to connect</string>
+    <string name="pill_pc_disconnected">Not connected · Tap to connect</string>
     <string name="sheet_pc_disconnected_text">Open Connection settings</string>
     <string name="time_remaining" translatable="false">-%1$s</string>
     <string name="lyrics_back_to_current">Back to current line</string>
@@ -473,4 +473,42 @@
     <string name="update_err_signature">The installed MediaDuet is signed differently (e.g. a debug build). Uninstall it, then install the new version from the release page.</string>
     <string name="update_err_blocked">A security check (e.g. Google Play Protect) blocked the installation. Choose “Install anyway” under its “More details”, or install the APK from the release page.</string>
     <string name="update_err_storage">Not enough storage to install the update.</string>
+    <string name="nearby_header">Other Android devices</string>
+    <string name="nearby_text">Pair with a phone or tablet that runs MediaDuet on the same network. Turn on Pairing mode on that device first.</string>
+    <string name="nearby_searching">Searching the network…</string>
+    <string name="nearby_pair">Pair</string>
+    <string name="nearby_pairing">Connecting…</string>
+    <string name="reason_unreachable">the device cannot be reached</string>
+    <string name="pair_dialog_text_outgoing">Pairing with %1$s over %2$s. Check that it shows the same code.</string>
+    <string name="pairing_steps_android">From another Android device: open Settings › Connection there and choose “%1$s” under Other Android devices.</string>
+    <string name="conn_also_connected">Also connected</string>
+    <string name="conn_show_in_player">Show in player</string>
+    <string name="settings_policy_pc_header">PC</string>
+    <string name="settings_policy_pc_text">The PC decides between itself and this device. You can request a different mode here.</string>
+    <string name="peer_policy_text">Each Android device decides for itself whether to pause when another one starts playing, and resumes once it stops. Applies to paired phones and tablets.</string>
+    <string name="peer_mode_off">Off</string>
+    <string name="peer_mode_latest">Latest wins</string>
+    <string name="peer_mode_priority">By priority</string>
+    <string name="peer_priority_title">Priority of this device</string>
+    <string name="peer_priority_text">A device with a higher priority keeps playing; with equal priorities the latest one wins.</string>
+    <string name="peer_priority_low">Low</string>
+    <string name="peer_priority_normal">Normal</string>
+    <string name="peer_priority_high">High</string>
+    <string name="peer_auto_resume">Resume afterwards</string>
+    <string name="peer_auto_resume_text">Continue what was paused once the other device stops playing</string>
+    <string name="peer_calls">Pause for calls</string>
+    <string name="peer_calls_text">Pause when another device is in a call, whatever the mode</string>
+    <string name="peer_last_action">Last: %1$s · %2$s</string>
+    <string name="peer_last_failed">did not take effect</string>
+    <string name="peer_what_pause">paused here</string>
+    <string name="peer_what_resume">resumed here</string>
+    <string name="peer_reason_playing">another device started playing</string>
+    <string name="peer_reason_call">a call on another device</string>
+    <string name="peer_reason_idle">the other devices stopped</string>
+    <string name="peer_state_playing">Playing</string>
+    <string name="peer_state_call">In a call</string>
+    <string name="peer_state_waiting">Waiting to resume</string>
+    <string name="peer_state_idle">Idle</string>
+    <string name="peer_none_connected">No other Android device is connected.</string>
+    <string name="peer_policy_header_android">Other Android devices</string>
 </resources>

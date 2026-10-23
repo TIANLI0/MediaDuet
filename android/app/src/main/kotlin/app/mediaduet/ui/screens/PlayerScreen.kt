@@ -105,6 +105,9 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.foundation.layout.FlowRow
+import app.mediaduet.link.LinkStatus
+import app.mediaduet.ui.components.GlassButton
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -229,7 +232,14 @@ fun PlayerScreen(ui: UiContext) {
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val landscape = maxWidth > maxHeight * 1.15f
-        val side = if (maxWidth >= 600.dp && !landscape) 40.dp else 24.dp
+        // Tablets: more room at the edges, and portrait ones show the lyrics beside the controls.
+        val tablet = minOf(maxWidth, maxHeight) >= 600.dp
+        val sideLyrics = landscape || maxWidth >= SIDE_LYRICS_MIN_WIDTH
+        val side = when {
+            tablet -> 48.dp
+            maxWidth >= 600.dp && !landscape -> 40.dp
+            else -> 24.dp
+        }
         Column(
             Modifier
                 .fillMaxSize()
@@ -350,10 +360,11 @@ fun PlayerScreen(ui: UiContext) {
                 ) { showLyrics ->
                     val morph = Morph(this@SharedTransitionLayout, this, reduced)
                     when {
-                        landscape && showLyrics -> LandscapeLyrics(parts, morph)
+                        sideLyrics && showLyrics -> LandscapeLyrics(parts, morph)
                         landscape -> LandscapePlayer(parts, morph)
-                        showLyrics -> PortraitLyrics(parts, morph)
-                        else -> PortraitPlayer(parts, morph)
+                        // Wider than a phone (portrait tablet, unfolded foldable): keep phone proportions.
+                        showLyrics -> Capped(PORTRAIT_LYRICS_MAX_WIDTH) { PortraitLyrics(parts, morph) }
+                        else -> Capped(PORTRAIT_PLAYER_MAX_WIDTH) { PortraitPlayer(parts, morph) }
                     }
                 }
             }
@@ -417,12 +428,18 @@ private fun PortraitLyrics(p: PlayerParts, m: Morph) {
 private fun LandscapePlayer(p: PlayerParts, m: Morph) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val art = minOf(maxHeight, maxWidth * 0.46f)
-        Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(36.dp)) {
+        Row(
+            Modifier.fillMaxSize(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(36.dp, Alignment.CenterHorizontally),
+        ) {
             Box(Modifier.width(art).fillMaxHeight(), contentAlignment = Alignment.Center) {
                 ArtworkImage(p, m, art)
             }
             Column(
-                Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()).padding(vertical = 12.dp),
+                // On large screens the controls keep a comfortable width next to the artwork.
+                Modifier.weight(1f, fill = false).widthIn(max = LANDSCAPE_CONTROLS_MAX_WIDTH).fillMaxHeight()
+                    .verticalScroll(rememberScrollState()).padding(vertical = 12.dp),
                 verticalArrangement = Arrangement.Center,
             ) {
                 // Compact: progress with inline times and one row of lyrics · transport · source
@@ -480,6 +497,20 @@ private fun LandscapeLyrics(p: PlayerParts, m: Morph) {
         }
     }
 }
+
+/** Centres [content] at most [maxWidth] wide (the player on screens wider than a phone). */
+@Composable
+private fun Capped(maxWidth: androidx.compose.ui.unit.Dp, content: @Composable () -> Unit) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        Box(Modifier.widthIn(max = maxWidth).fillMaxSize()) { content() }
+    }
+}
+
+/** Portrait windows at least this wide show the lyrics beside the controls (tablets). */
+private val SIDE_LYRICS_MIN_WIDTH = 700.dp
+private val PORTRAIT_PLAYER_MAX_WIDTH = 560.dp
+private val PORTRAIT_LYRICS_MAX_WIDTH = 640.dp
+private val LANDSCAPE_CONTROLS_MAX_WIDTH = 560.dp
 
 // ============================================================================ pieces
 
@@ -1053,7 +1084,7 @@ private fun SourceIconButton(ui: UiContext, view: PlayerView, m: Morph) {
         contentAlignment = Alignment.Center,
     ) {
         Icon(
-            if (view.side == Side.PC) AppIcons.Computer else AppIcons.Phone,
+            if (view.side == Side.PC) platformIcon(view.devicePlatform.orEmpty()) else AppIcons.Phone,
             deviceLabel(view),
             Modifier.shared(m, "source").size(22.dp),
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1171,7 +1202,7 @@ private fun ActionRow(ui: UiContext, view: PlayerView?, lyricsAvailable: Boolean
         ) {
             Icon(
                 when (view?.side) {
-                    Side.PC -> AppIcons.Computer
+                    Side.PC -> platformIcon(view.devicePlatform.orEmpty())
                     Side.PHONE -> AppIcons.Phone
                     null -> AppIcons.Devices
                 },
@@ -1594,6 +1625,7 @@ private fun VolumeSlider(
 
 
 /** Control-target switcher: Automatic, this phone's sessions and the PC's sessions. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun TargetSheet(ui: UiContext) {
     val engine = ui.engine
@@ -1639,7 +1671,8 @@ private fun TargetSheet(ui: UiContext) {
                 // Sound output first: one switch sends this phone's audio to the PC's speakers.
                 if (mode.linked && link.current != null && remote?.connected == true) {
                     sink?.let { PcSpeakerRow(ui, it, link.current?.peer?.name ?: stringResource(R.string.pc_generic)) }
-                    HandoffRows(ui, close)
+                    // Handoff is coordinated by a PC (§8.7).
+                    if (link.current?.peer?.platform == LinkStatus.PLATFORM_WINDOWS) HandoffRows(ui, close)
                 }
                 fun pick(c: TargetChoice) {
                     haptics.performHapticFeedback(HapticFeedbackType.Confirm)
@@ -1670,6 +1703,30 @@ private fun TargetSheet(ui: UiContext) {
                     SheetDivider()
                     val connected = link.current != null && remote?.connected == true
                     SheetHeader(link.current?.peer?.name ?: stringResource(R.string.pc_generic))
+                    // Several devices connected: the player shows one of them at a time.
+                    val devices = link.connectedSessions
+                    if (devices.size > 1) {
+                        FlowRow(
+                            Modifier.padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            for (d in devices) {
+                                GlassButton(
+                                    {
+                                        haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
+                                        engine.focusPeer(d.peer.id)
+                                    },
+                                    ui.backdrop,
+                                    height = 36.dp,
+                                    selected = d.sid == link.current?.sid,
+                                ) {
+                                    Icon(platformIcon(d.peer.platform), null, Modifier.size(18.dp))
+                                    Text(d.peer.name, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+                        }
+                    }
                     val st = remote
                     when {
                         !connected -> SourceRow(
@@ -1682,7 +1739,7 @@ private fun TargetSheet(ui: UiContext) {
                         st == null || st.snapshot.sessions.isEmpty() -> SheetNote(stringResource(R.string.empty_no_media))
                         else -> for (s in st.snapshot.sessions) {
                             SourceRow(
-                                AppIcons.Computer,
+                                platformIcon(link.current?.peer?.platform.orEmpty()),
                                 s.appName.ifEmpty { s.appId },
                                 listOf(s.title, statusLabel(s.status)).filter { it.isNotEmpty() }.joinToString(stringResource(R.string.list_separator)),
                                 selected = choice.side == Side.PC && resolved?.side == Side.PC && resolved?.key == s.key,

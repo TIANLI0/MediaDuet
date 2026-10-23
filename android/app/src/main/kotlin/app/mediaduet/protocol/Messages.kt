@@ -47,6 +47,7 @@ object MsgType {
     const val HANDOFF_PLAY = "handoff.play"
     const val HANDOFF_PROGRESS = "handoff.progress"
     const val HANDOFF_RESULT = "handoff.result"
+    const val POLICY_PEER = "policy.peer"
 }
 
 object Caps {
@@ -63,6 +64,8 @@ object Caps {
     const val VOLUME = "volume"
     /** Continue a song on the other device (§8.7): `handoff.*`. */
     const val HANDOFF = "handoff"
+    /** Android peers arbitrate their own playback (§13): `policy.peer`. */
+    const val POLICY_PEER = "policy.peer"
 }
 
 /** §6.1 string limits (code points). */
@@ -539,6 +542,65 @@ data class PolicyStatus(
                 remote = o.optString("remote", StrLimit.MISC) ?: "",
                 local = o.optString("local", StrLimit.MISC) ?: "",
                 lastAction = last,
+            )
+        }
+    }
+}
+
+/**
+ * One Android device's arbitration state for its peers (`policy.peer`, §13.2). Every device only
+ * pauses and resumes its own media; peers read this to decide whether to yield.
+ *
+ * [cause]: why the current playback runs (`user`: a person started it, peers yield to it;
+ * `policy`: an automatic resume, peers never yield to it). [onsetAt] (sender wall clock) identifies
+ * the current user-started playback. [pausedAt] > 0 while the sender holds media it paused for a
+ * peer and will resume (the most recently paused device resumes first).
+ */
+data class PeerPolicy(
+    val mode: String,
+    val priority: Int,
+    val call: Boolean,
+    val playing: Boolean,
+    val cause: String,
+    val onsetAt: Long,
+    val pausedAt: Long,
+    val app: String = "",
+) {
+    fun toJson(): JsonObject = buildJsonObject {
+        put("mode", mode)
+        put("priority", priority)
+        put("call", call)
+        put("playing", playing)
+        put("cause", cause)
+        put("onsetAt", onsetAt)
+        put("pausedAt", pausedAt)
+        if (app.isNotEmpty()) put("app", app.truncateCodePoints(StrLimit.APP_ID))
+    }
+
+    companion object {
+        const val MODE_OFF = "off"
+        const val MODE_LATEST = "latest"
+        const val MODE_PRIORITY = "priority"
+        val MODES = listOf(MODE_OFF, MODE_LATEST, MODE_PRIORITY)
+        const val CAUSE_USER = "user"
+        const val CAUSE_POLICY = "policy"
+        const val CAUSE_NONE = "none"
+        const val MIN_PRIORITY = 0
+        const val MAX_PRIORITY = 2
+
+        fun parse(o: JsonObject): PeerPolicy {
+            val priority = o.optLong("priority") ?: 1
+            if (priority !in MIN_PRIORITY..MAX_PRIORITY) throw BadMessageException("priority out of range")
+            val mode = o.requireString("mode", 32).takeIf { it in MODES } ?: MODE_LATEST
+            return PeerPolicy(
+                mode = mode,
+                priority = priority.toInt(),
+                call = o.optBool("call") ?: false,
+                playing = o.optBool("playing") ?: false,
+                cause = o.optString("cause", 16)?.takeIf { it == CAUSE_USER || it == CAUSE_POLICY } ?: CAUSE_NONE,
+                onsetAt = (o.optLong("onsetAt") ?: 0).coerceAtLeast(0),
+                pausedAt = (o.optLong("pausedAt") ?: 0).coerceAtLeast(0),
+                app = o.optString("app", StrLimit.APP_ID) ?: "",
             )
         }
     }
