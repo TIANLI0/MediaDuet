@@ -296,6 +296,34 @@ and words with `display`.
   aligned until the edge passes 60 % of the width, then the edge stays there,
   finally end aligned.
 
+## Lyrics rows
+
+Every surface (app lyrics view, compact window, desktop lyrics, taskbar; Android
+lyrics mode, mini player and lyrics notification) shows the same rows
+(`md::lyrics::buildRows`, Android `LyricRows`):
+
+* Rows are the sung lines plus instrumental gaps. Blank lines are never shown.
+  Leading blank lines are skipped. A blank line becomes a gap only when the
+  next line is ≥ 4 s away; a shorter one is dropped, so the previous line
+  stays current through it.
+* Intro: a gap from 0 when the first sung line starts at ≥ 4 s.
+* Silence after a line, before a non-blank next line, is a gap when it lasts
+  ≥ 4 s. When the singing ends:
+  * word-timed lines: the last word's start + min(its length, 1.5 s). A word
+    lasts until the next word; the last word lasts until the next line, or 1 s
+    for the last line of the lyrics.
+  * line-timed lines: min(next line, max(sweep end, t + codePoints × 450 ms + 2 s)).
+* A line row starts at min(line t, first word t), kept ascending.
+* End: 3 s after the last line is sung (max(start + min(d, 5 s), singing end)
+  + 3 s). After that no row is current. A gap that ends the rows ends the
+  lyrics at its end.
+* Where only one line fits, nothing is shown before the lyrics, in a gap, or
+  after the end, and the title / source takes its place (compact window,
+  taskbar, Android mini player and notification). The desktop lyrics instead
+  preview the next sung line (not highlighted), or keep the last line (not
+  highlighted) after the end. A gap's breathing dots are visible only while
+  that gap is current.
+
 ## Settings object
 
 Persisted by the host at `%LOCALAPPDATA%\MediaDuet\settings.json`.

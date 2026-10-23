@@ -58,6 +58,41 @@ FillSpan fillAt(const KaraokeLine& k, double posMs);
 // (-1 = never within this line).
 bool fillMoving(const KaraokeLine& k, double posMs, double* nextMs = nullptr);
 
+// ---------------------------------------------------------------- rows
+
+// The rows every lyrics surface shows (same rules as Android's LyricRows, docs/ipc.md "Lyrics
+// rows"): sung lines plus instrumental gaps ("•••"). A gap is the intro before the first sung
+// line, a blank line, or the silence after a line's singing ends, each only when >= 4 s; shorter
+// blank lines are dropped (the previous line stays current) and leading blank lines are skipped.
+inline constexpr int64_t kMinGapMs = 4000;
+// The lyrics end this long after the last line is sung: no row is current any more, so the last
+// line does not look "now playing" through a long outro.
+inline constexpr int64_t kEndHoldMs = 3000;
+
+struct LyricRow {
+    enum class Kind { Line, Gap };
+    Kind kind = Kind::Line;
+    int line = -1;     // Line: index into Lyrics::lines; Gap: -1
+    int64_t start = 0; // sorted ascending
+    int64_t end = 0;   // Gap: when it ends (the next line); Line: estimated end of the singing
+    bool operator==(const LyricRow&) const = default;
+};
+
+struct LyricRows {
+    std::vector<LyricRow> rows;
+    int64_t endMs = INT64_MAX; // see kEndHoldMs; INT64_MAX when there are no rows
+    // The row current at posMs: -1 before the first row, kEnded once the lyrics are over.
+    static constexpr int kEnded = -2;
+    int activeAt(int64_t posMs) const;
+    // The lyric line to show at posMs (-1 = none: before the lyrics, in a gap, after the end).
+    int lineAt(int64_t posMs) const;
+    // The next position (> posMs) at which activeAt changes, or -1 if never.
+    int64_t nextChange(int64_t posMs) const;
+};
+
+// Synced lyrics only (empty rows otherwise).
+LyricRows buildRows(const Lyrics& l);
+
 // ---------------------------------------------------------------- layout helpers
 
 // Horizontal scroll (QQ Music style) of a line wider than the view, in the same
@@ -92,5 +127,11 @@ struct DesktopRows {
 // the current line's translation (empty for untranslated lines). twoLines=false
 // keeps a single row.
 DesktopRows desktopRows(const Lyrics& l, int cur, RowLayout layout, bool twoLines, bool showTranslation);
+// The same from the shared rows at posMs: the line being sung is active; before the lyrics and in
+// an instrumental gap the next sung line is previewed (not active); once the lyrics are over the
+// last line stays, not active. Blank lines are never shown (the next sung line is previewed).
+// *mainLine (if given) receives the line in the main row (-1 when there is none).
+DesktopRows desktopRows(const Lyrics& l, const LyricRows& rows, int64_t posMs, RowLayout layout, bool twoLines,
+                        bool showTranslation, int* mainLine = nullptr);
 
 } // namespace md::lyrics

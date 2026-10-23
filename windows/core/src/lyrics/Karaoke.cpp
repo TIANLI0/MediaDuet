@@ -110,6 +110,82 @@ bool fillMoving(const KaraokeLine& k, double p, double* nextMs) {
     return p < start + lineSweepMs(k);
 }
 
+LyricRows buildRows(const Lyrics& l) {
+    LyricRows out;
+    if (!l.synced) return out;
+    const auto& lines = l.lines;
+    size_t n = lines.size();
+    std::vector<bool> blank(n);
+    for (size_t i = 0; i < n; ++i) blank[i] = buildKaraoke(lines[i]).empty();
+    size_t first = 0;
+    while (first < n && blank[first]) ++first;
+    if (first == n) return out;
+    auto& rows = out.rows;
+    if (lines[first].t >= kMinGapMs) rows.push_back({LyricRow::Kind::Gap, -1, 0, lines[first].t});
+    // Timing of the last sung line, for endMs.
+    int64_t lastStart = 0, lastDuration = 0, lastVocalEnd = 0;
+    for (size_t i = first; i < n; ++i) {
+        const auto& line = lines[i];
+        bool hasNext = i + 1 < n;
+        int64_t next = hasNext ? lines[i + 1].t : 0;
+        if (blank[i]) {
+            // An empty timestamp line marks an interlude; short ones are dropped.
+            if (hasNext && next - line.t >= kMinGapMs) rows.push_back({LyricRow::Kind::Gap, -1, line.t, next});
+            continue;
+        }
+        // Same estimates as Android's LyricTiming.prepare: a word lasts until the next word starts,
+        // the last one until the next line (or 1 s); singing ends at most 1.5 s into the last word.
+        int64_t start = line.t, vocalEnd = 0, duration = 0, sungEnd = 0;
+        if (!line.words.empty()) {
+            const auto& last = line.words.back();
+            int64_t lastDur = std::max<int64_t>(1, (hasNext ? next : last.t + 1000) - last.t);
+            start = std::min(line.t, line.words.front().t);
+            vocalEnd = sungEnd = last.t + std::min<int64_t>(lastDur, 1500);
+            duration = std::max<int64_t>(0, (hasNext ? next : last.t + lastDur) - line.t);
+        } else {
+            KaraokeLine k = buildKaraoke(line);
+            duration = hasNext ? std::max<int64_t>(0, next - line.t) : 5000;
+            k.d = duration;
+            int64_t sweep = std::max<int64_t>(1, static_cast<int64_t>(lineSweepMs(k)));
+            sungEnd = line.t + sweep;
+            // A generous estimate, so long held notes are not mistaken for interludes.
+            vocalEnd = std::max(sungEnd, line.t + static_cast<int64_t>(k.codePoints) * 450 + 2000);
+            if (hasNext) vocalEnd = std::min(next, vocalEnd);
+        }
+        // Row starts stay sorted (binary search) even for odd word timestamps.
+        if (!rows.empty()) start = std::max(start, rows.back().start);
+        rows.push_back({LyricRow::Kind::Line, static_cast<int>(i), start, vocalEnd});
+        lastStart = start;
+        lastDuration = duration;
+        lastVocalEnd = sungEnd;
+        if (!hasNext || blank[i + 1]) continue;
+        if (next - vocalEnd >= kMinGapMs && vocalEnd > start) rows.push_back({LyricRow::Kind::Gap, -1, vocalEnd, next});
+    }
+    const auto& tail = rows.back();
+    out.endMs = tail.kind == LyricRow::Kind::Gap
+                    ? tail.end
+                    : std::max(lastStart + std::min<int64_t>(lastDuration, 5000), lastVocalEnd) + kEndHoldMs;
+    return out;
+}
+
+int LyricRows::activeAt(int64_t posMs) const {
+    if (rows.empty()) return -1;
+    if (posMs >= endMs) return kEnded;
+    auto it = std::upper_bound(rows.begin(), rows.end(), posMs, [](int64_t p, const LyricRow& r) { return p < r.start; });
+    return static_cast<int>(it - rows.begin()) - 1;
+}
+
+int LyricRows::lineAt(int64_t posMs) const {
+    int i = activeAt(posMs);
+    return i >= 0 && rows[i].kind == LyricRow::Kind::Line ? rows[i].line : -1;
+}
+
+int64_t LyricRows::nextChange(int64_t posMs) const {
+    if (rows.empty() || posMs >= endMs) return -1;
+    auto it = std::upper_bound(rows.begin(), rows.end(), posMs, [](int64_t p, const LyricRow& r) { return p < r.start; });
+    return it != rows.end() ? std::min(it->start, endMs) : endMs;
+}
+
 float scrollOffset(float textWidth, float viewWidth, float fillX, float anchor) {
     if (textWidth <= viewWidth || viewWidth <= 0) return 0.f;
     float maxOff = textWidth - viewWidth;
@@ -121,15 +197,15 @@ float fitScale(float textWidth, float viewWidth, float minScale) {
     return std::max(minScale, viewWidth / textWidth);
 }
 
-DesktopRows desktopRows(const Lyrics& l, int cur, RowLayout layout, bool twoLines, bool showTranslation) {
+namespace {
+
+DesktopRows layoutRows(const Lyrics& l, int main, int next, bool active, int parity, RowLayout layout, bool twoLines,
+                       bool showTranslation) {
     DesktopRows r;
     int n = static_cast<int>(l.lines.size());
-    if (n == 0) return r;
-    auto lineRow = [&](int i, bool active) {
-        return i >= 0 && i < n ? RowContent{RowKind::Line, i, active} : RowContent{};
+    auto lineRow = [&](int i, bool act) {
+        return i >= 0 && i < n ? RowContent{RowKind::Line, i, act} : RowContent{};
     };
-    int main = cur >= 0 ? std::min(cur, n - 1) : 0; // before the first line: preview it
-    bool active = cur >= 0;
     // A translated song stays centred for its whole length (no flipping between
     // layouts on the odd untranslated line; that line simply has no second row).
     bool trSong = showTranslation && hasTranslation(l);
@@ -137,15 +213,55 @@ DesktopRows desktopRows(const Lyrics& l, int cur, RowLayout layout, bool twoLine
         r.centered = true;
         r.row[0] = lineRow(main, active);
         if (trSong && !l.lines[main].translation.empty()) r.row[1] = {RowKind::Translation, main, false};
-        else if (!trSong && twoLines) r.row[1] = lineRow(main + 1, false);
+        else if (!trSong && twoLines) r.row[1] = lineRow(next, false);
         return r;
     }
     // Alternate: line i in row i % 2; the other row previews the upcoming line.
-    int a = main % 2;
+    int a = parity % 2;
     r.row[a] = lineRow(main, active);
-    r.row[1 - a] = lineRow(main + 1, false);
+    r.row[1 - a] = lineRow(next, false);
     r.alignRight[1] = true;
     return r;
+}
+
+} // namespace
+
+DesktopRows desktopRows(const Lyrics& l, int cur, RowLayout layout, bool twoLines, bool showTranslation) {
+    int n = static_cast<int>(l.lines.size());
+    if (n == 0) return {};
+    int main = cur >= 0 ? std::min(cur, n - 1) : 0; // before the first line: preview it
+    return layoutRows(l, main, main + 1, cur >= 0, main, layout, twoLines, showTranslation);
+}
+
+DesktopRows desktopRows(const Lyrics& l, const LyricRows& rows, int64_t posMs, RowLayout layout, bool twoLines,
+                        bool showTranslation, int* mainLine) {
+    if (mainLine) *mainLine = -1;
+    int nr = static_cast<int>(rows.rows.size());
+    if (nr == 0) return {};
+    int at = rows.activeAt(posMs);
+    // The line row to show: the current one, else the next one (intro / gap), else the last one.
+    int ri = -1;
+    bool active = false;
+    if (at >= 0 && rows.rows[at].kind == LyricRow::Kind::Line) {
+        ri = at;
+        active = true;
+    } else {
+        int from = at == LyricRows::kEnded ? nr : at + 1;
+        for (int i = from; i < nr && ri < 0; ++i)
+            if (rows.rows[i].kind == LyricRow::Kind::Line) ri = i;
+        for (int i = std::min(from, nr) - 1; i >= 0 && ri < 0; --i)
+            if (rows.rows[i].kind == LyricRow::Kind::Line) ri = i;
+    }
+    if (ri < 0) return {};
+    // Parity counts sung lines, so the two alternating rows never collide over a blank line.
+    int parity = 0, next = -1;
+    for (int i = 0; i < ri; ++i)
+        if (rows.rows[i].kind == LyricRow::Kind::Line) ++parity;
+    for (int i = ri + 1; i < nr && next < 0; ++i)
+        if (rows.rows[i].kind == LyricRow::Kind::Line) next = rows.rows[i].line;
+    int main = rows.rows[ri].line;
+    if (mainLine) *mainLine = main;
+    return layoutRows(l, main, next, active, parity, layout, twoLines, showTranslation);
 }
 
 } // namespace md::lyrics

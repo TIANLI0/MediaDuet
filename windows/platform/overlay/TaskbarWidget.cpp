@@ -427,6 +427,7 @@ struct TaskbarWidget::Impl {
     bool playing = false;
     uint32_t actions = 0;
     std::shared_ptr<const lyrics::Lyrics> lyr;
+    lyrics::LyricRows lyrRows; // of lyr (shared row model: gaps, end of lyrics)
     std::shared_ptr<const lyrics::LyricsClock> clock;
     int64_t delayMs = 0;
     int karaIdx = -1;
@@ -813,7 +814,14 @@ struct TaskbarWidget::Impl {
 
     int currentLine() const {
         if (!lyr || !lyr->synced || content == "player" || !clock || !clock->valid()) return -1;
-        return lyrics::lineAt(*lyr, static_cast<int64_t>(playPos()));
+        return lyrRows.lineAt(static_cast<int64_t>(playPos()));
+    }
+
+    // The next sung line after line idx (-1 if none).
+    int nextSungLine(int idx) const {
+        for (auto& r : lyrRows.rows)
+            if (r.kind == lyrics::LyricRow::Kind::Line && r.line > idx) return r.line;
+        return -1;
     }
 
     bool rolling() const { return rollStart >= 0 && now() - rollStart < kRollMs; }
@@ -835,10 +843,8 @@ struct TaskbarWidget::Impl {
             delay = lowPower ? 100 : (animations ? 16 : 250);
         } else {
             double target = next;
-            if (idx + 1 < static_cast<int>(lyr->lines.size())) {
-                double nl = static_cast<double>(lyr->lines[idx + 1].t);
-                target = target < 0 ? nl : std::min(target, nl);
-            }
+            int64_t change = lyrRows.nextChange(static_cast<int64_t>(p));
+            if (change >= 0) target = target < 0 ? static_cast<double>(change) : std::min(target, static_cast<double>(change));
             if (target < 0) return;
             delay = std::clamp<int64_t>(static_cast<int64_t>((target - p) / rate), 15, 60'000);
         }
@@ -997,8 +1003,8 @@ struct TaskbarWidget::Impl {
             if (translation && lyrics::hasTranslation(*lyr)) {
                 cur.line2 = text::toWide(line.translation);
                 cur.translated = true;
-            } else if (idx + 1 < static_cast<int>(lyr->lines.size())) {
-                cur.line2 = lyrics::buildKaraoke(lyr->lines[idx + 1]).text;
+            } else if (int next = nextSungLine(idx); next >= 0) {
+                cur.line2 = lyrics::buildKaraoke(lyr->lines[next]).text;
             }
         }
         if (cur.line1.empty()) {
@@ -1182,6 +1188,7 @@ void TaskbarWidget::setTrack(const media::MediaSessionInfo* s) {
 
 void TaskbarWidget::setLyrics(std::shared_ptr<const lyrics::Lyrics> l, const std::string& trackId) {
     impl_->lyr = l && l->synced ? std::move(l) : nullptr;
+    impl_->lyrRows = impl_->lyr ? lyrics::buildRows(*impl_->lyr) : lyrics::LyricRows{};
     impl_->karaIdx = -1;
     impl_->trackId = trackId;
     impl_->texts.clear();

@@ -6,6 +6,8 @@
     <string name="channel_link_desc">MediaDuet 保持可被电脑连接时显示的常驻状态。</string>
     <string name="channel_mirror">电脑媒体控制</string>
     <string name="channel_mirror_desc">在系统媒体控制中显示电脑正在播放的内容（可选）。</string>
+    <string name="channel_lyrics">歌词</string>
+    <string name="channel_lyrics_desc">在锁屏和状态栏显示当前歌词（可选）。</string>
     <string name="channel_pairing">配对请求</string>
     <string name="channel_pairing_desc">电脑请求配对时提醒你核对配对码。</string>
     <string name="pairing_notification_title">与 %1$s 配对？</string>
@@ -248,6 +250,11 @@
     <string name="settings_lyrics_header">歌词与显示</string>
     <string name="settings_translations">显示翻译</string>
     <string name="settings_translations_text">在原文歌词下方显示翻译（若电脑提供）。</string>
+    <string name="settings_lyrics_notification_header">锁屏与状态栏</string>
+    <string name="settings_lyrics_notification">歌词通知</string>
+    <string name="settings_lyrics_notification_text">用一条通知显示正在播放内容（手机或电脑）的当前歌词，锁屏上也能看到。在 Android 16 上会成为实时通知：显示为状态栏胶囊，ColorOS 16 上显示在流体云中。暂停时隐藏；划掉后本首歌不再显示。</string>
+    <string name="settings_live_updates">允许实时通知</string>
+    <string name="settings_live_updates_text">系统尚未允许 MediaDuet 的歌词以实时通知显示。开启后即可在状态栏和流体云中看到歌词。</string>
     <string name="about_title">关于</string>
     <string name="about_text">MediaDuet 连接你的手机与电脑：双方都能看到并控制对方正在播放的内容。连接全程端到端加密，绝不读取通知内容。</string>
     <string name="about_project_license">MediaDuet 以 MIT 许可证开源。© 2026 tianli。</string>

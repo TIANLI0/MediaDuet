@@ -236,7 +236,7 @@ namespace mdui
         m_karaoke = md::lyrics::buildKaraoke(ToCoreLine(line));
         bool blank = m_karaoke.text.empty();
         // A blank line shown as text (plain lyrics) keeps a small note so it is not empty; synced
-        // views show blank lines as interludes or empty rows (LyricTiming BuildDisplayRows).
+        // views never show blank lines (gaps are interlude rows, LyricTiming BuildDisplayRows).
         if (blank)
         {
             m_karaoke.text = L"\x266A";
@@ -388,25 +388,25 @@ namespace mdui
 
     void KaraokeLine::UpdateInterlude(double p, bool animate)
     {
-        // Inactive: three quiet dots (the lyrics view dims the row). Active: progressive + breathing.
+        // Like Android: only the current interlude shows its dots (progressive + breathing); others
+        // keep their place in the list but are invisible.
         double scale = 1.0;
-        double fills[3] = { 0.0, 0.0, 0.0 };
-        if (m_active && p >= 0)
+        double opacity[3] = { 0.0, 0.0, 0.0 };
+        if (m_active && p >= 0 && animate)
         {
             double elapsed = p - static_cast<double>(m_interludeT);
-            double progress = std::clamp(elapsed / static_cast<double>(m_interludeD), 0.0, 1.0);
-            for (int i = 0; i < 3; ++i) fills[i] = animate ? lyrics::InterludeDotFill(progress, i) : 1.0;
-            if (animate) scale = lyrics::InterludeScale(elapsed, static_cast<double>(m_interludeD));
+            double d = static_cast<double>(m_interludeD);
+            double progress = std::clamp(elapsed / d, 0.0, 1.0);
+            for (int i = 0; i < 3; ++i) opacity[i] = lyrics::InterludeDotOpacity(elapsed, d, lyrics::InterludeDotFill(progress, i));
+            scale = lyrics::InterludeScale(elapsed, d);
         }
         else if (m_active)
         {
-            for (auto& f : fills) f = animate ? 0.0 : 1.0;
+            // No animations (or no position yet): three steady dots.
+            for (auto& o : opacity) o = animate ? 0.0 : 1.0;
         }
         for (int i = 0; i < 3; ++i)
-        {
-            double opacity = m_active ? 0.32 + 0.68 * fills[i] : 0.7;
-            if (std::abs(m_dot[i].Opacity() - opacity) > 0.004) m_dot[i].Opacity(opacity);
-        }
+            if (std::abs(m_dot[i].Opacity() - opacity[i]) > 0.004) m_dot[i].Opacity(opacity[i]);
         if (std::abs(scale - m_lastDotScale) > 0.002)
         {
             m_lastDotScale = scale;

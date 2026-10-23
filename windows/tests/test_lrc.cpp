@@ -151,3 +151,19 @@ TEST_CASE("sameSong tolerates trackId churn of one song") {
     CHECK_FALSE(sameSong({"!!!", "", "", 1000}, {"???", "", "", 1000}));
     CHECK(sameSong(a, {"晴天", "周杰伦", "叶惠美", 274000}, 6000)); // custom tolerance
 }
+
+TEST_CASE("two lines with one timestamp are original and translation") {
+    auto l = parseLrc("[00:01.00]Hello\n[00:01.00]\xE4\xBD\xA0\xE5\xA5\xBD\n[00:03.00]World\n");
+    REQUIRE(l.lines.size() == 2);
+    CHECK(l.lines[0].text == "Hello");
+    CHECK(l.lines[0].translation == "\xE4\xBD\xA0\xE5\xA5\xBD");
+    CHECK(l.lines[0].d == 2000);
+}
+
+TEST_CASE("plain lyrics drop blank lines and tag prefixes") {
+    auto l = fromPlainText("[ti:Song]\n\nFirst line\n  \n[ar:x]Second\n");
+    REQUIRE(l.lines.size() == 2);
+    CHECK(l.lines[0].text == "First line");
+    CHECK(l.lines[1].text == "Second");
+    CHECK_FALSE(l.synced);
+}

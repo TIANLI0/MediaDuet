@@ -96,6 +96,8 @@ struct LyricsOverlay::Impl {
 
     // content
     std::shared_ptr<const lyrics::Lyrics> lyr;
+    lyrics::LyricRows lyrRows; // of lyr (shared row model: gaps, end of lyrics)
+    int mainLine = -1;         // the line in the main row (updateRows)
     bool trSong = false; // translations shown for this song
     std::string trackId;
     std::shared_ptr<const lyrics::LyricsClock> clock;
@@ -296,7 +298,7 @@ struct LyricsOverlay::Impl {
     }
 
     bool shouldShow() const {
-        if (!owner->enabled_ || fullscreenBlocked || !lyr || !lyr->synced || lyr->lines.empty()) return false;
+        if (!owner->enabled_ || fullscreenBlocked || !lyr || !lyr->synced || lyrRows.rows.empty()) return false;
         if (autoHide && !playing && sched.nowMs() - pausedAt > kAutoHideMs) return false;
         return true;
     }
@@ -308,16 +310,15 @@ struct LyricsOverlay::Impl {
         return karas.emplace(i, lyrics::buildKaraoke(lyr->lines[i])).first->second;
     }
 
-    int currentIndex() const {
+    int64_t rowPosition() const {
         double p = position();
-        if (!lyr || p < 0) return -1;
-        return lyrics::lineAt(*lyr, static_cast<int64_t>(p));
+        return p < 0 ? -1 : static_cast<int64_t>(p);
     }
 
     // Updates which content each row shows; a changed row starts a cross-fade.
     void updateRows() {
         if (!lyr) return;
-        auto d = lyrics::desktopRows(*lyr, currentIndex(), layout, twoLines, translation);
+        auto d = lyrics::desktopRows(*lyr, lyrRows, rowPosition(), layout, twoLines, translation, &mainLine);
         double t = now();
         bool layoutChanged = d.centered != centeredNow;
         for (int r = 0; r < 2; ++r) {
@@ -384,11 +385,8 @@ struct LyricsOverlay::Impl {
                     if (lyrics::fillMoving(kara(rowNow[r].line), p, &n)) moving = true;
                     else if (n >= 0) next = next < 0 ? n : std::min(next, n);
                 }
-            int idx = currentIndex();
-            if (idx + 1 < static_cast<int>(lyr->lines.size())) {
-                double nl = static_cast<double>(lyr->lines[idx + 1].t);
-                next = next < 0 ? nl : std::min(next, nl);
-            }
+            int64_t change = lyrRows.nextChange(rowPosition());
+            if (change >= 0) next = next < 0 ? static_cast<double>(change) : std::min(next, static_cast<double>(change));
         }
         int64_t delay;
         if (fading || moving) {
@@ -497,7 +495,7 @@ struct LyricsOverlay::Impl {
         float ks = lyrics::fitScale(e->width, avail, 0.85f);
         float tw = e->width * ks;
         bool isActive = c.kind == RowKind::Line && c.active;
-        bool past = c.kind == RowKind::Line && !c.active && p >= 0 && c.line <= currentIndex();
+        bool past = c.kind == RowKind::Line && !c.active && p >= 0 && c.line < mainLine; // fading out after it was sung
         std::optional<float> fx;
         if (isActive && karaoke && k && !k->text.empty()) fx = fillX(e->carets, lyrics::fillAt(*k, p));
         float x;
@@ -1055,6 +1053,8 @@ void LyricsOverlay::setLyrics(std::shared_ptr<const lyrics::Lyrics> l, const std
     bool rows = i.hasSecondRow();
     float second = i.secondaryScale();
     i.lyr = std::move(l);
+    i.lyrRows = i.lyr ? lyrics::buildRows(*i.lyr) : lyrics::LyricRows{};
+    i.mainLine = -1;
     i.trSong = i.translation && i.lyr && lyrics::hasTranslation(*i.lyr);
     if (rows != i.hasSecondRow() || second != i.secondaryScale()) i.placementDirty = true; // height changes
     i.trackId = trackId;

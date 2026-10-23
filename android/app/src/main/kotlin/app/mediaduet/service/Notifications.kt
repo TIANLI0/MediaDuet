@@ -19,6 +19,7 @@ object Notifications {
     const val CHANNEL_PAIRING = "pairing"
     const val CHANNEL_ATTENTION = "attention"
     const val CHANNEL_HANDOFF = "handoff"
+    const val CHANNEL_LYRICS = "lyrics"
 
     const val ID_LINK = 1
     const val ID_MIRROR = 2
@@ -26,6 +27,7 @@ object Notifications {
     const val ID_VOLUME = 4
     const val ID_HANDOFF = 5
     const val ID_UPDATE = 6
+    const val ID_LYRICS = 7
 
     /** At most one "volume control restricted" notification per this interval. */
     private const val VOLUME_NOTICE_INTERVAL_MS = 10 * 60_000L
@@ -50,6 +52,12 @@ object Notifications {
                     description = context.getString(R.string.channel_attention_desc)
                     setShowBadge(false)
                 },
+                // LOW, not MIN: Android 16 only promotes notifications (Live Updates) above MIN.
+                NotificationChannel(CHANNEL_LYRICS, context.getString(R.string.channel_lyrics), NotificationManager.IMPORTANCE_LOW).apply {
+                    description = context.getString(R.string.channel_lyrics_desc)
+                    setShowBadge(false)
+                    lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                },
                 NotificationChannel(CHANNEL_HANDOFF, context.getString(R.string.channel_handoff), NotificationManager.IMPORTANCE_HIGH).apply {
                     description = context.getString(R.string.channel_handoff_desc)
                     setShowBadge(false)
@@ -62,6 +70,10 @@ object Notifications {
         (Build.VERSION.SDK_INT < 33 ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) &&
             context.getSystemService(NotificationManager::class.java).areNotificationsEnabled()
+
+    /** Android 16+: Live Updates (promoted notifications) are allowed for this app; true before 16. */
+    fun canPostPromoted(context: Context): Boolean =
+        Build.VERSION.SDK_INT < 36 || context.getSystemService(NotificationManager::class.java).canPostPromotedNotifications()
 
     fun openAppIntent(context: Context, tab: String? = null): PendingIntent {
         val intent = Intent(context, MainActivity::class.java)

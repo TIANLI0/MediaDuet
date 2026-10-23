@@ -1872,9 +1872,3 @@ private fun SourceRow(icon: ImageVector, title: String, subtitle: String, select
     }
 }
 
-/** Current synced lyric line for compact places (mini player); [positionMs] is already delayed. */
-fun currentLyricText(lyrics: LyricsState?, positionMs: Long): String? {
-    val synced = lyrics?.lyrics ?: return null
-    val i = synced.indexAt(positionMs)
-    return synced.lines.getOrNull(i)?.text?.ifBlank { null }
-}

@@ -59,6 +59,15 @@ class AppSettings(context: Context) {
         _lyricsSize.value = size
     }
 
+    private val _lyricsNotification = MutableStateFlow(prefs.getBoolean(KEY_LYRICS_NOTIFICATION, false))
+    /** The current lyric line as a notification (lock screen; Live Update / Fluid Cloud on Android 16+). */
+    val lyricsNotification: StateFlow<Boolean> = _lyricsNotification
+
+    fun setLyricsNotification(enabled: Boolean) {
+        prefs.edit { putBoolean(KEY_LYRICS_NOTIFICATION, enabled) }
+        _lyricsNotification.value = enabled
+    }
+
     private val _autoLatency = MutableStateFlow(prefs.getBoolean(KEY_LATENCY_AUTO, true))
     /** Delay lyrics by the playing device's output latency (Bluetooth) automatically. */
     val lyricsAutoLatency: StateFlow<Boolean> = _autoLatency
@@ -177,6 +186,7 @@ class AppSettings(context: Context) {
         const val KEY_NAME = "device_name"
         const val KEY_FGS = "foreground_service"
         const val KEY_MIRROR = "mirror_session"
+        const val KEY_LYRICS_NOTIFICATION = "lyrics_notification"
         const val KEY_AUDIO = "audio_receive"
         const val KEY_TRANSLATIONS = "lyrics_translations"
         const val KEY_LYRICS_SIZE = "lyrics.size"

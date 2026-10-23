@@ -10,6 +10,8 @@
     <string name="channel_link_desc">Ongoing status while MediaDuet stays reachable for your PC.</string>
     <string name="channel_mirror">PC media controls</string>
     <string name="channel_mirror_desc">Shows what the PC is playing in the system media controls (optional).</string>
+    <string name="channel_lyrics">Lyrics</string>
+    <string name="channel_lyrics_desc">The current lyric line on the lock screen and in the status bar (optional).</string>
     <string name="channel_pairing">Pairing requests</string>
     <string name="channel_pairing_desc">Asks you to confirm the code when a PC wants to pair.</string>
     <string name="pairing_notification_title">Pair with %1$s?</string>
@@ -272,6 +274,11 @@
     <string name="settings_lyrics_header">Lyrics &amp; display</string>
     <string name="settings_translations">Show translation</string>
     <string name="settings_translations_text">Show translated lines (when the PC provides them) under the original lyrics.</string>
+    <string name="settings_lyrics_notification_header">Lock screen &amp; status bar</string>
+    <string name="settings_lyrics_notification">Lyrics notification</string>
+    <string name="settings_lyrics_notification_text">Shows the current lyric line of what\'s playing (phone or PC) in a notification, on the lock screen too. On Android 16 it becomes a Live Update: a status bar chip, or Fluid Cloud on ColorOS 16. Hidden while paused; swipe it away to hide it for this song.</string>
+    <string name="settings_live_updates">Allow Live Updates</string>
+    <string name="settings_live_updates_text">Android doesn\'t show MediaDuet\'s lyrics as a Live Update yet. Turn it on to see them in the status bar and Fluid Cloud.</string>
     <string name="about_title">About</string>
     <string name="about_text">MediaDuet links your phone and your PC: each side sees and controls what the other is playing. Connections are end-to-end encrypted; notification contents are never read.</string>
     <string name="about_project_license">MediaDuet is open source under the MIT License. © 2026 tianli.</string>

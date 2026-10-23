@@ -1,8 +1,9 @@
 // Apple-Music / AMLL-style synced lyrics view of the main window.
 //
-// * One row per lyric line, so the current row is always the host overlay's lineAt() (plus an intro
-//   row with breathing dots when the first line starts >= 4 s in; blank lines >= 4 s are interlude
-//   rows, shorter ones are empty rows). See LyricTiming.h BuildDisplayRows / CurrentRow.
+// * The rows of the shared row model (md::lyrics::buildRows, same as the desktop lyrics, the taskbar
+//   and Android): sung lines plus breathing-dot interludes (intro, long blank lines, the silence
+//   after a line); a few seconds after the last line nothing is current any more. See LyricTiming.h
+//   BuildDisplayRows / CurrentRow.
 // * The current line is fully emphasised: scale 1.0 (others 0.93), sung part bright, unsung part
 //   ~50 % - always brighter than any other line, which fall off with distance. The current line's
 //   emphasis animates quickly (~200 ms) so it never lags behind the fill.
@@ -64,6 +65,7 @@ namespace mdui
         void ApplyColors();
         void ApplyLineStates();
         double TargetFor(int index) const;
+        int AnchorRow() const;   // the current row, else where the view rests (first / last row)
         double ClampOffset(double offset) const;
         void ApplyOffset(double offset, Mode mode);
         void Follow(Mode mode);

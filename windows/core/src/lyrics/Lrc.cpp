@@ -196,6 +196,14 @@ Lyrics parseLrc(std::string_view input) {
         } else {
             l.text = text::trim(r.body);
         }
+        // Two lines with one timestamp: original + translation (common in Chinese lyric sources).
+        if (!out.lines.empty()) {
+            auto& prev = out.lines.back();
+            if (prev.t == l.t && prev.translation.empty() && !prev.text.empty() && !l.text.empty() && prev.text != l.text) {
+                prev.translation = l.text;
+                continue;
+            }
+        }
         out.lines.push_back(std::move(l));
     }
     for (size_t k = 0; k < out.lines.size(); ++k) {
@@ -217,11 +225,17 @@ Lyrics parseLrc(std::string_view input) {
 Lyrics fromPlainText(std::string_view input) {
     Lyrics out;
     for (auto line : splitLines(stripBom(input))) {
+        // Non-blank lines with any [tag] prefixes removed (same as Android's plainLines).
+        std::string t = text::trim(line);
+        while (!t.empty() && t.front() == '[') {
+            size_t close = t.find(']');
+            if (close == std::string::npos || t.find('[', 1) < close) break;
+            t = text::trim(std::string_view(t).substr(close + 1));
+        }
         Line l;
-        l.text = text::trim(line);
-        out.lines.push_back(std::move(l));
+        l.text = std::move(t);
+        if (!l.text.empty()) out.lines.push_back(std::move(l));
     }
-    while (!out.lines.empty() && out.lines.back().text.empty()) out.lines.pop_back();
     out.synced = false;
     return out;
 }

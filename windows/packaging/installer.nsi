@@ -2,7 +2,7 @@
 ; Build the staged folder first:
 ;   powershell -ExecutionPolicy Bypass -File windows\packaging\package.ps1 -Arch x64
 ; then:
-;   makensis /DVERSION=1.6.2 /DARCH=x64 windows\packaging\installer.nsi
+;   makensis /DVERSION=1.7.0 /DARCH=x64 windows\packaging\installer.nsi
 
 Unicode true
 ManifestDPIAware true
@@ -10,7 +10,7 @@ RequestExecutionLevel user
 SetCompressor /SOLID lzma
 
 !ifndef VERSION
-  !define VERSION "1.6.2"
+  !define VERSION "1.7.0"
 !endif
 !ifndef ARCH
   !define ARCH "x64"

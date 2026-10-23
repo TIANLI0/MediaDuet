@@ -596,8 +596,7 @@ namespace winrt::MediaDuetUI::implementation
             {
                 m_lyricsIdentity = identity;
                 m_lines = lyrics.lines;
-                m_blank.clear();
-                for (auto const& l : m_lines) m_blank.push_back(LineIsBlank(l));
+                m_rows = md::lyrics::buildRows(ToCoreLyrics(lyrics));
                 m_activeLine = -2;
             }
             EnsureLyricSlots();
@@ -611,7 +610,7 @@ namespace winrt::MediaDuetUI::implementation
         else
         {
             m_lines.clear();
-            m_blank.clear();
+            m_rows = {};
             m_lyricsIdentity.clear();
             m_activeLine = -2;
             m_transitionStart = -1;
@@ -655,16 +654,11 @@ namespace winrt::MediaDuetUI::implementation
     {
         if (!m_slots[0]) return;
         if (m_host.IsDark() != m_lyricsDark) ApplyLyricColors();
-        int index = -1;
-        if (positionMs >= 0 && !m_lines.empty())
-        {
-            auto it = std::upper_bound(m_lines.begin(), m_lines.end(), static_cast<int64_t>(positionMs),
-                [](int64_t pos, LyricLine const& l) { return pos < l.t; });
-            index = static_cast<int>(it - m_lines.begin()) - 1;
-        }
-        bool hasText = index >= 0 && index < static_cast<int>(m_blank.size()) && !m_blank[index];
+        // The shared row model: no line before the lyrics, in instrumental gaps and after their end.
+        int index = positionMs >= 0 ? m_rows.lineAt(static_cast<int64_t>(positionMs)) : -1;
+        bool hasText = index >= 0 && index < static_cast<int>(m_lines.size());
         bool animations = Controller::Get().AnimationsEnabled();
-        // Before the first line and in instrumental gaps the source line is shown instead; the
+        // Before the first line, in instrumental gaps and after the lyrics the source line is shown instead; the
         // switch cross-fades (no jump between the two rows).
         bool hadLine = m_lyricLineVisible && LyricSlot().Visibility() == Visibility::Visible;
         auto want = hasText ? Visibility::Visible : Visibility::Collapsed;

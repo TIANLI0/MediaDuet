@@ -277,36 +277,38 @@ TEST_CASE("segments: a wrapped line continues the fill row by row with one edge"
     CHECK(w2.rows == 2);
 }
 
-// ---- Display rows: the current row is always the overlay's lineAt() ------------------------------
+// ---- Display rows: the shared row model (md::lyrics::buildRows), as the overlay uses it ------------
 
-TEST_CASE("display rows: intro, long and short blank lines")
+TEST_CASE("display rows: intro, long and short blank lines, vocal gaps, end of lyrics")
 {
     md::lyrics::Lyrics l;
     l.synced = true;
     l.lines = { { 8000, 3000, "one", {}, "" }, { 11000, 2000, "", {}, "" }, { 13000, 3000, "two", {}, "" },
         { 16000, 6000, "", {}, "" }, { 22000, 2000, "three", {}, "" } };
-    std::vector<bool> blank = { false, true, false, true, false };
-    auto rows = BuildDisplayRows(l, blank);
-    REQUIRE(rows.rows.size() == 6);
-    CHECK(rows.intro);
-    CHECK(rows.rows[0].kind == RowKind::Interlude);
+    auto rows = BuildDisplayRows(l);
+    REQUIRE(rows.rows.size() == 5);
+    CHECK(rows.rows[0].kind == RowKind::Interlude);   // intro
     CHECK(rows.rows[0].d == 8000);
-    CHECK(rows.rows[2].kind == RowKind::Empty);       // 2 s blank
-    CHECK(rows.rows[4].kind == RowKind::Interlude);   // 6 s blank
-    CHECK(rows.rows[4].d == 6000);
-    for (double p = -500; p < 26000; p += 50)
+    CHECK(rows.rows[1].line == 0);                    // the 2 s blank line after it is dropped
+    CHECK(rows.rows[2].line == 2);
+    CHECK(rows.rows[3].kind == RowKind::Interlude);   // 6 s blank
+    CHECK(rows.rows[3].d == 6000);
+    CHECK(rows.rows[4].line == 4);
+    for (double p = -500; p < 40000; p += 50)
     {
-        int row = CurrentRow(l, rows, p);
-        int line = p < 0 ? -1 : md::lyrics::lineAt(l, static_cast<int64_t>(p));
-        if (line >= 0) CHECK(rows.rows[static_cast<size_t>(row)].line == line);
-        else CHECK(row == 0);   // intro
+        int row = CurrentRow(rows, p);
+        int line = p < 0 ? -1 : rows.model.lineAt(static_cast<int64_t>(p));
+        if (row >= 0 && rows.rows[static_cast<size_t>(row)].kind == RowKind::Text) CHECK(rows.rows[static_cast<size_t>(row)].line == line);
+        else CHECK(line == -1);
     }
+    CHECK(CurrentRow(rows, 12000) == 1);   // the short blank line keeps "one" current
+    CHECK(CurrentRow(rows, rows.model.endMs) == kEndedRow);
     // Without an intro (first line < 4 s) nothing is current before the first line.
     l.lines.front().t = 2000;
-    auto r2 = BuildDisplayRows(l, blank);
-    CHECK_FALSE(r2.intro);
-    CHECK(CurrentRow(l, r2, 1000) == -1);
-    CHECK(CurrentRow(l, r2, 2000) == 0);
+    auto r2 = BuildDisplayRows(l);
+    CHECK(r2.rows[0].kind == RowKind::Text);
+    CHECK(CurrentRow(r2, 1000) == -1);
+    CHECK(CurrentRow(r2, 2000) == 0);
 }
 
 // ---- End-to-end timing: host overlay pipeline vs UI pipeline --------------------------------------
@@ -348,14 +350,9 @@ namespace
         gap.d = 5000;
         l.lines.push_back(gap);
         l.lines.push_back(WordLine({ { 23000, "Last " }, { 23500, "line" } }));
-        std::vector<bool> blank;
         std::vector<UiLine> ui;
-        for (auto const& line : l.lines)
-        {
-            ui.push_back(MakeUiLine(line));
-            blank.push_back(ui.back().k.text.empty());
-        }
-        auto rows = BuildDisplayRows(l, blank);
+        for (auto const& line : l.lines) ui.push_back(MakeUiLine(line));
+        auto rows = BuildDisplayRows(l);
 
         std::mt19937 rng(seed);
         std::uniform_real_distribution<double> jitter(-25, 25), ipc(1, 9), gapMs(150, 1400);
@@ -444,15 +441,16 @@ namespace
             // Right after a pause / seek the UI learns about it one IPC hop later (<= 9 ms here).
             bool justChanged = std::abs(now - 12500) < 30 || std::abs(now - 13300) < 30 || std::abs(now - 16000) < 30;
             if (now > 1500 && !justChanged) maxPosDiff = std::max(maxPosDiff, std::abs(hp - up));
-            int hostLine = md::lyrics::lineAt(l, static_cast<int64_t>(hp));
-            int row = CurrentRow(l, rows, up);
+            int hostLine = rows.model.lineAt(static_cast<int64_t>(hp));   // what the overlay shows
+            int row = CurrentRow(rows, up);
             int uiLine = row < 0 ? -1 : rows.rows[static_cast<size_t>(row)].line;
             if (hostLine != uiLine)
             {
                 // Only allowed right at a line boundary that lies between the two positions.
                 bool boundary = false;
-                for (auto const& line : l.lines)
-                    if ((hp - line.t) * (up - line.t) <= 0) boundary = true;
+                for (auto const& r : rows.model.rows)
+                    if ((hp - r.start) * (up - r.start) <= 0) boundary = true;
+                if ((hp - rows.model.endMs) * (up - rows.model.endMs) <= 0) boundary = true;
                 CHECK(boundary);
                 ++mismatchedLines;
                 continue;
@@ -502,7 +500,9 @@ TEST_CASE("interlude dots fill in order and shrink away at the end")
     CHECK(InterludeDotFill(0.5, 0) == 1);
     CHECK(InterludeDotFill(0.5, 1) == doctest::Approx(0.5));
     CHECK(InterludeDotFill(0.5, 2) == 0);
-    CHECK(InterludeScale(5000, 5000) == doctest::Approx(0));
+    CHECK(InterludeScale(4800, 4800) == doctest::Approx(0.4));   // shrunk at the end (breathing at rest)
+    CHECK(InterludeDotOpacity(5000, 5000, 1.0) == doctest::Approx(0.2));
+    CHECK(InterludeDotOpacity(0, 5000, 1.0) == doctest::Approx(0.0)); // fades in
     CHECK(InterludeScale(2000, 5000) > 0.8);
 }
 

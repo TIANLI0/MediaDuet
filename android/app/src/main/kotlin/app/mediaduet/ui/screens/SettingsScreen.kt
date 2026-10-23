@@ -1,5 +1,8 @@
 package app.mediaduet.ui.screens
 
+import android.content.Intent
+import android.os.Build
+import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.fillMaxSize
@@ -51,6 +54,8 @@ import app.mediaduet.audio.AudioReceiver
 import app.mediaduet.protocol.Caps
 import app.mediaduet.protocol.PolicyStatus
 import app.mediaduet.service.AppLanguage
+import app.mediaduet.service.Notifications
+import app.mediaduet.service.PermissionChecks
 import app.mediaduet.ui.SettingsRoute
 import app.mediaduet.ui.UiContext
 import app.mediaduet.ui.components.AppIcons
@@ -326,6 +331,7 @@ fun LyricsDisplayPage(ui: UiContext, onBack: () -> Unit) {
             Spacer(Modifier.height(4.dp))
             LyricsSizePicker(lyricsSize) { settings.setLyricsSize(it) }
         }
+        LyricsNotificationSettings(ui)
         LyricsTimingSettings(ui)
         if (!mode.linked) return@ScreenScaffold
         SectionHeader(stringResource(R.string.settings_mirror_header))
@@ -340,6 +346,47 @@ fun LyricsDisplayPage(ui: UiContext, onBack: () -> Unit) {
             if (mirror && !ui.permissions.notifications) {
                 Text(stringResource(R.string.settings_mirror_needs_notifications), style = MaterialTheme.typography.bodySmall, color = glass.warn)
             }
+        }
+    }
+}
+
+/**
+ * Settings › Lyrics › Lock screen & status bar: the lyrics notification, with a shortcut to the
+ * system's Live Updates switch on Android 16+ (ColorOS 16 shows them in Fluid Cloud).
+ */
+@Composable
+private fun LyricsNotificationSettings(ui: UiContext) {
+    val settings = ui.engine.settings
+    val glass = LocalGlass.current
+    val context = LocalContext.current
+    val enabled by settings.lyricsNotification.collectAsStateWithLifecycle()
+    // Re-read whenever the permissions are refreshed (returning from system settings).
+    val promoted = remember(ui.permissions) { Notifications.canPostPromoted(context) }
+    SectionHeader(stringResource(R.string.settings_lyrics_notification_header))
+    GlassCard(ui.backdrop, Modifier.fillMaxWidth()) {
+        InfoRow(
+            stringResource(R.string.settings_lyrics_notification),
+            subtitle = stringResource(R.string.settings_lyrics_notification_text),
+            trailing = {
+                LiquidToggle({ enabled }, { settings.setLyricsNotification(it) }, ui.backdrop, contentDescription = stringResource(R.string.settings_lyrics_notification))
+            },
+            onClick = { settings.setLyricsNotification(!enabled) },
+            role = Role.Switch,
+        )
+        if (enabled && !ui.permissions.notifications) {
+            Text(stringResource(R.string.settings_mirror_needs_notifications), style = MaterialTheme.typography.bodySmall, color = glass.warn)
+        } else if (enabled && !promoted && Build.VERSION.SDK_INT >= 36) {
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
+            InfoRow(
+                stringResource(R.string.settings_live_updates),
+                subtitle = stringResource(R.string.settings_live_updates_text),
+                trailing = { Icon(AppIcons.ChevronRight, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                onClick = {
+                    val promotedSettings = Intent(Settings.ACTION_APP_NOTIFICATION_PROMOTION_SETTINGS)
+                        .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                    if (!context.launchSafely(promotedSettings)) context.launchSafely(PermissionChecks.notificationSettingsIntent(context))
+                },
+            )
         }
     }
 }

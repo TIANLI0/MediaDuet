@@ -151,3 +151,48 @@ TEST_CASE("desktop rows: translations centre the whole song") {
     auto off = desktopRows(l, 0, RowLayout::Alternate, true, false);
     CHECK_FALSE(off.centered);
 }
+
+// ---- rows (same rules as Android's LyricRows) ----------------------------------------------------
+
+TEST_CASE("rows: intro gap, short blank lines dropped, long blank lines and vocal silence are gaps") {
+    auto l = parseLrc("[00:00.50]\n[00:06.00]One\n[00:08.00]\n[00:09.00]Two\n[00:11.00]\n[00:20.00]Three\n"
+                      "[00:22.00]<00:22.00>Four <00:22.50>words<00:23.00>\n[00:40.00]Five\n");
+    auto r = buildRows(l);
+    using K = LyricRow::Kind;
+    REQUIRE(r.rows.size() == 8);
+    CHECK(r.rows[0] == LyricRow{K::Gap, -1, 0, 6000});        // intro (the leading blank line is skipped)
+    CHECK(r.rows[1].kind == K::Line);
+    CHECK(r.rows[1].line == 1);                                // "One"; the 1 s blank line after it is dropped
+    CHECK(r.rows[2].line == 3);                                // "Two"
+    CHECK(r.rows[3] == LyricRow{K::Gap, -1, 11000, 20000});   // 9 s blank line
+    CHECK(r.rows[4].line == 5);                                // "Three"
+    CHECK(r.rows[5].line == 6);                                // "Four words"
+    // The last word starts at 22.5 s; singing ends 1.5 s later, the next line is at 40 s.
+    CHECK(r.rows[6] == LyricRow{K::Gap, -1, 24000, 40000});
+    CHECK(r.rows[7].line == 7);
+    CHECK(r.lineAt(7000) == 1);
+    CHECK(r.lineAt(8500) == 1);   // short blank line: the previous line stays
+    CHECK(r.lineAt(12000) == -1); // in a gap
+    CHECK(r.activeAt(-5) == -1);
+    CHECK(r.activeAt(100) == 0);
+    CHECK(r.nextChange(100) == 6000);
+}
+
+TEST_CASE("rows: the lyrics end a few seconds after the last line is sung") {
+    auto r = buildRows(parseLrc("[00:01.00]Only line\n"));
+    // Line-timed last line: d = 5 s, so it ends at 1 s + 5 s + the 3 s hold.
+    CHECK(r.endMs == 9000);
+    CHECK(r.lineAt(8999) == 0);
+    CHECK(r.activeAt(9000) == LyricRows::kEnded);
+    CHECK(r.lineAt(9000) == -1);
+    CHECK(r.nextChange(2000) == 9000);
+    CHECK(r.nextChange(9000) == -1);
+}
+
+TEST_CASE("rows: none for unsynced or blank-only lyrics") {
+    CHECK(buildRows(fromPlainText("a\nb")).rows.empty());
+    auto blank = buildRows(parseLrc("[00:01.00]\n[00:05.00] \n"));
+    CHECK(blank.rows.empty());
+    CHECK(blank.activeAt(1000) == -1);
+    CHECK(blank.lineAt(1000) == -1);
+}

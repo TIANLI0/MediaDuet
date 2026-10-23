@@ -257,10 +257,7 @@ namespace mdui
         m_core = ToCoreLyrics(lyrics);
         if (m_synced)
         {
-            std::vector<bool> blank;
-            blank.reserve(lyrics.lines.size());
-            for (auto const& l : lyrics.lines) blank.push_back(LineIsBlank(l));
-            m_rows = lyrics::BuildDisplayRows(m_core, blank);
+            m_rows = lyrics::BuildDisplayRows(m_core);
         }
         else
         {
@@ -285,7 +282,6 @@ namespace mdui
             else line->SetLine(lyrics.lines[static_cast<size_t>(d.line)]);
             auto root = line->Root();
             root.Padding(Thickness{ 0, pad, 12, pad });
-            if (d.kind == lyrics::RowKind::Empty) root.Visibility(Visibility::Collapsed);
             root.Opacity(0.0);   // revealed line by line once placed
             if (m_synced)
             {
@@ -404,7 +400,9 @@ namespace mdui
             float scale = 1.0f;
             if (m_synced)
             {
-                int d = m_active < 0 ? 4 : std::abs(i - m_active);
+                // Before the lyrics / after their end nothing is current: the lines dim with their
+                // distance from where the view rests (the first / last row).
+                int d = std::abs(i - AnchorRow()) + (m_active < 0 ? 1 : 0);
                 opacity = lyrics::LineOpacity(d);
                 scale = d == 0 ? 1.0f : kInactiveScale;
             }
@@ -426,7 +424,7 @@ namespace mdui
             m_animations = animations;
             std::fill(m_bucket.begin(), m_bucket.end(), -2);   // transitions are re-chosen
         }
-        int index = lyrics::CurrentRow(m_core, m_rows, positionMs);
+        int index = lyrics::CurrentRow(m_rows, positionMs);
         if (m_pinned >= 0)
         {
             if (index >= m_pinned || QpcNowMs() > m_pinUntil || m_pinned >= static_cast<int>(m_lines.size())) m_pinned = -1;
@@ -454,8 +452,6 @@ namespace mdui
     {
         if (m_lines.empty()) return 0;
         index = std::clamp(index, 0, static_cast<int>(m_lines.size()) - 1);
-        // An empty (collapsed) row keeps the previous visible line in place.
-        while (index > 0 && m_lines[index]->Root().Visibility() != Visibility::Visible) --index;
         auto root = m_lines[index]->Root();
         double top = root.ActualOffset().y;
         return top + root.ActualHeight() / 2 - m_height * kFollowAt;
@@ -479,7 +475,7 @@ namespace mdui
             if (m_animations)
             {
                 if (mode == Mode::Wheel) bucket = 0;
-                else if (mode == Mode::Follow) bucket = 1 + std::clamp(i - std::max(0, m_active), 0, 7);
+                else if (mode == Mode::Follow) bucket = 1 + std::clamp(i - AnchorRow(), 0, 7);
             }
             auto root = m_lines[i]->Root();
             if (bucket != m_bucket[i])
@@ -493,10 +489,16 @@ namespace mdui
         if (m_placed) ApplyLineStates();   // the edge fade follows the new position
     }
 
+    int LyricsView::AnchorRow() const
+    {
+        if (m_active >= 0) return m_active;
+        return m_active == lyrics::kEndedRow ? std::max(0, static_cast<int>(m_lines.size()) - 1) : 0;
+    }
+
     void LyricsView::Follow(Mode mode)
     {
         if (!m_synced || m_followPaused || m_lines.empty() || m_height <= 0) return;
-        double target = TargetFor(m_active);
+        double target = TargetFor(AnchorRow());
         if (std::abs(target - m_offset) < 0.5 && mode != Mode::Direct) return;
         ApplyOffset(target, mode);
     }

@@ -21,6 +21,8 @@
 
     <!-- Background lifecycle -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Android 16 Live Updates for the lyrics notification (ColorOS 16 Fluid Cloud); not a runtime permission. -->
+    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- In-app updates (Settings > About): installs the verified APK of a newer MediaDuet release. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
@@ -148,6 +150,10 @@
 
         <receiver
             android:name=".remote.MirrorActionReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".lyrics.LyricsDismissReceiver"
             android:exported="false" />
     </application>
 </manifest>

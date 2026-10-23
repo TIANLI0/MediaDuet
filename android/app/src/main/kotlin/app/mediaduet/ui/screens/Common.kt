@@ -9,6 +9,7 @@ import android.os.SystemClock
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -33,6 +34,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.mediaduet.R
 import app.mediaduet.ui.LocalBottomInset
@@ -43,7 +45,7 @@ import kotlinx.coroutines.delay
 
 /**
  * Scrollable page with a large title; leaves room for the floating mini player.
- * With [onBack] it is a sub-page: a liquid-glass back button sits above the title.
+ * With [onBack] it is a sub-page: a liquid-glass back button sits left of the title.
  */
 @Composable
 fun ScreenScaffold(
@@ -64,13 +66,28 @@ fun ScreenScaffold(
     ) {
         Column(Modifier.widthIn(max = 640.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
             Spacer(Modifier.height(12.dp))
-            if (onBack != null && backdrop != null) {
-                GlassIconButton(AppIcons.ChevronLeft, stringResource(R.string.back), onBack, backdrop, size = 48.dp, iconSize = 24.dp)
-            }
-            Column(Modifier.padding(horizontal = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(title, style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.onSurface)
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                // Back button and title share one row; the subtitle runs full width beneath.
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (onBack != null && backdrop != null) {
+                        GlassIconButton(AppIcons.ChevronLeft, stringResource(R.string.back), onBack, backdrop, size = 48.dp, iconSize = 24.dp)
+                    }
+                    Text(
+                        title,
+                        Modifier.weight(1f).padding(horizontal = 8.dp),
+                        style = MaterialTheme.typography.headlineLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 if (subtitle != null) {
-                    Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        subtitle,
+                        Modifier.padding(horizontal = 8.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         }

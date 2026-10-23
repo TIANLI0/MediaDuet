@@ -6,10 +6,8 @@
 // so the app, the desktop lyrics and the taskbar cannot diverge. This header only adds what the
 // views need on top:
 // * conversions from the UI model, the session report for the clock (atTick -> QPC time base),
-// * the display rows of the main lyrics view: one row per lyric line (so the current row is
-//   always lineAt(), like the overlay) plus an intro row with interlude dots when the first line
-//   starts >= 4 s in; blank lines of >= 4 s are interlude rows, shorter blank lines are empty
-//   (collapsed) rows - while one is current nothing is highlighted, exactly like the overlay,
+// * the display rows of the main lyrics view, from the shared row model (md::lyrics::buildRows:
+//   sung lines plus interludes for the intro, long blank lines and the silence after a line),
 // * grapheme-cluster boundaries for segmentation (LyricSegments.h), the line opacity falloff and
 //   the interlude dot animation.
 #pragma once
@@ -102,13 +100,12 @@ namespace mdui::lyrics
     enum class RowKind
     {
         Text,        // a lyric line
-        Interlude,   // breathing dots (blank line >= 4 s, or the intro)
-        Empty,       // short blank line: collapsed, nothing highlighted while current
+        Interlude,   // breathing dots: an instrumental gap (intro, long blank line, silence after a line)
     };
 
     struct DisplayRow
     {
-        int line{ -1 };   // lyric line index, -1 = intro
+        int line{ -1 };   // lyric line index, -1 = interlude
         int64_t t{ 0 };
         int64_t d{ 0 };   // interludes: length of the gap
         RowKind kind{ RowKind::Text };
@@ -117,43 +114,32 @@ namespace mdui::lyrics
     struct DisplayRows
     {
         std::vector<DisplayRow> rows;
-        bool intro{ false };   // rows[0] is the intro interlude
+        md::lyrics::LyricRows model;   // the shared row model the rows come from (synced lyrics)
     };
 
-    // blank[i]: the line shows nothing (see LineIsBlank). Lines must be sorted by t (synced).
-    inline DisplayRows BuildDisplayRows(md::lyrics::Lyrics const& l, std::vector<bool> const& blank)
+    // No row is current any more: the lyrics are over (md::lyrics::kEndHoldMs after the last line).
+    constexpr int kEndedRow = -3;
+
+    // The rows of synced lyrics: exactly the host's md::lyrics::buildRows (also Android's
+    // LyricRows), so the app, the desktop lyrics and the taskbar agree on gaps and the end.
+    inline DisplayRows BuildDisplayRows(md::lyrics::Lyrics const& l)
     {
         DisplayRows out;
-        size_t n = l.lines.size();
-        if (n == 0) return out;
-        if (l.lines.front().t >= kInterludeMs)
+        out.model = md::lyrics::buildRows(l);
+        for (auto const& r : out.model.rows)
         {
-            out.intro = true;
-            out.rows.push_back({ -1, 0, l.lines.front().t, RowKind::Interlude });
-        }
-        for (size_t i = 0; i < n; ++i)
-        {
-            auto const& line = l.lines[i];
-            DisplayRow r{ static_cast<int>(i), line.t, line.d, RowKind::Text };
-            if (i < blank.size() && blank[i])
-            {
-                int64_t until = i + 1 < n ? l.lines[i + 1].t : line.t + std::max<int64_t>(0, line.d);
-                r.d = until - line.t;
-                r.kind = r.d >= kInterludeMs ? RowKind::Interlude : RowKind::Empty;
-            }
-            out.rows.push_back(r);
+            if (r.kind == md::lyrics::LyricRow::Kind::Gap) out.rows.push_back({ -1, r.start, r.end - r.start, RowKind::Interlude });
+            else out.rows.push_back({ r.line, r.start, l.lines[static_cast<size_t>(r.line)].d, RowKind::Text });
         }
         return out;
     }
 
-    // Current row: the overlay's lineAt() (integer position, like the host), shifted by the intro
-    // row; the intro is current from the start of the track until the first line.
-    inline int CurrentRow(md::lyrics::Lyrics const& l, DisplayRows const& rows, double positionMs)
+    // Current row: -1 before the first row (or without a position), kEndedRow once the lyrics are over.
+    inline int CurrentRow(DisplayRows const& rows, double positionMs)
     {
-        if (positionMs < 0 && !rows.intro) return -1;
-        int line = positionMs < 0 ? -1 : md::lyrics::lineAt(l, static_cast<int64_t>(positionMs));
-        if (line < 0) return rows.intro ? 0 : -1;
-        return line + (rows.intro ? 1 : 0);
+        if (positionMs < 0) return -1;
+        int i = rows.model.activeAt(static_cast<int64_t>(positionMs));
+        return i == md::lyrics::LyricRows::kEnded ? kEndedRow : i;
     }
 
     // ---- Clusters -------------------------------------------------------------------------------
@@ -205,14 +191,26 @@ namespace mdui::lyrics
         return std::clamp(progress * 3.0 - dot, 0.0, 1.0);
     }
 
+    // Same motion as Android's gap row: breathing 1 + 0.12 sin(2 pi t / 2400 ms); over the last
+    // 450 ms the dots shrink to 40 % (InterludeExit fades them); they grow in over the first 300 ms.
+    inline double InterludeExit(double elapsedMs, double durationMs)
+    {
+        return std::clamp((durationMs - elapsedMs) / 450.0, 0.0, 1.0);
+    }
+
     inline double InterludeScale(double elapsedMs, double durationMs)
     {
         constexpr double kPi = 3.14159265358979323846;
-        double breathe = 1.0 + 0.07 * std::sin(elapsedMs / 1700.0 * 2.0 * kPi);
-        double remaining = durationMs - elapsedMs;
-        double tail = std::clamp(remaining / 420.0, 0.0, 1.0);
+        double breathe = 1.0 + 0.12 * std::sin(elapsedMs / 2400.0 * 2.0 * kPi);
         double head = std::clamp(elapsedMs / 300.0, 0.0, 1.0);
         auto ease = [](double x) { return x * x * (3 - 2 * x); };
-        return breathe * ease(tail) * (0.6 + 0.4 * ease(head));
+        return breathe * (0.4 + 0.6 * InterludeExit(elapsedMs, durationMs)) * (0.6 + 0.4 * ease(head));
+    }
+
+    // Opacity of one interlude dot while its row is current (an inactive row hides its dots).
+    inline double InterludeDotOpacity(double elapsedMs, double durationMs, double fill)
+    {
+        double in = std::clamp(elapsedMs / 400.0, 0.0, 1.0);
+        return (0.25 + 0.75 * fill) * std::max(InterludeExit(elapsedMs, durationMs), 0.2) * in;
     }
 }

@@ -69,11 +69,13 @@ fun MiniPlayer(ui: UiContext, backdrop: Backdrop, modifier: Modifier = Modifier)
     // lyric line changes, not every frame.
     val position = rememberFramePosition(view.positionKey, view.playing && lyrics?.synced == true, visible = true) { now -> view.position(now) }
     val delayMs = LyricsDelay.totalMs(autoLatency, view.outputLatencyMs, offsets[session.appId] ?: 0)
-    val endMs = remember(lyrics) { lyrics?.lyrics?.let { LyricRows.endMs(LyricRows.build(it)) } ?: Long.MAX_VALUE }
-    val lyricLine by remember(lyrics, delayMs, endMs) {
+    // The shared rows: no line before the lyrics, in instrumental gaps and after their end.
+    val rows = remember(lyrics) { lyrics?.lyrics?.let { LyricRows.build(it) }.orEmpty() }
+    val endMs = remember(rows) { LyricRows.endMs(rows) }
+    val lyricLine by remember(rows, delayMs, endMs) {
         derivedStateOf {
             val p = LyricsDelay.displayPosition(position.value, delayMs)
-            if (p >= endMs) null else currentLyricText(lyrics, p)
+            LyricRows.lineAt(rows, endMs, p)?.line?.text?.ifBlank { null }
         }
     }
     val playing = view.playing

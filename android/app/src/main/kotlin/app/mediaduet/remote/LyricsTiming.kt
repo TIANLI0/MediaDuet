@@ -271,6 +271,20 @@ object LyricRows {
         is GapRow -> last.endMs
     }
 
+    /**
+     * The line row being sung at [positionMs]: null before the lyrics, in a gap and from [endMs]
+     * on (where only one line fits, e.g. the mini player and the lyrics notification).
+     */
+    fun lineAt(rows: List<LyricRow>, endMs: Long, positionMs: Long): LineRow? =
+        if (positionMs >= endMs) null else rows.getOrNull(activeIndex(rows, positionMs)) as? LineRow
+
+    /** The next position after [positionMs] at which [lineAt] / [activeIndex] can change, null if none. */
+    fun nextChange(rows: List<LyricRow>, endMs: Long, positionMs: Long): Long? {
+        if (rows.isEmpty() || positionMs >= endMs) return null
+        val next = rows.getOrNull(activeIndex(rows, positionMs) + 1)?.startMs
+        return if (next != null) min(next, endMs) else endMs.takeIf { it != Long.MAX_VALUE }
+    }
+
     /** Index of the row active at [positionMs] (the last one started), -1 before the first. */
     fun activeIndex(rows: List<LyricRow>, positionMs: Long): Int {
         var lo = 0

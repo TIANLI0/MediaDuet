@@ -73,7 +73,7 @@ namespace winrt::MediaDuetUI::implementation
         void UpdateSubLabel();
         std::string m_lyricsIdentity;
         std::vector<mdui::LyricLine> m_lines;
-        std::vector<bool> m_blank;   // per line: nothing to show (host rules), cached
+        md::lyrics::LyricRows m_rows;   // of m_lines (shared row model: gaps, end of lyrics)
         int m_activeLine{ -2 };
         std::unique_ptr<mdui::KaraokeLine> m_slots[2];
         int m_front{ 0 };

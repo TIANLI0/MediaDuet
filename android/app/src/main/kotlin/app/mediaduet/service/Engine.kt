@@ -41,6 +41,7 @@ import app.mediaduet.protocol.MediaSnapshot
 import app.mediaduet.protocol.PolicyStatus
 import app.mediaduet.protocol.SinkState
 import app.mediaduet.protocol.MediaQueue
+import app.mediaduet.lyrics.LyricsNotifier
 import app.mediaduet.lyrics.LyricsRepository
 import app.mediaduet.handoff.HandoffApp
 import app.mediaduet.handoff.HandoffErrors
@@ -112,6 +113,8 @@ class Engine private constructor(private val app: Context) : LinkHost {
     })
     val audio = AudioReceiver(scope, settings.audioReceiveEnabled) { peer, stream, reason -> link.sendAudioStop(peer, stream, reason) }
     val mirror = MirrorSessionController(app, scope, remote, settings.mirrorEnabled)
+    /** The current lyric line as a notification (Settings > Lyrics, default off). */
+    val lyricsNotifier by lazy { LyricsNotifier(app, scope, settings, target, remote, localStates, lyrics, artwork, localOutputLatencyMs) }
     val volume = VolumeController(app)
     /** Software updates from GitHub (Settings > About). */
     val updater = Updater(app, scope, settings)
@@ -264,6 +267,7 @@ class Engine private constructor(private val app: Context) : LinkHost {
         }, packages, androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED)
         startTargetResolver()
         startLyricsRequests()
+        lyricsNotifier.start()
         // Work mode: listen for / talk to PCs only when linked.
         scope.launch {
             var first = true
