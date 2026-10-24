@@ -3,7 +3,7 @@
 //     against the host's reference code (windows/core md::lyrics: buildKaraoke, fillAt, lineAt,
 //     LyricsClock), including an end-to-end host-overlay vs UI timing comparison,
 //   PlaybackClock.h (seek hold, optimistic play/pause, offset formatting),
-//   AmbientRender.h (dithered background: no banding, premultiplied output).
+//   AmbientRender.h (flowing artwork background: dithered, no banding).
 //
 // Build and run from a VS developer prompt at the repository root:
 //   cl /nologo /std:c++20 /EHsc /O2 /W4 /utf-8 /wd5285 /wd4100 /DNOMINMAX /I windows\ui /I windows\core\include ^
@@ -518,37 +518,36 @@ TEST_CASE("line opacity falls off and stays below the current line's unsung alph
 
 // ---- Ambient background ----------------------------------------------------------------------
 
-TEST_CASE("ambient render: premultiplied, dithered, no banding")
+TEST_CASE("ambient render: dithered upsampling, no banding")
 {
-    ambient::Params p;
-    p.shape = ambient::Shape::Compact;   // horizontal wash: every column has one exact value
-    p.colorCount = 1;
-    p.colors[0] = { 0.75f, 0.30f, 0.55f };
-    p.alpha = 0.44f;
-    int w = 1600, h = 96;
+    // A slow horizontal ramp (a few LSB over the whole width) upsampled 8x: plain rounding would
+    // give wide constant bands.
+    int sw = 200, sh = 2, w = 1600, h = 96;
+    std::vector<ambient::Rgb> scene(static_cast<size_t>(sw) * sh);
+    for (int y = 0; y < sh; ++y)
+        for (int x = 0; x < sw; ++x)
+        {
+            float v = 0.40f + 0.02f * x / (sw - 1);
+            scene[static_cast<size_t>(y) * sw + x] = { v, 0.5f * v, 0.25f };
+        }
     std::vector<uint8_t> px;
-    ambient::Render(p, w, h, px);
+    ambient::Upsample(scene, sw, sh, w, h, px, 0x1234567u);
     REQUIRE(px.size() == static_cast<size_t>(w) * h * 4);
     double maxMeanErr = 0, maxPixelErr = 0, plainMaxErr = 0;
     for (int x = 0; x < w; ++x)
     {
-        float exact[4];
-        ambient::Field(p, (x + 0.5f) / w, 0.5f, static_cast<float>(w) / h, exact);
-        double ea = exact[3] * 255.0, er = exact[0] * 255.0;
-        double sumA = 0;
+        float s = std::clamp((x + 0.5f) * sw / w - 0.5f, 0.0f, sw - 1.0f);
+        double exact = (0.40 + 0.02 * s / (sw - 1)) * 255.0;
+        double sum = 0;
         for (int y = 0; y < h; ++y)
         {
             uint8_t const* q = &px[(static_cast<size_t>(y) * w + x) * 4];
-            CHECK(q[0] <= q[3]);
-            CHECK(q[1] <= q[3]);
-            CHECK(q[2] <= q[3]);
-            sumA += q[3];
-            maxPixelErr = std::max(maxPixelErr, std::abs(q[3] - ea));
-            maxPixelErr = std::max(maxPixelErr, std::abs(q[2] - er));
+            CHECK(q[3] == 255);
+            sum += q[2];
+            maxPixelErr = std::max(maxPixelErr, std::abs(q[2] - exact));
         }
-        double mean = sumA / h;
-        maxMeanErr = std::max(maxMeanErr, std::abs(mean - ea));
-        plainMaxErr = std::max(plainMaxErr, std::abs(std::floor(ea + 0.5) - ea));
+        maxMeanErr = std::max(maxMeanErr, std::abs(sum / h - exact));
+        plainMaxErr = std::max(plainMaxErr, std::abs(std::floor(exact + 0.5) - exact));
     }
     // Every column's average tracks the float field (no steps), each pixel is within the dither.
     // Plain 8-bit rounding has a sawtooth error of up to 0.5 LSB that is constant along each band.
@@ -557,23 +556,65 @@ TEST_CASE("ambient render: premultiplied, dithered, no banding")
     CHECK(maxPixelErr <= 1.6);
 }
 
-TEST_CASE("ambient render: main shape, odd sizes, empty palette")
+TEST_CASE("ambient render: flowing artwork")
 {
-    ambient::Params p;
-    p.shape = ambient::Shape::Main;
-    p.colorCount = 3;
-    p.colors[0] = { 0.8f, 0.4f, 0.2f };
-    p.colors[1] = { 0.2f, 0.4f, 0.8f };
-    p.colors[2] = { 0.4f, 0.8f, 0.3f };
-    p.alpha = 0.5f;
+    int side = ambient::kArtSide;
+    auto solid = [&](uint8_t r, uint8_t g, uint8_t b) {
+        std::vector<uint8_t> bgra(static_cast<size_t>(side) * side * 4);
+        for (size_t i = 0; i < bgra.size(); i += 4) { bgra[i] = b; bgra[i + 1] = g; bgra[i + 2] = r; bgra[i + 3] = 255; }
+        return bgra;
+    };
+
+    // A single-colour artwork is a flat field: the colour under the scrim, wherever the copies are.
+    auto grey = solid(128, 128, 128);
+    auto art = ambient::PrepareArtwork(grey.data(), side);
+    CHECK(std::abs(art.ground.r - 128 / 255.0f) < 1e-4f);
+    auto sizes = ambient::SizesFor(400, 300);
+    CHECK(sizes.sceneW == 50);
+    CHECK(sizes.sceneH == 38);
+    CHECK(sizes.outW == 400);
+    CHECK(sizes.outH == 300);
     std::vector<uint8_t> px;
-    ambient::Render(p, 37, 5, px);
-    CHECK(px.size() == 37u * 5u * 4u);
-    CHECK(px[3] > 100);                     // strong at the top-left
-    CHECK(px[(4 * 37 + 36) * 4 + 3] < 140);   // weaker at the bottom-right
-    p.colorCount = 0;
-    ambient::Render(p, 16, 16, px);
-    for (size_t i = 0; i < px.size(); ++i) CHECK(px[i] == 0);
-    ambient::Render(p, 0, 10, px);
+    ambient::Render(art, ambient::kStartSeconds, true, sizes, px);
+    REQUIRE(px.size() == 400u * 300u * 4u);
+    double expected = 128 * 0.5;   // dark scrim: black, 50 %
+    for (size_t i = 0; i < px.size(); i += 4)
+    {
+        CHECK(std::abs(px[i + 2] - expected) <= 1.5);
+        CHECK(px[i + 3] == 255);
+    }
+    ambient::Render(art, ambient::kStartSeconds, false, sizes, px);
+    double expectedLight = 0xF5 * 0.55 + 128 * 0.45;
+    CHECK(std::abs(px[2] - expectedLight) <= 1.5);
+
+    // Saturation pushes colours away from grey.
+    auto tinted = solid(160, 120, 120);
+    auto sat = ambient::PrepareArtwork(tinted.data(), side);
+    CHECK(sat.rgba[0] > 160 / 255.0f);
+    CHECK(sat.rgba[1] < 120 / 255.0f);
+
+    // A two-colour artwork moves: frames at different times differ, the same time is identical.
+    std::vector<uint8_t> halves(static_cast<size_t>(side) * side * 4);
+    for (int y = 0; y < side; ++y)
+        for (int x = 0; x < side; ++x)
+        {
+            uint8_t* q = &halves[(static_cast<size_t>(y) * side + x) * 4];
+            q[0] = x < side / 2 ? 30 : 220; q[1] = 60; q[2] = x < side / 2 ? 220 : 30; q[3] = 255;
+        }
+    auto two = ambient::PrepareArtwork(halves.data(), side);
+    std::vector<uint8_t> a, b, c;
+    ambient::Render(two, 12.0f, true, sizes, a);
+    ambient::Render(two, 12.0f, true, sizes, b);
+    ambient::Render(two, 20.0f, true, sizes, c);
+    CHECK(a == b);
+    double diff = 0;
+    for (size_t i = 0; i < a.size(); i += 4) diff += std::abs(a[i] - c[i]) + std::abs(a[i + 2] - c[i + 2]);
+    CHECK(diff / (a.size() / 4) > 2.0);
+
+    // Large windows render at a reduced output size; empty sizes give nothing.
+    auto big = ambient::SizesFor(3840, 2160);
+    CHECK(static_cast<double>(big.outW) * big.outH <= ambient::kMaxOutputPixels);
+    CHECK(std::abs(static_cast<double>(big.outW) / big.outH - 3840.0 / 2160.0) < 0.02);
+    ambient::Render(two, 12.0f, true, ambient::Sizes{ 0, 0, 0, 0 }, px);
     CHECK(px.empty());
 }

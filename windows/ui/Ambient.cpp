@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "Ambient.h"
+#include "RenderTest.h"
 
 #include <winrt/Windows.Storage.Streams.h>
 
@@ -14,7 +15,6 @@ using namespace winrt::Microsoft::UI::Xaml;
 using namespace winrt::Microsoft::UI::Xaml::Controls;
 using namespace winrt::Microsoft::UI::Xaml::Media;
 using namespace winrt::Microsoft::UI::Xaml::Media::Imaging;
-using winrt::Windows::UI::Color;
 
 namespace mdui
 {
@@ -28,23 +28,27 @@ namespace mdui
 
     namespace
     {
-        constexpr int kFadeMs = 450;
+        constexpr int kFadeMs = 900;   // artwork crossfade (Android: tween(900))
+        // Frames follow the display refresh (CompositionTarget::Rendering), at most ~60 fps: a
+        // timer drifts against vsync (its 15.6 ms granularity turns 33 ms into 31 / 47 ms steps),
+        // which shows as judder in such a smooth, slow motion.
+        constexpr float kMinFrameSeconds = 0.014f;
 
-        // Renders on the thread pool (a 4K window takes a few tens of ms) and presents on the UI thread.
-        fire_and_forget RenderAsync(Microsoft::UI::Dispatching::DispatcherQueue queue, ambient::Params params, int width,
-            int height, std::vector<uint8_t> pixels, std::function<void(std::vector<uint8_t>&)> done)
+        // Renders on the thread pool (a few ms) and presents on the UI thread.
+        fire_and_forget RenderAsync(Microsoft::UI::Dispatching::DispatcherQueue queue, std::shared_ptr<ambient::Artwork const> art,
+            float seconds, bool dark, ambient::Sizes sizes, uint32_t seed, std::vector<uint8_t> pixels,
+            std::function<void(std::vector<uint8_t>&)> done)
         {
             co_await resume_background();
-            ambient::Render(params, width, height, pixels, 0x9E3779B9u ^ static_cast<uint32_t>(width * 7919 + height));
+            ambient::Render(*art, seconds, dark, sizes, pixels, seed);
             co_await wil::resume_foreground(queue);
             done(pixels);
         }
     }
 
-    void AmbientBackground::Attach(Grid const& host, ambient::Shape shape)
+    void AmbientBackground::Attach(Grid const& host)
     {
         m_host = host;
-        m_shape = shape;
         m_shared = std::make_shared<Shared>();
         for (int i = 0; i < 2; ++i)
         {
@@ -102,6 +106,7 @@ namespace mdui
         m_shared->alive = false;
         if (m_debounce) m_debounce.Stop();
         if (m_release) m_release.Stop();
+        SetFlowing(false);
         if (m_host)
         {
             m_host.SizeChanged(m_sizeToken);
@@ -116,6 +121,30 @@ namespace mdui
             m_bitmaps[i] = nullptr;
         }
         m_front = -1;
+    }
+
+    void AmbientBackground::SetFlowing(bool flowing)
+    {
+        // The render test captures still frames.
+        if (render::Active()) flowing = false;
+        if (!m_shared || m_flowing == flowing || (flowing && !m_shared->alive)) return;
+        m_flowing = flowing;
+        if (!flowing)
+        {
+            CompositionTarget::Rendering(m_renderingToken);
+            return;
+        }
+        m_lastFrame = std::chrono::steady_clock::now();
+        m_renderingToken = CompositionTarget::Rendering([this, shared = m_shared](auto&&, auto&&) {
+            if (!shared->alive || m_busy) return;   // the previous frame is still being drawn
+            auto now = std::chrono::steady_clock::now();
+            float step = std::chrono::duration<float>(now - m_lastFrame).count();
+            if (step < kMinFrameSeconds) return;
+            // Capped step: coming back from a stall never jumps the scene.
+            m_seconds += std::min(step, 0.1f);
+            m_lastFrame = now;
+            Render();
+        });
     }
 
     void AmbientBackground::SetAnimations(bool enabled)
@@ -143,16 +172,12 @@ namespace mdui
         }
     }
 
-    void AmbientBackground::SetPalette(std::vector<Color> const& palette)
+    void AmbientBackground::SetArtwork(std::shared_ptr<ambient::Artwork const> art)
     {
         if (!m_shared) return;
-        auto same = palette.size() == m_palette.size() &&
-            std::equal(palette.begin(), palette.end(), m_palette.begin(), [](Color const& a, Color const& b) {
-                return a.R == b.R && a.G == b.G && a.B == b.B;
-            });
-        if (same && (m_front >= 0 || palette.empty())) return;
-        m_palette = palette;
-        m_paletteChanged = true;
+        if (art == m_art && (m_front >= 0 || !art)) return;
+        m_art = std::move(art);
+        m_artChanged = true;
         Schedule(false);
     }
 
@@ -169,6 +194,7 @@ namespace mdui
 
     void AmbientBackground::FadeOut()
     {
+        ++m_generation;   // a render still in flight is stale now
         if (m_front >= 0) m_images[m_front].Opacity(0);
         m_front = -1;
         m_release.Stop();
@@ -178,11 +204,15 @@ namespace mdui
     void AmbientBackground::Render()
     {
         if (!m_shared || !m_host) return;
-        ++m_generation;   // any render still in flight is stale now
-        if (m_palette.empty())
+        if (!m_art)
         {
-            m_paletteChanged = false;
+            m_artChanged = false;
             FadeOut();
+            return;
+        }
+        if (m_busy)
+        {
+            m_pending = true;
             return;
         }
         if (auto root = m_host.XamlRoot()) m_scale = root.RasterizationScale();
@@ -190,45 +220,55 @@ namespace mdui
         int height = static_cast<int>(std::lround(m_host.ActualHeight() * m_scale));
         if (width <= 0 || height <= 0) return;   // SizeChanged renders once laid out
         bool dark = m_host.ActualTheme() == ElementTheme::Dark;
-        bool crossfade = m_paletteChanged;
-        if (!crossfade && m_front >= 0 && width == m_renderedWidth && height == m_renderedHeight && dark == m_renderedDark) return;
+        bool crossfade = m_artChanged;
+        float seconds = m_seconds;
+        if (!crossfade && m_front >= 0 && width == m_renderedWidth && height == m_renderedHeight && dark == m_renderedDark &&
+            seconds == m_renderedSeconds)
+            return;
+        m_artChanged = false;
 
-        ambient::Params params;
-        params.shape = m_shape;
-        params.colorCount = static_cast<int>(std::min<size_t>(m_palette.size(), 3));
-        for (int i = 0; i < params.colorCount; ++i)
-            params.colors[i] = { m_palette[i].R / 255.0f, m_palette[i].G / 255.0f, m_palette[i].B / 255.0f };
-        // Same strength as the former gradient (0x80 / 0x5C main, 0x70 / 0x50 compact).
-        if (m_shape == ambient::Shape::Main) params.alpha = dark ? 0.50f : 0.36f;
-        else params.alpha = dark ? 0.44f : 0.31f;
-
-        uint64_t generation = m_generation;
+        auto sizes = ambient::SizesFor(width, height);
+        uint64_t generation = ++m_generation;
         auto shared = m_shared;
         std::vector<uint8_t> buffer;
         {
             std::lock_guard lock(shared->mutex);
             buffer = std::move(shared->spare);
         }
-        auto done = [this, shared, generation, width, height, crossfade, dark](std::vector<uint8_t>& pixels) {
-            if (shared->alive && generation == m_generation)
+        auto done = [this, shared, generation, width, height, sizes, crossfade, dark, seconds](std::vector<uint8_t>& pixels) {
+            if (shared->alive)
             {
-                Present(pixels, width, height, crossfade);
-                m_paletteChanged = false;
-                m_renderedWidth = width;
-                m_renderedHeight = height;
-                m_renderedDark = dark;
+                m_busy = false;
+                if (generation == m_generation)
+                {
+                    Present(pixels, sizes.outW, sizes.outH, crossfade);
+                    m_renderedWidth = width;
+                    m_renderedHeight = height;
+                    m_renderedDark = dark;
+                    m_renderedSeconds = seconds;
+                }
             }
-            std::lock_guard lock(shared->mutex);
-            shared->spare = std::move(pixels);   // reuse the allocation next time
+            {
+                std::lock_guard lock(shared->mutex);
+                shared->spare = std::move(pixels);   // reuse the allocation next time
+            }
+            if (shared->alive && m_pending)
+            {
+                m_pending = false;
+                Render();
+            }
         };
-        RenderAsync(m_host.DispatcherQueue(), params, width, height, std::move(buffer), std::move(done));
+        m_busy = true;
+        m_pending = false;
+        RenderAsync(m_host.DispatcherQueue(), m_art, seconds, dark, sizes, 0x9E3779B9u ^ static_cast<uint32_t>(width * 7919 + height),
+            std::move(buffer), std::move(done));
     }
 
     void AmbientBackground::Present(std::vector<uint8_t> const& pixels, int width, int height, bool crossfade)
     {
         if (pixels.size() != static_cast<size_t>(width) * static_cast<size_t>(height) * 4) return;
-        // Crossfade into the other slot on a palette change (or when nothing is shown yet); a resize
-        // or theme change replaces the current picture in place.
+        // Crossfade into the other slot on an artwork change (or when nothing is shown yet); frames,
+        // resizes and theme changes replace the current picture in place.
         int target = (crossfade || m_front < 0) ? (m_front < 0 ? 0 : 1 - m_front) : m_front;
         auto& bitmap = m_bitmaps[target];
         bool created = false;

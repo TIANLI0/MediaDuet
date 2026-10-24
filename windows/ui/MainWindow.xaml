@@ -11,8 +11,8 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!-- Artwork tint over the Mica backdrop: a dithered bitmap rendered in code (Ambient.h), no
-             8-bit gradient brush (those show colour bands across a large window). -->
+        <!-- Flowing artwork background (as on Android) over the Mica backdrop: dithered bitmaps
+             rendered in code (Ambient.h), so no 8-bit colour bands across a large window. -->
         <Grid x:Name="TintLayer" Grid.RowSpan="2" IsHitTestVisible="False" />
 
         <!-- Custom title bar: back button (settings) + drag region -->

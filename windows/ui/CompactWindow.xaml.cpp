@@ -63,7 +63,7 @@ namespace winrt::MediaDuetUI::implementation
             UpdateTimer();
         };
         PlaceInitially();
-        m_ambient.Attach(TintLayer(), ambient::Shape::Compact);
+        m_ambient.Attach(TintLayer());
 
         m_timer = DispatcherQueue().CreateTimer();
         m_timer.IsRepeating(true);
@@ -359,6 +359,7 @@ namespace winrt::MediaDuetUI::implementation
         CloseButton().OpacityTransition(fade());
         ArtImageBorder().OpacityTransition(fade());
         m_ambient.SetAnimations(animations);
+        UpdateTimer();
         if (animations)
         {
             Vector3Transition slide;
@@ -470,7 +471,7 @@ namespace winrt::MediaDuetUI::implementation
             StartHostButton().Visibility(notRunning && c.HostExecutableExists() ? Visibility::Visible : Visibility::Collapsed);
             m_art.Request(DispatcherQueue(), {}, 0, nullptr, nullptr);
             ArtBrush().ImageSource(nullptr);
-            m_ambient.SetPalette({});
+            m_ambient.SetArtwork(nullptr);
             UpdateLyrics();
             UpdateControlsVisibility();
             UpdateTimer();
@@ -533,8 +534,8 @@ namespace winrt::MediaDuetUI::implementation
                     self->ArtImageBorder().Opacity(image ? 1.0 : 0.0);
                 }
             },
-            [weak](std::vector<Color> const& palette) {
-                if (auto self = weak.get(); self && !self->m_closed) self->m_ambient.SetPalette(palette);
+            [weak](std::shared_ptr<ambient::Artwork const> const& art) {
+                if (auto self = weak.get(); self && !self->m_closed) self->m_ambient.SetArtwork(art);
             });
         UpdateLyrics();
         Tick(TickNow());
@@ -795,9 +796,11 @@ namespace winrt::MediaDuetUI::implementation
 
     void CompactWindow::UpdateTimer()
     {
+        auto& c = Controller::Get();
+        m_ambient.SetFlowing(m_host.IsShowing() && m_session && m_session->IsPlaying() && c.AnimationsEnabled() &&
+            SystemAnimationsEnabled() && !c.LowPower());
         if (!m_timer) return;
         UpdateFrameLoop();
-        auto& c = Controller::Get();
         bool want = m_host.IsShowing() && m_session && m_session->IsPlaying() &&
             (m_session->durationMs > 0 || m_lyricsShown) && c.Link() == HostLink::Connected;
         if (!want)

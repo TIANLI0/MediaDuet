@@ -6,7 +6,7 @@
     xmlns:local="using:MediaDuetUI">
 
     <Grid x:Name="Root" Background="Transparent">
-        <!-- Artwork tint: dithered bitmap rendered in code (Ambient.h), no banding 8-bit gradient. -->
+        <!-- Flowing artwork background (as on Android): dithered bitmaps rendered in code (Ambient.h). -->
         <Grid x:Name="TintLayer" IsHitTestVisible="False" />
 
         <!-- Idle view: artwork + song info (+ current lyric line) -->

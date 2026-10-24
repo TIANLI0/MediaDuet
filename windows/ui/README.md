@@ -68,7 +68,7 @@ MediaDuetUI.exe [--show main|compact|settings|pair]... [--pipe <name>] [--langua
 | `LyricTiming.h` | Glue to the host's own lyrics code (`windows/core` `md::lyrics`: `LyricsClock`, `buildKaraoke`, `fillAt`, `lineAt`, compiled into the UI): clock reports, lyric position, display rows, clusters |
 | `PlaybackClock.h` | Plain C++: optimistic seek hold, optimistic play/pause, offset formatting |
 | `RenderTest.*` | Invisible off-screen render test (`--render-test`, see below) |
-| `Ambient.*`, `AmbientRender.h` | Banding-free artwork tint: float field + TPDF dither rendered off the UI thread into a 1:1 `WriteableBitmap`, crossfaded |
+| `Ambient.*`, `AmbientRender.h` | Flowing artwork background (the Android `FlowingArtwork`): float scene + blur + TPDF dither rendered off the UI thread into a `WriteableBitmap`, crossfaded |
 | `MainWindow.*` | Custom title bar with back button; player page (media card, progress/seek, source switcher, connection pill, arbitration line, volume flyout + inline volume, Apple-Music-style synced lyrics) and the settings page as a sub-page |
 | `CompactWindow.*` | 340×96 mini player: artwork, song info, current lyric line; controls appear on hover / keyboard focus; edge snapping, position memory, per-monitor DPI |
 | `SettingsPage.*` | Settings sub-page of the main window (left-rail NavigationView): general, devices & pairing (SAS dialog), connection, playback arbitration (headset assist, audio-output gate), lyrics (provider order), taskbar lyrics, Windows media integration, compatibility, audio, diagnostics, about |
@@ -143,11 +143,15 @@ MediaDuetUI.exe [--show main|compact|settings|pair]... [--pipe <name>] [--langua
   once, the card animates from its old place). Off with `ui.animations=false`, low power or the
   Windows "Animation effects" setting (instant, no layout flash). The compact window cross-fades
   between the lyric row and the source row.
-* **Background**: the artwork tint (diagonal wash plus two soft colour fields from the artwork
-  palette in the main window, horizontal wash in the compact window) is rendered in float with
-  ±1 LSB triangular dither into a `WriteableBitmap` at the element's physical pixel size and shown
-  1:1, so it has no 8-bit colour bands. It is re-rendered on a thread-pool thread on palette (with a
-  450 ms crossfade), theme, DPI and size changes (debounced 120 ms); nothing runs otherwise.
+* **Background**: the same flowing artwork as on Android — four copies of a 48 px artwork
+  thumbnail turning slowly around drifting centres, saturated (1.45), Gaussian-blurred (radius 0.16
+  × the shorter side of a 1/8-size canvas) and under the Android scrim (dark: black 50 %, light:
+  `#F5F5F7` 55 %); Mica shows while there is no artwork. Each frame is rendered on a thread-pool
+  thread in float and upsampled with ±1 LSB triangular dither into a `WriteableBitmap` (at most
+  ~0.4 MP, stretched), so it has no 8-bit colour bands. It flows with the display refresh (`CompositionTarget::Rendering`, at most ~60 fps) while music plays and
+  the window is visible (player page only; off with `ui.animations=false`, low power or the Windows
+  "Animation effects" setting) and otherwise renders only on artwork (900 ms crossfade), theme, DPI
+  and size changes (debounced 120 ms).
 * **Transport**: play/pause is optimistic (rolled back after 2.5 s without confirmation or on a
   failed `result`); seeks keep the target until the host reports it (no jump back from a state that
   was already in flight); keyboard seeks are coalesced (250 ms). Shortcuts in the player: Space

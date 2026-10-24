@@ -95,7 +95,7 @@ namespace winrt::MediaDuetUI::implementation
             if (m_settings) m_settings->SetActive(m_settingsShown && m_host.IsShowing());
         };
         PlaceInitially();
-        m_ambient.Attach(TintLayer(), ambient::Shape::Main);
+        m_ambient.Attach(TintLayer());
 
         m_timer = DispatcherQueue().CreateTimer();
         m_timer.IsRepeating(true);
@@ -496,6 +496,7 @@ namespace winrt::MediaDuetUI::implementation
         };
         ArtImageBorder().OpacityTransition(transition());
         m_ambient.SetAnimations(animations);
+        UpdateTimer();
         // Line transitions depend on the animation setting: rebuild the lyric visuals.
         if (!m_lyricsIdentity.empty())
         {
@@ -937,7 +938,7 @@ namespace winrt::MediaDuetUI::implementation
             EmptyStandaloneButton().Visibility(noPeer ? Visibility::Visible : Visibility::Collapsed);
             m_art.Request(DispatcherQueue(), {}, 0, nullptr, nullptr);
             ArtBrush().ImageSource(nullptr);
-            m_ambient.SetPalette({});
+            m_ambient.SetArtwork(nullptr);
             return;
         }
 
@@ -1043,8 +1044,8 @@ namespace winrt::MediaDuetUI::implementation
                     self->ArtImageBorder().Opacity(image ? 1.0 : 0.0);
                 }
             },
-            [weak](std::vector<Color> const& palette) {
-                if (auto self = weak.get(); self && !self->m_closed) self->m_ambient.SetPalette(palette);
+            [weak](std::shared_ptr<ambient::Artwork const> const& art) {
+                if (auto self = weak.get(); self && !self->m_closed) self->m_ambient.SetArtwork(art);
             });
     }
 
@@ -1277,8 +1278,11 @@ namespace winrt::MediaDuetUI::implementation
 
     void MainWindow::UpdateTimer()
     {
-        if (!m_timer) return;
         auto& c = Controller::Get();
+        // The background flows while music plays on the player page (like Android's Now screen).
+        m_ambient.SetFlowing(m_host.IsShowing() && !m_settingsShown && m_session && m_session->IsPlaying() &&
+            c.AnimationsEnabled() && SystemAnimationsEnabled() && !c.LowPower());
+        if (!m_timer) return;
         bool want = m_host.IsShowing() && !m_settingsShown && m_session && m_session->IsPlaying() && c.Link() == HostLink::Connected;
         UpdateFrameLoop();
         if (!want)

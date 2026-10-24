@@ -1,18 +1,19 @@
-// Artwork-tinted window background without colour banding.
+// Window background: the current artwork as a slowly flowing, heavily blurred colour field under a
+// flat scrim, like the Android app (AmbientRender.h draws it); the window backdrop (Mica) shows
+// while there is no artwork.
 //
-// Replaces the former low-alpha LinearGradientBrush (8-bit steps were visible across a large
-// window): the tint and soft colour fields are rendered by AmbientRender.h in float with
-// triangular-PDF dither into a WriteableBitmap at the host element's physical pixel size and shown
-// 1:1 by an Image (Stretch=Fill only absorbs sub-pixel rounding). Two Image slots crossfade when the
-// palette changes. Re-rendered (off the UI thread) on palette, theme, size (debounced 120 ms) and
-// DPI changes; nothing runs while nothing changes.
+// Frames are rendered off the UI thread into a WriteableBitmap (dithered, so no colour banding) and
+// shown by an Image stretched over the host element. The field flows with the display refresh (at
+// most ~60 fps) while SetFlowing is on (music playing, window visible, animations enabled) and holds
+// still otherwise, when only artwork, theme, size (debounced 120 ms) and DPI changes render a frame.
+// Two Image slots crossfade when the artwork changes.
 #pragma once
 
+#include <chrono>
 #include <memory>
 #include <vector>
 
 #include <winrt/Microsoft.UI.Xaml.Media.Imaging.h>
-#include <winrt/Windows.UI.h>
 
 #include "AmbientRender.h"
 
@@ -21,10 +22,11 @@ namespace mdui
     class AmbientBackground
     {
     public:
-        void Attach(winrt::Microsoft::UI::Xaml::Controls::Grid const& host, ambient::Shape shape);
+        void Attach(winrt::Microsoft::UI::Xaml::Controls::Grid const& host);
         void Detach();
-        // Dominant artwork colours (most prominent first); empty fades the tint out.
-        void SetPalette(std::vector<winrt::Windows::UI::Color> const& palette);
+        // Prepared artwork (ArtworkSlot); null fades back to the window backdrop.
+        void SetArtwork(std::shared_ptr<ambient::Artwork const> art);
+        void SetFlowing(bool flowing);
         void SetAnimations(bool enabled);
 
     private:
@@ -39,18 +41,24 @@ namespace mdui
         winrt::Microsoft::UI::Xaml::Controls::Image m_images[2]{ nullptr, nullptr };
         winrt::Microsoft::UI::Xaml::Media::Imaging::WriteableBitmap m_bitmaps[2]{ nullptr, nullptr };
         int m_front{ -1 };
-        ambient::Shape m_shape{ ambient::Shape::Main };
-        std::vector<winrt::Windows::UI::Color> m_palette;
-        bool m_paletteChanged{ false };
+        std::shared_ptr<ambient::Artwork const> m_art;
+        bool m_artChanged{ false };
         bool m_animations{ true };
+        bool m_flowing{ false };
+        float m_seconds{ ambient::kStartSeconds };
+        std::chrono::steady_clock::time_point m_lastFrame{};
+        bool m_busy{ false };      // a render is in flight (never more than one)
+        bool m_pending{ false };   // render again when it lands
         double m_scale{ 1.0 };
         bool m_renderedDark{ false };
         int m_renderedWidth{ 0 };
         int m_renderedHeight{ 0 };
+        float m_renderedSeconds{ -1 };
         uint64_t m_generation{ 0 };
         std::shared_ptr<Shared> m_shared;
         winrt::Microsoft::UI::Dispatching::DispatcherQueueTimer m_debounce{ nullptr };
         winrt::Microsoft::UI::Dispatching::DispatcherQueueTimer m_release{ nullptr };
+        winrt::event_token m_renderingToken{};
         winrt::event_token m_sizeToken{};
         winrt::event_token m_themeToken{};
         winrt::event_token m_loadedToken{};
