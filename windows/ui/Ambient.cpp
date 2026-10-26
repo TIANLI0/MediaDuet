@@ -31,8 +31,9 @@ namespace mdui
         constexpr int kFadeMs = 900;   // artwork crossfade (Android: tween(900))
         // Frames follow the display refresh (CompositionTarget::Rendering), at most ~60 fps: a
         // timer drifts against vsync (its 15.6 ms granularity turns 33 ms into 31 / 47 ms steps),
-        // which shows as judder in such a smooth, slow motion.
-        constexpr float kMinFrameSeconds = 0.014f;
+        // which shows as judder in such a smooth, slow motion. Every frame at 60 / 75 Hz, every
+        // second one at 120 / 144 Hz (an even cadence; 14 ms would make 144 Hz every third).
+        constexpr float kMinFrameSeconds = 0.0125f;
 
         // Renders on the thread pool (a few ms) and presents on the UI thread.
         fire_and_forget RenderAsync(Microsoft::UI::Dispatching::DispatcherQueue queue, std::shared_ptr<ambient::Artwork const> art,
@@ -134,11 +135,18 @@ namespace mdui
             CompositionTarget::Rendering(m_renderingToken);
             return;
         }
-        m_lastFrame = std::chrono::steady_clock::now();
-        m_renderingToken = CompositionTarget::Rendering([this, shared = m_shared](auto&&, auto&&) {
+        m_lastFrame.reset();
+        m_renderingToken = CompositionTarget::Rendering([this, shared = m_shared](auto&&, winrt::Windows::Foundation::IInspectable const& args) {
             if (!shared->alive || m_busy) return;   // the previous frame is still being drawn
-            auto now = std::chrono::steady_clock::now();
-            float step = std::chrono::duration<float>(now - m_lastFrame).count();
+            // The frame's own (vsync-aligned) time, not the time this handler happens to run: the
+            // UI thread's dispatch jitter would otherwise show as uneven steps.
+            auto now = args.as<RenderingEventArgs>().RenderingTime();
+            if (!m_lastFrame)
+            {
+                m_lastFrame = now;
+                return;
+            }
+            float step = std::chrono::duration<float>(now - *m_lastFrame).count();
             if (step < kMinFrameSeconds) return;
             // Capped step: coming back from a stall never jumps the scene.
             m_seconds += std::min(step, 0.1f);

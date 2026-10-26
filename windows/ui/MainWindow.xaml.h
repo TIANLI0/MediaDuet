@@ -94,6 +94,8 @@ namespace winrt::MediaDuetUI::implementation
         void SeekTo(int64_t positionMs);
         void SeekBy(int64_t deltaMs);
         void AdjustLyricsOffset(int64_t deltaMs);
+        void AdjustLyricsScale(int steps);   // 0 = default size
+        void SetupLyricsMenu();
         bool OnKey(winrt::Windows::System::VirtualKey key, Microsoft::UI::Xaml::DependencyObject const& source);
 
         mdui::WindowHost m_host;

@@ -93,6 +93,41 @@ TEST_CASE("pairing refused when the phone is not in pairing mode") {
     CHECK(h.closedCode == "pairing_disabled");
 }
 
+TEST_CASE("QR pairing needs no SAS and stores the same key on both sides") {
+    Harness h;
+    h.srv.qrId = clientInfo().id;
+    h.srv.qrToken = crypto::randomBytes(16);
+    auto c = h.make();
+    c->beginPairing(clientInfo(), h.srv.qrToken);
+    h.s.runPending();
+    CHECK(h.sas.empty());
+    REQUIRE(h.pairedKey);
+    CHECK(h.srv.keys[clientInfo().id] == *h.pairedKey);
+}
+
+TEST_CASE("QR pairing with another secret fails with mac_mismatch") {
+    Harness h;
+    h.srv.qrId = clientInfo().id;
+    h.srv.qrToken = crypto::randomBytes(16);
+    auto c = h.make();
+    c->beginPairing(clientInfo(), crypto::randomBytes(16));
+    h.s.runPending();
+    CHECK_FALSE(h.pairedKey);
+    CHECK(h.srv.keys.empty());
+    CHECK(h.closedCode == "mac_mismatch");
+}
+
+TEST_CASE("QR pairing is refused by a phone that scanned another PC's code") {
+    Harness h;
+    h.srv.qrId = std::string(32, 'e');
+    h.srv.qrToken = crypto::randomBytes(16);
+    auto c = h.make();
+    c->beginPairing(clientInfo(), h.srv.qrToken);
+    h.s.runPending();
+    CHECK_FALSE(h.pairedKey);
+    CHECK(h.closedCode == "pairing_disabled");
+}
+
 TEST_CASE("session handshake establishes an encrypted session") {
     Harness h;
     Bytes key = crypto::randomBytes(32);

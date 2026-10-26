@@ -20,6 +20,7 @@ bgvolume on|off (phone volume background restriction),
     --switch-lang-after 5 zh-CN   changes the language after 5 s (hello + state), to test runtime switching
 """
 import argparse
+import base64
 import ctypes
 import ctypes.wintypes as wt
 import hashlib
@@ -712,6 +713,15 @@ class FakeHost:
                     self.pairing = dict(self.pairing, state="failed", error="rejected")
             elif t == "pair.cancel":
                 self.pairing = {"state": "idle", "sas": None, "peerName": None, "error": None}
+            elif t == "pair.qr":
+                # QR pairing (spec §3.5): a code the "phone" never scans.
+                self.pairing = dict(self.pairing)
+                if msg.get("enable"):
+                    token = base64.urlsafe_b64encode(os.urandom(16)).rstrip(b"=").decode()
+                    self.pairing["qr"] = {"status": "waiting", "expiresInMs": 300000, "peerName": None,
+                                          "payload": f"mediaduet://pair?v=1&id={'0' * 32}&t={token}&n=Test%20PC&p=windows"}
+                else:
+                    self.pairing.pop("qr", None)
             elif t == "device.forget":
                 self.devices = [d for d in self.devices if d["id"] != msg.get("id")]
                 if not self.devices:

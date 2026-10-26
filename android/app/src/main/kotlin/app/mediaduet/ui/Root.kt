@@ -1,6 +1,5 @@
 package app.mediaduet.ui
 
-import android.graphics.Bitmap
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -8,6 +7,7 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.updateTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -62,6 +62,8 @@ import app.mediaduet.service.PermissionSnapshot
 import app.mediaduet.ui.components.AppIcons
 import app.mediaduet.ui.components.FlowingArtwork
 import app.mediaduet.ui.screens.AboutPage
+import app.mediaduet.ui.screens.ArtFrame
+import app.mediaduet.ui.screens.artFrame
 import app.mediaduet.ui.screens.BrandMark
 import app.mediaduet.ui.screens.ArbitrationPage
 import app.mediaduet.ui.screens.AudioPage
@@ -82,6 +84,7 @@ import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import app.mediaduet.service.WorkMode
 import app.mediaduet.ui.screens.ModeWelcome
+import app.mediaduet.ui.screens.QrScannerOverlay
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -99,6 +102,8 @@ class UiContext(
     val setNav: (NavState) -> Unit,
     val toast: (String) -> Unit,
     val confirm: (ConfirmRequest) -> Unit,
+    /** Opens the QR scanner that pairs with a PC (§3.5). */
+    val openScanner: () -> Unit = {},
 ) {
     fun openSettings(route: SettingsRoute?) = setNav(nav.open(route))
     fun openPlayer() = setNav(nav.showPlayer())
@@ -126,6 +131,7 @@ fun MediaDuetRoot(engine: Engine, requestedPage: MutableState<String?>) {
     var nav by navState
     var toast by remember { mutableStateOf<Toast?>(null) }
     var confirm by remember { mutableStateOf<ConfirmRequest?>(null) }
+    var scanner by rememberSaveable { mutableStateOf(false) }
     var miniHeight by remember { mutableStateOf(0.dp) }
 
     LaunchedEffect(requestedPage.value) {
@@ -156,7 +162,7 @@ fun MediaDuetRoot(engine: Engine, requestedPage: MutableState<String?>) {
 
     // The background follows the player's control target (phone or PC artwork).
     val playerView = rememberPlayerView(engine)
-    val background = playerView?.art
+    val background = playerView?.artFrame ?: ArtFrame("", null)
 
     val glass = LocalGlass.current
     val pageBackdrop = rememberLayerBackdrop()
@@ -171,6 +177,7 @@ fun MediaDuetRoot(engine: Engine, requestedPage: MutableState<String?>) {
         setNav = { nav = it },
         toast = { text -> if (toast?.text != text) toast = Toast(System.nanoTime(), text) },
         confirm = { confirm = it },
+        openScanner = { scanner = true },
     )
 
     // One back handler for the whole back stack (see NavState.back). Settings pages follow the
@@ -309,6 +316,7 @@ fun MediaDuetRoot(engine: Engine, requestedPage: MutableState<String?>) {
             ToastHost(toast, bottomInset, overlayBackdrop, reduced) { toast = null }
             PairingOverlay(engine, overlayBackdrop) { nav = nav.open(SettingsRoute.CONNECTION) }
             ModeWelcome(ui, ui.backdrop, reduced)
+            QrScannerOverlay(ui, scanner, reduced) { scanner = false }
             ConfirmHost(confirm, overlayBackdrop, reduced) { confirm = null }
         }
     }
@@ -342,12 +350,15 @@ private val SETTINGS_LIST_WIDTH = 420.dp
 
 /**
  * The backdrop layer: the current artwork as a slowly flowing, heavily blurred colour field
- * ([FlowingArtwork]) under a flat scrim, or a solid neutral colour. No gradients.
+ * ([FlowingArtwork]) under a flat scrim, or a solid neutral colour. No gradients. A new cover of
+ * the same song replaces the old one in place (no cross-fade, the flow keeps its motion).
  */
+@OptIn(androidx.compose.animation.ExperimentalAnimationApi::class)
 @Composable
-private fun AmbientBackground(artwork: Bitmap?, flowing: Boolean, modifier: Modifier) {
+private fun AmbientBackground(artwork: ArtFrame, flowing: Boolean, modifier: Modifier) {
     val glass = LocalGlass.current
-    Crossfade(targetState = artwork, animationSpec = tween(900), modifier = modifier, label = "bg") { art ->
+    updateTransition(artwork, label = "bg").Crossfade(modifier, animationSpec = tween(900), contentKey = { it.contentKey }) { frame ->
+        val art = frame.art
         if (art == null) {
             Box(Modifier.fillMaxSize().background(glass.background))
         } else {

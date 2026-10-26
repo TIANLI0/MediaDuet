@@ -76,6 +76,29 @@ fire_and_forget trimCacheAsync(fs::path dir) {
     trimCache(dir);
 }
 
+// A cached copy remembers its provider in a first line "[md-src:netease]": an LRC tag, which the
+// LRC, yrc and plain-text parsers all skip. Removed again when the file is read.
+constexpr std::string_view kSourceTag = "[md-src:";
+
+bool namesProvider(const std::string& source) {
+    if (source.empty() || source.size() > 32 || source == "cache" || source == "remote") return false;
+    return std::all_of(source.begin(), source.end(), [](unsigned char c) { return std::isalnum(c) || c == '-' || c == '_'; });
+}
+
+std::string tagSource(const std::string& source, const std::string& text) {
+    return namesProvider(source) ? std::string(kSourceTag) + source + "]\n" + text : text;
+}
+
+// Strips the tag from `text`; returns the provider it names ("" without one).
+std::string untagSource(std::string& text) {
+    if (text.rfind(kSourceTag, 0) != 0) return {};
+    size_t close = text.find(']'), eol = text.find('\n');
+    if (close == std::string::npos || eol == std::string::npos || close > eol) return {};
+    std::string source = text.substr(kSourceTag.size(), close - kSourceTag.size());
+    text.erase(0, eol + 1);
+    return namesProvider(source) ? source : std::string();
+}
+
 void touch(const fs::path& p) {
     std::error_code ec;
     if (fs::is_regular_file(p, ec)) fs::last_write_time(p, fs::file_time_type::clock::now(), ec);
@@ -291,7 +314,7 @@ void LyricsService::cacheCopy(const Result& r) {
     auto stem = cacheDir_ / text::toWide(r.trackId);
     std::error_code ec;
     auto lrc = fs::path(stem).replace_extension(L".lrc");
-    if (!fs::exists(lrc, ec) && !fs::exists(fs::path(stem).replace_extension(L".yrc"), ec)) writeText(lrc, r.lrc);
+    if (!fs::exists(lrc, ec) && !fs::exists(fs::path(stem).replace_extension(L".yrc"), ec)) writeText(lrc, tagSource(r.source, r.lrc));
     auto tr = fs::path(stem).replace_extension(L".tlrc");
     if (!r.translation.empty() && !fs::exists(tr, ec)) writeText(tr, r.translation);
     trimCacheAsync(cacheDir_);
@@ -303,7 +326,7 @@ void LyricsService::offerRemote(const std::string& trackId, const std::string& l
     auto parsed = lyrics::parseLrc(lrc);
     if (parsed.empty()) return;
     if (!translation.empty()) lyrics::mergeTranslation(parsed, lyrics::parseLrc(translation));
-    writeText(cacheDir_ / (text::toWide(trackId) + L".lrc"), lrc);
+    writeText(cacheDir_ / (text::toWide(trackId) + L".lrc"), tagSource(source, lrc));
     if (!translation.empty()) writeText(cacheDir_ / (text::toWide(trackId) + L".tlrc"), translation);
     std::error_code ec;
     fs::remove(cacheDir_ / (text::toWide(trackId) + L".none"), ec); // our own "not found" is outdated
@@ -345,25 +368,32 @@ void LyricsService::request(const media::MediaSessionInfo& t, int64_t neteaseId)
             if (auto tr = readText(hitTr); tr && tr->rfind(lyrics::kTranslationMark, 0) != 0) staleTr = true;
         if (staleTr) log::info("lyrics", "refreshing the cached translation of {}", t.trackId);
         bool wroteYrc = false, wroteTr = false;
-        if (auto y = staleTr ? std::nullopt : readText(hitYrc)) {
-            auto parsed = lyrics::parseYrc(*y);
+        // Word-timed yrc only ever comes from NetEase; an LRC cached before 1.9.0 names no provider.
+        auto cachedYrc = [&](std::string y) {
+            std::string source = untagSource(y);
+            auto parsed = lyrics::parseYrc(y);
             std::string asLrc = lyrics::toLrc(parsed);
-            r = {t.trackId, "found", "cache", std::move(parsed), std::move(asLrc)};
+            return Result{t.trackId, "found", source.empty() ? "netease" : source, std::move(parsed), std::move(asLrc), {}, true};
+        };
+        if (auto y = staleTr ? std::nullopt : readText(hitYrc)) {
+            r = cachedYrc(std::move(*y));
             touch(hitYrc); // LRU
             touch(hitTr);
         } else if (auto s = staleTr ? std::nullopt : readText(hitLrc)) {
-            r = {t.trackId, "found", "cache", lyrics::parseLrc(*s), *s};
+            std::string source = untagSource(*s);
+            r = {t.trackId, "found", source.empty() ? "cache" : source, lyrics::parseLrc(*s), *s, {}, true};
             touch(hitLrc);
             touch(hitTr);
         } else if (auto l = searchLocal(local, t)) {
             r = {t.trackId, "found", "local", lyrics::parseLrc(*l), *l};
-            writeText(hitLrc, *l);
+            writeText(hitLrc, tagSource("local", *l));
         } else if (!online || providers.empty()) {
             r.status = "disabled";
         } else if (!negative) {
             bool definitive = true; // every provider answered (even if "no lyrics")
             for (auto& p : providers) {
                 std::optional<OnlineResult> res;
+                auto started = std::chrono::steady_clock::now();
                 try {
                     if (p == "netease") res = queryNetease(t, neteaseId);
                     else if (p == "qqmusic") res = queryQq(t);
@@ -373,6 +403,9 @@ void LyricsService::request(const media::MediaSessionInfo& t, int64_t neteaseId)
                     log::info("lyrics", "{} lookup failed: {}", p, text::toUtf8(e.message()));
                 } catch (...) {
                 }
+                log::debug("lyrics", "{} for {}: {} after {} ms", p, t.trackId,
+                           !res ? "no answer" : res->lrc.empty() ? "none" : "found",
+                           std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count());
                 if (!res) {
                     definitive = false;
                     continue;
@@ -387,7 +420,7 @@ void LyricsService::request(const media::MediaSessionInfo& t, int64_t neteaseId)
                     r = {t.trackId, "found", res->provider, std::move(parsed), res->lrc};
                     continue;
                 }
-                writeText(res->yrc ? hitYrc : hitLrc, res->lrc);
+                writeText(res->yrc ? hitYrc : hitLrc, tagSource(res->provider, res->lrc));
                 wroteYrc = res->yrc;
                 // `lrc` is what the phone receives: always LRC (enhanced if word-timed).
                 std::string asLrc = res->yrc ? lyrics::toLrc(parsed) : res->lrc;
@@ -403,7 +436,7 @@ void LyricsService::request(const media::MediaSessionInfo& t, int64_t neteaseId)
                 r = {t.trackId, "found", res->provider, std::move(parsed), std::move(asLrc), std::move(tr)};
                 break;
             }
-            if (r.status == "found" && !r.lyrics.synced) writeText(hitLrc, r.lrc);
+            if (r.status == "found" && !r.lyrics.synced) writeText(hitLrc, tagSource(r.source, r.lrc));
             if (r.status != "found" && definitive) writeText(miss, ""); // all providers said no
         }
         if (staleTr && r.status == "found" && r.lyrics.synced) {
@@ -414,19 +447,15 @@ void LyricsService::request(const media::MediaSessionInfo& t, int64_t neteaseId)
             // Nothing better online: keep the cached lyrics. When the providers did answer, mark
             // the old translation as checked so the song is not looked up on every play.
             bool answered = r.status == "found" || fs::exists(miss, ec);
-            if (auto y = readText(hitYrc)) {
-                auto parsed = lyrics::parseYrc(*y);
-                std::string asLrc = lyrics::toLrc(parsed);
-                r = {t.trackId, "found", "cache", std::move(parsed), std::move(asLrc)};
-            }
+            if (auto y = readText(hitYrc)) r = cachedYrc(std::move(*y));
             if (auto old = readText(hitTr); old && answered)
                 writeText(hitTr, std::string(lyrics::kTranslationMark) + "\n" + *old);
         }
-        if (r.status == "found" && r.source == "cache" && !lyrics::hasTranslation(r.lyrics)) {
+        if (r.status == "found" && r.cached && !lyrics::hasTranslation(r.lyrics)) {
             if (auto tr = readText(hitTr); tr && lyrics::mergeTranslation(r.lyrics, lyrics::parseLrc(*tr)) > 0)
                 r.translation = *tr;
         }
-        if (r.source != "cache") trimCache(cache); // something new may have been written
+        if (!r.cached) trimCache(cache); // something new may have been written
         if (r.status == "found" && r.lyrics.empty()) r.status = "notfound";
         if (r.status == "notfound")
             log::info("lyrics", "no lyrics found for {} ({} - {}){}", t.trackId, t.title, t.artist,

@@ -35,7 +35,8 @@ public:
     void beginSession(const proto::DeviceInfo& self, const std::string& peerId, const Bytes& pairingKey,
                       std::vector<std::string> caps, const std::string& resumeSid,
                       std::function<crypto::EcdhKey()> keygen = nullptr);
-    void beginPairing(const proto::DeviceInfo& self);
+    // qrToken: QR pairing (§3.5) instead of a SAS comparison.
+    void beginPairing(const proto::DeviceInfo& self, Bytes qrToken = {});
     void pairingDecision(bool accept);
 
     // Up state only. Control records are sealed and written immediately.

@@ -42,6 +42,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.updateTransition
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -147,6 +148,8 @@ import app.mediaduet.ui.components.AppIcons
 import app.mediaduet.ui.components.EmptyState
 import app.mediaduet.ui.components.GlassCard
 import app.mediaduet.ui.components.GlassIconButton
+import app.mediaduet.ui.components.liquidGlass
+import app.mediaduet.ui.components.rememberLiquidPress
 import app.mediaduet.ui.components.StatusChip
 import app.mediaduet.ui.components.MediaSlider
 import app.mediaduet.ui.theme.LocalGlass
@@ -229,6 +232,9 @@ fun PlayerScreen(ui: UiContext) {
     val bottomInset = LocalBottomInset.current
     val currentUi by rememberUpdatedState(ui)
     var queueOpen by remember { mutableStateOf(false) }
+    // The status pill floats over the player (it never moves it) and refracts what is under it.
+    val contentLayer = rememberLayerBackdrop()
+    val pillBackdrop = rememberCombinedBackdrop(ui.backdrop, contentLayer)
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val landscape = maxWidth > maxHeight * 1.15f
@@ -243,13 +249,13 @@ fun PlayerScreen(ui: UiContext) {
         Column(
             Modifier
                 .fillMaxSize()
+                .layerBackdrop(contentLayer)
                 .statusBarsPadding()
                 .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
                 .padding(start = side, end = side, bottom = bottomInset + 4.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Spacer(Modifier.height(if (landscape) 4.dp else 12.dp))
-            StatusPill(ui, view)
             if (view == null) {
                 Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     EmptyState(AppIcons.Music, stringResource(R.string.empty_nothing_playing_phone))
@@ -338,7 +344,7 @@ fun PlayerScreen(ui: UiContext) {
                 timing = LyricsTiming(
                     offsetMs = offsetMs,
                     outputLatencyMs = if (autoLatency) view.outputLatencyMs else 0,
-                    set = { ms -> engine.settings.setLyricOffset(info.appId, ms) },
+                    set = { ms -> engine.setLyricOffset(info.appId, ms) },
                 ),
                 lyrics = lyrics,
                 searching = searching,
@@ -369,6 +375,16 @@ fun PlayerScreen(ui: UiContext) {
                 }
             }
         }
+        StatusPill(
+            ui,
+            view,
+            pillBackdrop,
+            reduced,
+            Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(top = if (landscape) 4.dp else 12.dp, start = side, end = side),
+        )
         TargetSheet(ui)
         QueueSheet(ui, view, queueOpen) { queueOpen = false }
     }
@@ -565,7 +581,7 @@ private fun ArtworkImage(p: PlayerParts, m: Morph, side: androidx.compose.ui.uni
     )
     val unavailable = stringResource(R.string.lyrics_unavailable)
     Artwork(
-        view.art,
+        view.artFrame,
         Modifier
             .shared(m, "artwork")
             .size(side)
@@ -639,7 +655,7 @@ private fun LyricsHeader(p: PlayerParts, m: Morph, optionsOpen: Boolean, onOptio
                 .clickable(remember { MutableInteractionSource() }, indication = null) { p.ui.setNav(p.ui.nav.copy(lyricsMode = false)) },
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Artwork(p.view.art, Modifier.shared(m, "artwork").size(52.dp))
+            Artwork(p.view.artFrame, Modifier.shared(m, "artwork").size(52.dp))
             Spacer(Modifier.width(12.dp))
             TitleBlock(p.info, Modifier.weight(1f).sharedText(m, "title"), large = false)
         }
@@ -1095,10 +1111,11 @@ private fun SourceIconButton(ui: UiContext, view: PlayerView, m: Morph) {
 /**
  * One small, non-blocking status pill for the most important issue (missing access, no paired
  * PC, PC not connected, app versions that don't match); tapping it opens the relevant settings
- * page. "This phone only" mode shows only the access issue.
+ * page. "This phone only" mode shows only the access issue. A liquid-glass capsule floating over
+ * the top of the player: showing or hiding it never moves the player.
  */
 @Composable
-private fun StatusPill(ui: UiContext, view: PlayerView?) {
+private fun StatusPill(ui: UiContext, view: PlayerView?, backdrop: Backdrop, reduced: Boolean, modifier: Modifier) {
     val peers by ui.engine.trust.peers.collectAsStateWithLifecycle()
     val link by ui.engine.link.status.collectAsStateWithLifecycle()
     val mode by ui.engine.settings.mode.collectAsStateWithLifecycle()
@@ -1108,29 +1125,47 @@ private fun StatusPill(ui: UiContext, view: PlayerView?) {
         val local = app.mediaduet.BuildConfig.VERSION_NAME
         c.takeIf { VersionCompat.compare(local, it.peer.app) == VersionCompat.Level.MISMATCH && dismissed != "$local|${it.peer.app}" }
     }
-    val (text, route) = when {
+    // A null route: the pill opens the QR scanner (nothing paired yet, §3.5).
+    val issue: Pair<String, SettingsRoute?>? = when {
         !ui.permissions.listenerAccess -> stringResource(R.string.banner_access) to SettingsRoute.PERMISSIONS
-        !mode.linked -> return
-        peers.isEmpty() -> stringResource(R.string.banner_pair) to SettingsRoute.CONNECTION
+        !mode.linked -> null
+        peers.isEmpty() -> stringResource(R.string.banner_scan) to null
         current == null || view?.fallback == true -> stringResource(R.string.pill_pc_disconnected) to SettingsRoute.CONNECTION
         versionWarning != null -> stringResource(R.string.version_pill, versionWarning.peer.name) to SettingsRoute.CONNECTION
-        else -> return
+        else -> null
     }
+    // The last issue stays readable while the pill fades out.
+    var shown by remember { mutableStateOf(issue) }
+    if (issue != null) shown = issue
     val glass = LocalGlass.current
-    Row(
-        Modifier
-            .padding(bottom = 12.dp)
-            .clip(RoundedCornerShape(50))
-            .background(glass.fill)
-            .clickable(role = Role.Button) { ui.openSettings(route) }
-            .heightIn(min = 40.dp)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    val press = rememberLiquidPress()
+    AnimatedVisibility(
+        issue != null,
+        modifier = modifier,
+        enter = if (reduced) fadeIn(snap()) else slideInVertically(spring(dampingRatio = 0.8f)) { -it / 2 } + fadeIn(),
+        exit = if (reduced) fadeOut(snap()) else slideOutVertically { -it / 2 } + fadeOut(),
     ) {
-        Box(Modifier.size(8.dp).background(glass.warn, RoundedCornerShape(50)))
-        Spacer(Modifier.width(10.dp))
-        Text(text, style = MaterialTheme.typography.labelLarge, maxLines = 2)
-        Icon(AppIcons.ChevronRight, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        val (text, route) = shown ?: return@AnimatedVisibility
+        Row(
+            Modifier
+                .liquidGlass(backdrop, press, glass.bar, glass.isDark)
+                .then(press.modifier)
+                .clickable(interactionSource = null, indication = null, role = Role.Button) {
+                    if (route == null) ui.openScanner() else ui.openSettings(route)
+                }
+                .heightIn(min = 40.dp)
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (route == null) {
+                Icon(AppIcons.QrCode, null, Modifier.size(18.dp), tint = glass.accent)
+            } else {
+                Box(Modifier.size(8.dp).background(glass.warn, RoundedCornerShape(50)))
+            }
+            Spacer(Modifier.width(10.dp))
+            Text(text, style = MaterialTheme.typography.labelLarge, maxLines = 2)
+            Icon(AppIcons.ChevronRight, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 
@@ -1469,9 +1504,13 @@ private object ArtworkShape : Shape {
     }
 }
 
-/** Fixed-size artwork with a placeholder; new artwork cross-fades in (no layout jump). */
+/**
+ * Fixed-size artwork with a placeholder; a new song's artwork cross-fades in (no layout jump), a
+ * new cover of the same song (a high-resolution upgrade) replaces it in place.
+ */
+@OptIn(androidx.compose.animation.ExperimentalAnimationApi::class)
 @Composable
-private fun Artwork(art: Bitmap?, modifier: Modifier) {
+private fun Artwork(frame: ArtFrame, modifier: Modifier) {
     val glass = LocalGlass.current
     Box(
         modifier
@@ -1484,9 +1523,10 @@ private fun Artwork(art: Bitmap?, modifier: Modifier) {
             .background(glass.fill),
         contentAlignment = Alignment.Center,
     ) {
-        Crossfade(targetState = art, animationSpec = tween(300), label = "art") { a ->
+        updateTransition(frame, label = "art").Crossfade(animationSpec = tween(300), contentKey = { it.contentKey }) { f ->
+            val a = f.art
             if (a != null) {
-                Image(a.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                Image(remember(a) { a.asImageBitmap() }, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
             } else {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Icon(AppIcons.Music, null, Modifier.fillMaxSize(0.4f), tint = MaterialTheme.colorScheme.onSurfaceVariant)

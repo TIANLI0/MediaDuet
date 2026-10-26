@@ -57,6 +57,7 @@ json defaults() {
     "alwaysOnTop": false,
     "animations": true,
     "lowPower": false,
+    "lyricsScale": 1.0,
     "main": {"x": null, "y": null, "width": null, "height": null, "maximized": false},
     "compact": {"x": null, "y": null, "alwaysOnTop": true, "snap": true}
   },
@@ -172,6 +173,7 @@ json normalize(json s) {
     clampNum(tb, "offset", -4000, 4000);
     clampNum(tb, "width", 160, 1200);
     clampNum(tb, "fontSize", 9, 24);
+    clampNum(s["ui"], "lyricsScale", 0.7, 1.6);
     auto& o = s["lyrics"]["overlay"];
     clampNum(o, "fontSize", 12, 96);
     clampNum(o, "opacity", 0.2, 1.0);

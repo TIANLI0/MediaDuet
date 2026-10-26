@@ -50,7 +50,7 @@ void Connection::beginSession(const proto::DeviceInfo& self, const std::string& 
     session_->start(sched_.wallMs());
 }
 
-void Connection::beginPairing(const proto::DeviceInfo& self) {
+void Connection::beginPairing(const proto::DeviceInfo& self, Bytes qrToken) {
     selfRef_ = shared_from_this();
     state_ = State::Pairing;
     lastRx_ = sched_.nowMs();
@@ -68,7 +68,7 @@ void Connection::beginPairing(const proto::DeviceInfo& self) {
         log::warn("conn", "#{} pairing failed: {} {}", id_, f.code, f.message);
         finish("pairing failed: " + f.code, f.code);
     };
-    pairing_ = std::make_unique<PairingClient>(self, std::move(cb));
+    pairing_ = std::make_unique<PairingClient>(self, std::move(cb), nullptr, nullptr, std::move(qrToken));
     handshakeTimer_.start(kPairingTimeoutMs, [this] {
         if (pairing_ && !pairing_->done()) pairing_->abort("timeout", "pairing was not confirmed in time");
         finish("pairing timeout", "timeout");

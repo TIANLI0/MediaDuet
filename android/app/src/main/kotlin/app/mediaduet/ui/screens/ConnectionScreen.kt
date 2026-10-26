@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -64,6 +65,18 @@ fun ConnectionPage(ui: UiContext, onBack: () -> Unit) {
     val current = link.current
 
     ScreenScaffold(stringResource(R.string.connection_title), backdrop = ui.backdrop, onBack = onBack) {
+        // ---- QR pairing (§3.5): the quickest way to add a PC --------------------------------
+        GlassButton(ui.openScanner, ui.backdrop, Modifier.fillMaxWidth(), prominent = true, height = 52.dp) {
+            Icon(AppIcons.QrCode, null, Modifier.size(20.dp))
+            Text(stringResource(R.string.conn_scan), style = MaterialTheme.typography.labelLarge)
+        }
+        Text(
+            stringResource(R.string.conn_scan_hint),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 4.dp),
+        )
+
         // ---- status ------------------------------------------------------------------------
         GlassCard(ui.backdrop, Modifier.fillMaxWidth()) {
             if (current != null) {

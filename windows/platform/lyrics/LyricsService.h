@@ -21,10 +21,13 @@ public:
     struct Result {
         std::string trackId;
         std::string status = "none"; // none | loading | found | notfound | disabled
-        std::string source;          // cache | local | remote | lrclib
+        // netease | qqmusic | lrclib | local, or what the phone named; cache = a cached copy whose
+        // provider is unknown (cached before 1.9.0); remote = from the phone, unnamed
+        std::string source;
         lyrics::Lyrics lyrics;
         std::string lrc;             // raw text (for forwarding to the phone)
         std::string translation;     // translated LRC, if any
+        bool cached = false;         // read from the lyrics cache (`source`: where it came from)
     };
     using Fn = std::function<void(const Result&)>;
 

@@ -55,7 +55,10 @@ HttpClient browserClient(const wchar_t* referer) {
 std::optional<std::string> get(HttpClient& client, const std::wstring& url) {
     auto resp = withTimeout(client.GetAsync(Windows::Foundation::Uri(url)));
     if (resp.StatusCode() == HttpStatusCode::NotFound) return std::string();
-    if (!resp.IsSuccessStatusCode()) return std::nullopt;
+    if (!resp.IsSuccessStatusCode()) {
+        log::debug("catalog", "GET {} -> HTTP {}", text::toUtf8(url), static_cast<int>(resp.StatusCode()));
+        return std::nullopt;
+    }
     return text::toUtf8(resp.Content().ReadAsStringAsync().get());
 }
 
@@ -107,6 +110,7 @@ Found<NeteaseSong> findNetease(const lyrics::Candidate& want) {
         }
     }
     if (best >= 0.6 && bestId) f.hit = NeteaseSong{bestId};
+    else log::debug("catalog", "NetEase: no match for \"{}\" among {} results (best {:.2f})", query(want), j["result"]["songs"].size(), best);
     return f;
 }
 

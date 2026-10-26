@@ -73,6 +73,14 @@
   <data name="HdrPairNew.Text" xml:space="preserve"><value>配对新手机</value></data>
   <data name="PairHowTitle.Text" xml:space="preserve"><value>附近的手机</value></data>
   <data name="PairHowDesc.Text" xml:space="preserve"><value>在 Android 手机上打开 MediaDuet 并点按“与电脑配对”。已通过蓝牙配对或位于同一网络的手机会显示在这里。</value></data>
+  <data name="QrPairTitle.Text" xml:space="preserve"><value>扫码配对</value></data>
+  <data name="QrHideButton.Content" xml:space="preserve"><value>收起</value></data>
+  <data name="QrShowButton" xml:space="preserve"><value>显示二维码</value></data>
+  <data name="QrShowAgain" xml:space="preserve"><value>重新生成</value></data>
+  <data name="QrPairIdle" xml:space="preserve"><value>在手机上打开 MediaDuet，点“扫码连接电脑”扫描二维码，无需核对配对码。</value></data>
+  <data name="QrPairWaiting" xml:space="preserve"><value>用手机上的 MediaDuet 扫描这个二维码（5 分钟内有效）。手机需要和这台电脑在同一网络，或已通过蓝牙配对。</value></data>
+  <data name="QrPairSucceeded" xml:space="preserve"><value>已与 {0} 配对。</value></data>
+  <data name="QrPairExpired" xml:space="preserve"><value>二维码已失效，请重新生成。</value></data>
   <data name="Searching.Text" xml:space="preserve"><value>正在搜索…</value></data>
   <data name="DiscoveredEmptyText.Text" xml:space="preserve"><value>尚未发现手机。请确认蓝牙已开启且手机已在 Windows 设置中与此电脑配对，或者两台设备位于同一网络。</value></data>
   <data name="ManualTitle.Text" xml:space="preserve"><value>通过 IP 地址连接</value></data>
@@ -223,15 +231,11 @@
   <data name="EmptyHint" xml:space="preserve"><value>在此电脑或 {0} 上开始播放音乐。</value></data>
   <data name="NothingPlaying" xml:space="preserve"><value>当前没有播放</value></data>
   <data name="UnknownTitle" xml:space="preserve"><value>未知标题</value></data>
-  <data name="SourceLabel" xml:space="preserve"><value>{1} 上的 {0}</value></data>
-  <data name="SourceLabelAuto" xml:space="preserve"><value>自动 · {1} 上的 {0}</value></data>
+  <data name="SourceLabel" xml:space="preserve"><value>{0} · {1}</value></data>
   <data name="SourceAutomatic" xml:space="preserve"><value>自动（跟随正在播放的内容）</value></data>
   <data name="SourceNone" xml:space="preserve"><value>没有媒体会话</value></data>
   <data name="StatusPolicyPaused" xml:space="preserve"><value>已由 MediaDuet 自动暂停</value></data>
   <data name="StatusRemotePaused" xml:space="preserve"><value>已从另一台设备暂停</value></data>
-  <data name="StatusPlaying" xml:space="preserve"><value>正在播放</value></data>
-  <data name="StatusPaused" xml:space="preserve"><value>已暂停</value></data>
-  <data name="StatusStopped" xml:space="preserve"><value>已停止</value></data>
   <data name="StatusBuffering" xml:space="preserve"><value>正在缓冲…</value></data>
   <data name="Play" xml:space="preserve"><value>播放</value></data>
   <data name="Pause" xml:space="preserve"><value>暂停</value></data>
@@ -260,6 +264,12 @@
   <data name="PolicyLiveStates" xml:space="preserve"><value>此电脑：{0}   ·   {1}：{2}</value></data>
   <data name="LyricsSource" xml:space="preserve"><value>歌词来源：{0}</value></data>
   <data name="LyricsSourceLocal" xml:space="preserve"><value>本地文件</value></data>
+  <data name="LyricsSourceCache" xml:space="preserve"><value>本机缓存</value></data>
+  <data name="LyricsSourcePhone" xml:space="preserve"><value>手机</value></data>
+  <data name="LyricsLarger" xml:space="preserve"><value>放大歌词</value></data>
+  <data name="LyricsSmaller" xml:space="preserve"><value>缩小歌词</value></data>
+  <data name="LyricsSizeReset" xml:space="preserve"><value>默认大小（当前 {0}%）</value></data>
+  <data name="LyricsMenuTranslation" xml:space="preserve"><value>显示翻译</value></data>
   <data name="CommandFailed" xml:space="preserve"><value>命令执行失败</value></data>
   <data name="MenuOpenMain" xml:space="preserve"><value>打开完整播放器</value></data>
   <data name="MenuSettings" xml:space="preserve"><value>设置</value></data>

@@ -44,13 +44,14 @@ public:
         std::function<void()> onHideRequested;
         std::function<void()> onOpenSettings;
         std::function<void(media::CommandAction)> onCommand;  // toolbar transport buttons
-        std::function<void(int deltaDip)> onFontSize;         // toolbar A- / A+
+        std::function<void(int deltaDip)> onFontSize;         // toolbar A- / A+, menu sizes
         std::function<void(int deltaMs, bool reset)> onOffset; // lyrics earlier / later / reset (per app)
     };
     struct Strings {
         std::wstring lock, unlock, hide, settings;
         std::wstring earlier, later;   // "Lyrics earlier 0.1 s"
         std::wstring resetOffset;      // contains "%s" for the current offset, e.g. "+0.3 s"
+        std::wstring fontSize;         // text size submenu, contains "%s" for the current size
         std::wstring previous, playPause, next, smaller, larger, close;
         std::wstring unlockTip;        // tooltip of the unlock button
     };

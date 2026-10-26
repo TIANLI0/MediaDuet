@@ -164,7 +164,11 @@ fun ModeWelcome(ui: UiContext, backdrop: Backdrop, reduced: Boolean) {
                     pick = WorkMode.STANDALONE
                 }
                 Spacer(Modifier.height(28.dp))
-                GlassButton({ ui.engine.settings.setMode(pick) }, backdrop, Modifier.fillMaxWidth(), prominent = true, height = 52.dp) {
+                GlassButton({
+                    ui.engine.settings.setMode(pick)
+                    // Linking with a PC starts with scanning the code it shows (§3.5).
+                    if (pick == WorkMode.LINKED) ui.openScanner()
+                }, backdrop, Modifier.fillMaxWidth(), prominent = true, height = 52.dp) {
                     Text(stringResource(R.string.mode_continue), style = MaterialTheme.typography.labelLarge)
                 }
             }

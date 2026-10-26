@@ -39,7 +39,7 @@ public:
 
     std::optional<media::MediaSessionInfo> session() const;
     // NetEase song id of the current track (0 if unknown) for exact lyrics.
-    int64_t songId() const { return mem_ && memId_ > 0 ? memId_ : songId_; }
+    int64_t songId() const { return activeSongId(kKey); }
 
     // NetEase's own system media session (its "Windows media controls" option) carries title,
     // artist, cover and play state but no timeline. Fills in what is missing: position, duration
@@ -86,9 +86,16 @@ private:
     void checkQueueFile();
     void applyQueue(media::MediaSessionInfo& s, int64_t activeId) const;
     int64_t activeSongId(const std::string& key) const;
-    // Applies the player reading to a session (status, position, duration, id, Seek) unless the
-    // player already plays another song than `shownId` (the song the session shows, 0 = unknown).
-    void applyMemory(media::MediaSessionInfo& s, int64_t shownId) const;
+    // True when the player reading belongs to the song a session shows: `shownId`, or while that
+    // is not known yet (0) any song but `staleId`, the one the player played when the title
+    // changed (the title may change before the player does).
+    bool memoryShows(int64_t shownId, int64_t staleId) const {
+        if (memId_ <= 0) return true;
+        return shownId > 0 ? memId_ == shownId : memId_ != staleId;
+    }
+    // Applies the player reading to a session (status, position, duration, id, Seek) unless it
+    // belongs to another song (memoryShows).
+    void applyMemory(media::MediaSessionInfo& s, int64_t shownId, int64_t staleId) const;
     struct QueueMatch {
         int64_t id = 0, durationMs = 0;
         std::string album, pic;
@@ -110,6 +117,7 @@ private:
     std::optional<int64_t> durationMs_;
     std::optional<media::ArtworkRef> artwork_;
     int64_t songId_ = 0;
+    int64_t titleMemId_ = 0; // the player's song id when the title changed
     int64_t posMs_ = 0;   // accumulated audible time at posAt_
     int64_t posAt_ = 0;
     uint64_t gen_ = 0;
@@ -120,6 +128,7 @@ private:
     int64_t supPos_ = 0, supAt_ = 0;
     std::optional<int64_t> supDuration_;
     int64_t supId_ = 0; // NetEase song id of the supplemented track (from the play queue)
+    int64_t supMemId_ = 0; // the player's song id when the supplemented track changed
     uint64_t supGen_ = 0;
     // NetEase's player (nullptr: not found in this build, or the process is gone).
     std::shared_ptr<NeteaseMemory> mem_;

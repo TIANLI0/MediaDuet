@@ -576,7 +576,7 @@ private fun LyricsTimingSettings(ui: UiContext) {
                 names[entry.key] ?: entry.key,
                 subtitle = stringResource(R.string.lyrics_offset_value, app.mediaduet.remote.LyricsDelay.signedSeconds(entry.value)),
                 trailing = {
-                    androidx.compose.material3.TextButton({ settings.setLyricOffset(entry.key, 0) }) {
+                    androidx.compose.material3.TextButton({ ui.engine.setLyricOffset(entry.key, 0) }) {
                         Text(stringResource(R.string.reset))
                     }
                 },

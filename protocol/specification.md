@@ -157,6 +157,38 @@ A device that removes a peer deletes `K`. The next `hello` from that peer receiv
 `error {code:"not_paired"}` and the connection is closed. A peer that receives
 `not_paired` MUST mark the pairing as revoked and stop reconnecting.
 
+### 3.5 QR pairing
+
+Instead of comparing the SAS, the user can scan a QR code that C shows. The QR code
+carries a one-time secret that only C's screen shows, and both sides prove knowledge of
+it instead of asking their users to compare the SAS:
+
+```
+mediaduet://pair?v=1&id=<deviceId of C>&t=<T>&n=<urlencoded name of C>&p=windows
+```
+
+* `T`: 16 random bytes, base64url without padding (22 chars). C generates a fresh `T`
+  for every code it shows and stops accepting it after 5 minutes or after one successful
+  pairing. Unknown query parameters are ignored; `v` other than `1` is rejected.
+* Scanning opens pairing mode on S (§3.3) armed with `(id, T)` for 5 minutes.
+* While its code is shown, C repeatedly tries the pairing below with every S it can reach
+  (DNS-SD, bonded Bluetooth devices exposing the service); an S that is not armed answers
+  `pair.result {ok:false, reason:"pairing_disabled"}` as usual.
+
+```
+C → S  HANDSHAKE pair.request  {device, epk, nonce, qr: true}
+S → C  HANDSHAKE pair.response {device, epk, nonce}      -- only if armed and src == id
+C → S  HANDSHAKE pair.confirm  {mac: HMAC(T, "qr confirm" ‖ "C" ‖ TH)}   (immediately)
+S → C  HANDSHAKE pair.confirm  {mac: HMAC(T, "qr confirm" ‖ "S" ‖ TH)}   (after verifying C's)
+S → C  HANDSHAKE pair.result   {ok: true}
+```
+
+`TH`, `Z` and the stored `K` are exactly those of §3.3; no SAS is shown. S answers a
+`qr: true` request with `pairing_disabled` when it is not armed or `src` is not the `id`
+it scanned, and with `mac_mismatch` when C's MAC does not verify; it disarms after a
+success. A man in the middle has two different `TH` values and cannot compute either MAC
+without `T`, which never travels over the link. Plain SAS pairing stays available.
+
 ---
 
 ## 4. Session handshake (paired devices)
@@ -301,7 +333,7 @@ HANDSHAKE frames; everything else in SECURE/CONTROL records.
 
 | Type | Dir | Body |
 |------|-----|------|
-| `pair.request` | C→S | `{device: DeviceInfo, epk, nonce}` |
+| `pair.request` | C→S | `{device: DeviceInfo, epk, nonce, qr?: true}` — `qr`: QR pairing (§3.5) |
 | `pair.response` | S→C | `{device: DeviceInfo, epk, nonce}` |
 | `pair.confirm` | both | `{mac}` |
 | `pair.result` | both | `{ok: bool, reason?: string}` |
@@ -328,6 +360,7 @@ HANDSHAKE frames; everything else in SECURE/CONTROL records.
 | `artwork.get` | both | `{hash}` → BLOB chunks or `error {code:"not_found", re}` |
 | `lyrics.push` | both | `{trackId, format:"lrc", source, text, translation?}` (each ≤ 256 KiB). `translation` is an LRC whose timestamps match `text` lines (e.g. NetEase tlyric / QQ trans); receivers attach each translated line to the closest original line (±600 ms) |
 | `lyrics.none` | both | `{trackId}` — sender looked and found nothing |
+| `lyrics.offset` | both | `{appId, offsetMs}` — the user changed the manual lyrics offset of player `appId` (the session's `appId`, −5000…5000 ms, 0 = none; lyrics are shown `offsetMs` later). The receiver stores it for that `appId` without echoing it back, so a song shows with the same timing on both devices (requires cap `lyrics.offset`). Only changes are sent: no exchange on connect |
 | `policy.status` | C→S | `PolicyStatus` (§8.5) |
 | `policy.config` | S→C | `{mode}` — requests a change of the arbitration mode |
 | `audio.offer` | both | `AudioOffer` (§9) |

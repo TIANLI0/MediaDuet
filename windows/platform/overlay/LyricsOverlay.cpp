@@ -39,6 +39,9 @@ constexpr float kPad = 12.f;
 constexpr float kToolbarH = 44.f;       // reserved strip at the top (toolbar / unlock button)
 constexpr float kRowGap = 2.f;
 constexpr float kLineH = 1.42f;         // row height / font size
+constexpr int kFontStep = 2;            // toolbar A- / A+ and the menu (DIP)
+constexpr int kMinFontSize = 12, kMaxFontSize = 96;   // settings lyrics.overlay.fontSize range
+constexpr int kFontSizePresets[] = {24, 28, 32, 40, 48, 56, 64};
 constexpr float kSecondaryTr = 0.72f;   // translation row size
 constexpr float kSecondaryNext = 0.8f;  // "next line" row size (center layout)
 constexpr float kUnlockDip = 36.f;
@@ -753,8 +756,8 @@ struct LyricsOverlay::Impl {
         case BPrev: if (cb.onCommand) cb.onCommand(media::CommandAction::Previous); break;
         case BPlay: if (cb.onCommand) cb.onCommand(media::CommandAction::Toggle); break;
         case BNext: if (cb.onCommand) cb.onCommand(media::CommandAction::Next); break;
-        case BSmaller: if (cb.onFontSize) cb.onFontSize(-2); break;
-        case BLarger: if (cb.onFontSize) cb.onFontSize(2); break;
+        case BSmaller: if (cb.onFontSize) cb.onFontSize(-kFontStep); break;
+        case BLarger: if (cb.onFontSize) cb.onFontSize(kFontStep); break;
         case BEarlier: if (cb.onOffset && canOffset) cb.onOffset(-100, false); break;
         case BLater: if (cb.onOffset && canOffset) cb.onOffset(100, false); break;
         case BLock: if (cb.onLockChanged) cb.onLockChanged(true); break;
@@ -775,6 +778,18 @@ struct LyricsOverlay::Impl {
         if (auto pos = reset.find(L"%s"); pos != std::wstring::npos) reset.replace(pos, 2, formatOffset(manualOffset));
         AppendMenuW(m, canOffset && manualOffset != 0 ? MF_STRING : MF_STRING | MF_GRAYED, 6, reset.c_str());
         AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+        // Text size: a step either way, or one of the common sizes (ids 100 + size).
+        int size = static_cast<int>(std::lround(fontSize));
+        HMENU sizes = CreatePopupMenu();
+        AppendMenuW(sizes, size < kMaxFontSize ? MF_STRING : MF_STRING | MF_GRAYED, 7, strings.larger.c_str());
+        AppendMenuW(sizes, size > kMinFontSize ? MF_STRING : MF_STRING | MF_GRAYED, 8, strings.smaller.c_str());
+        AppendMenuW(sizes, MF_SEPARATOR, 0, nullptr);
+        for (int preset : kFontSizePresets)
+            AppendMenuW(sizes, MF_STRING | (preset == size ? MF_CHECKED : 0), 100 + preset, std::to_wstring(preset).c_str());
+        std::wstring sizeTitle = strings.fontSize;
+        if (auto pos = sizeTitle.find(L"%s"); pos != std::wstring::npos) sizeTitle.replace(pos, 2, std::to_wstring(size));
+        AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(sizes), sizeTitle.c_str());
+        AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
         AppendMenuW(m, MF_STRING, 2, strings.hide.c_str());
         AppendMenuW(m, MF_STRING, 3, strings.settings.c_str());
         SetForegroundWindow(hwnd);
@@ -787,6 +802,9 @@ struct LyricsOverlay::Impl {
         if (cmd == 4 && cb.onOffset) cb.onOffset(-100, false);
         if (cmd == 5 && cb.onOffset) cb.onOffset(100, false);
         if (cmd == 6 && cb.onOffset) cb.onOffset(0, true);
+        if (cmd == 7 && cb.onFontSize) cb.onFontSize(kFontStep);
+        if (cmd == 8 && cb.onFontSize) cb.onFontSize(-kFontStep);
+        if (cmd > 100 && cmd <= 100 + kMaxFontSize && cb.onFontSize && cmd - 100 != size) cb.onFontSize(cmd - 100 - size);
     }
 
     // ------------------------------------------------------------ locked: unlock button

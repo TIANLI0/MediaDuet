@@ -44,6 +44,8 @@ namespace
     constexpr int64_t kOffsetLimitMs = 5000;    // lyrics.offsets range (host validates)
     constexpr auto kVkOpenBracket = static_cast<VirtualKey>(219);    // VK_OEM_4  [
     constexpr auto kVkCloseBracket = static_cast<VirtualKey>(221);   // VK_OEM_6  ]
+    constexpr auto kVkPlus = static_cast<VirtualKey>(187);           // VK_OEM_PLUS  = / +
+    constexpr auto kVkMinus = static_cast<VirtualKey>(189);          // VK_OEM_MINUS -
 
     std::wstring TransportName(std::string const& t)
     {
@@ -183,6 +185,7 @@ namespace winrt::MediaDuetUI::implementation
         callbacks.canSeek = [this] { return !m_closed && m_session && m_session->CanSeek(); };
         callbacks.seek = [this](int64_t t) { SeekTo(t); };
         m_lyricsView.Attach(LyricsViewport(), LyricsCanvas(), LyricsPanel(), LyricsFollowButton(), std::move(callbacks));
+        SetupLyricsMenu();
 
         // Settings sub-page navigation
         BackButton().Click([this](auto&&, auto&&) { ShowPlayer(); });
@@ -262,8 +265,7 @@ namespace winrt::MediaDuetUI::implementation
             auto const& u = Controller::Get().Model().update;
             if (!u.latest.empty()) Controller::Get().SetSetting("ui.updateDismissed", u.latest);
         });
-        HandoffBar().Closed([this](auto&&, auto&&) { m_handoffResultShown = false; });
-        // The player's own buttons (phone sessions) / its play queue (phone sessions, NetEase on this PC).
+        HandoffBar().Closed([this](auto&&, auto&&) { m_handoffResultShown = false; });        // The player's own buttons (phone sessions) / its play queue (phone sessions, NetEase on this PC).
         QueueFlyout().Opening([this](auto&&, auto&&) { FillQueue(); });
         QueueList().ItemClick([this](auto&&, ItemClickEventArgs const& e) {
             auto item = e.ClickedItem().try_as<FrameworkElement>();
@@ -535,7 +537,6 @@ namespace winrt::MediaDuetUI::implementation
         {
             TitleLabel().FontSize(titleSize);
             ArtistLabel().FontSize(15.0 + 2.0 * step);
-            AlbumLabel().FontSize(13.0 + 1.0 * step);
             StatusLabel().FontSize(12.0 + 1.0 * step);
         }
 
@@ -980,10 +981,12 @@ namespace winrt::MediaDuetUI::implementation
 
         TitleLabel().Text(s->title.empty() ? std::wstring(Str(L"UnknownTitle")) : Widen(s->title));
         ToolTipService::SetToolTip(TitleLabel(), s->title.empty() ? nullptr : box_value(Widen(s->title)));
-        ArtistLabel().Text(Widen(s->artist));
-        ArtistLabel().Visibility(s->artist.empty() ? Visibility::Collapsed : Visibility::Visible);
-        AlbumLabel().Text(Widen(s->album));
-        AlbumLabel().Visibility(s->album.empty() || m_cardCompact ? Visibility::Collapsed : Visibility::Visible);
+        // "Artist — Album" on one line (the album is dropped in short windows).
+        std::wstring byline = Widen(s->artist);
+        if (!s->album.empty() && !m_cardCompact) byline += (byline.empty() ? L"" : L" \x2014 ") + Widen(s->album);
+        ArtistLabel().Text(byline);
+        ToolTipService::SetToolTip(ArtistLabel(), byline.empty() ? nullptr : box_value(byline));
+        ArtistLabel().Visibility(byline.empty() ? Visibility::Collapsed : Visibility::Visible);
 
         std::wstring device;
         if (s->side == Side::Local)
@@ -997,19 +1000,13 @@ namespace winrt::MediaDuetUI::implementation
             device = Widen(st.PeerDisplayName());
             if (device.empty()) device = Str(L"YourPhone");
         }
-        DeviceLabel().Text(device);
-        ToolTipService::SetToolTip(DeviceLabel(), box_value(device));
         auto app = Widen(s->DisplayApp());
-        AppLabel().Text(app);
-        ToolTipService::SetToolTip(AppLabel(), app.empty() ? nullptr : box_value(app));
-        SourceButtonText().Text(st.focus.automatic ? StrF(L"SourceLabelAuto", { app, device }) : StrF(L"SourceLabel", { app, device }));
+        SourceButtonText().Text(app.empty() ? device : StrF(L"SourceLabel", { app, device }));
 
+        // Playing / paused / stopped is what the play button already shows.
         hstring status;
         if (s->policyState == "policy_paused") status = Str(L"StatusPolicyPaused");
         else if (s->policyState == "remote_paused") status = Str(L"StatusRemotePaused");
-        else if (s->status == "playing") status = Str(L"StatusPlaying");
-        else if (s->status == "paused") status = Str(L"StatusPaused");
-        else if (s->status == "stopped") status = Str(L"StatusStopped");
         else if (s->status == "buffering") status = Str(L"StatusBuffering");
         // Compat sessions (players without a media session) are marked subtly in the status line.
         bool compat = s->source == "compat";
@@ -1223,6 +1220,75 @@ namespace winrt::MediaDuetUI::implementation
         Controller::Get().AdjustLyricsOffset(m_session->appId, next - current);   // raises State -> refresh
     }
 
+    void MainWindow::AdjustLyricsScale(int steps)
+    {
+        double current = m_lyricsView.FontScale();
+        double next = steps == 0 ? 1.0 : current + steps * LyricsView::kFontScaleStep;
+        next = std::clamp(std::round(next * 10.0) / 10.0, LyricsView::kMinFontScale, LyricsView::kMaxFontScale);
+        if (std::abs(next - current) < 1e-3) return;
+        m_lyricsView.SetFontScale(next);   // immediately; the host echoes the setting in its next state
+        Controller::Get().SetSetting("ui.lyricsScale", next);
+    }
+
+    // Right-click on the lyrics: text size (also Ctrl + = / - / 0) and the translation toggle.
+    void MainWindow::SetupLyricsMenu()
+    {
+        using Microsoft::UI::Xaml::Input::KeyboardAccelerator;
+        using winrt::Windows::System::VirtualKeyModifiers;
+        MenuFlyout menu;
+        auto item = [&](wchar_t const* text, wchar_t const* glyph, wchar_t const* keys, int steps) {
+            MenuFlyoutItem i;
+            i.Text(Str(text));
+            FontIcon icon;
+            icon.Glyph(glyph);
+            i.Icon(icon);
+            i.KeyboardAcceleratorTextOverride(keys);
+            i.Click([this, steps](auto&&, auto&&) { AdjustLyricsScale(steps); });
+            menu.Items().Append(i);
+            return i;
+        };
+        auto larger = item(L"LyricsLarger", L"\xE8E8", L"Ctrl+=", 1);
+        auto smaller = item(L"LyricsSmaller", L"\xE8E7", L"Ctrl+-", -1);
+        auto reset = item(L"LyricsSizeReset", L"\xE8E9", L"Ctrl+0", 0);
+        MenuFlyoutSeparator separator;
+        menu.Items().Append(separator);
+        ToggleMenuFlyoutItem translation;
+        translation.Text(Str(L"LyricsMenuTranslation"));
+        translation.Click([this](auto&&, auto&&) {
+            bool on = !m_translationOn;
+            ApplyTranslationSetting(on);
+            Controller::Get().SetSetting("lyrics.translation", on);
+        });
+        menu.Items().Append(translation);
+        menu.Opening([this, larger, smaller, reset, separator, translation](auto&&, auto&&) {
+            double scale = m_lyricsView.FontScale();
+            larger.IsEnabled(scale < LyricsView::kMaxFontScale - 1e-3);
+            smaller.IsEnabled(scale > LyricsView::kMinFontScale + 1e-3);
+            reset.IsEnabled(std::abs(scale - 1.0) > 1e-3);
+            reset.Text(StrF(L"LyricsSizeReset", { std::to_wstring(std::lround(scale * 100)) }));
+            separator.Visibility(TranslationButton().Visibility());
+            translation.Visibility(TranslationButton().Visibility());
+            translation.IsChecked(m_translationOn);
+        });
+        LyricsViewport().ContextFlyout(menu);
+
+        // Ctrl + = / + (larger), Ctrl + - (smaller), Ctrl + 0 (default), while the lyrics are shown.
+        std::pair<VirtualKey, int> keys[] = { { kVkPlus, 1 }, { VirtualKey::Add, 1 }, { kVkMinus, -1 }, { VirtualKey::Subtract, -1 },
+            { VirtualKey::Number0, 0 }, { VirtualKey::NumberPad0, 0 } };
+        for (auto [key, steps] : keys)
+        {
+            KeyboardAccelerator accel;
+            accel.Key(key);
+            accel.Modifiers(VirtualKeyModifiers::Control);
+            accel.Invoked([this, steps](auto&&, Microsoft::UI::Xaml::Input::KeyboardAcceleratorInvokedEventArgs const& e) {
+                if (m_settingsShown || !m_lyricsShown) return;
+                AdjustLyricsScale(steps);
+                e.Handled(true);
+            });
+            Root().KeyboardAccelerators().Append(accel);
+        }
+    }
+
     bool MainWindow::OnKey(VirtualKey key, DependencyObject const& source)
     {
         // Ctrl / Alt combinations belong to accelerators (Alt+Left = back).
@@ -1305,6 +1371,7 @@ namespace winrt::MediaDuetUI::implementation
 
     void MainWindow::UpdateLyrics()
     {
+        m_lyricsView.SetFontScale(Controller::Get().Model().SettingNumber("ui.lyricsScale", 1.0));
         auto const& lyrics = Controller::Get().CurrentLyrics();
         mdui::Session const* s = m_session ? &*m_session : nullptr;
         bool connected = Controller::Get().Link() == HostLink::Connected;
@@ -1333,14 +1400,17 @@ namespace winrt::MediaDuetUI::implementation
                     SetLyricsLayout(true, true);
                 }
                 m_lyricsView.Build(lyrics, m_translationOn);   // fades the new lines in one by one
-                std::wstring source;
-                if (lyrics.source == "lrclib" || lyrics.source == "netease" || lyrics.source == "qqmusic")
-                    source = Str(L"Provider_" + Widen(lyrics.source));
-                else if (lyrics.source == "local") source = Str(L"LyricsSourceLocal");
-                else source = Widen(lyrics.source);
-                LyricsSourceLabel().Text(source.empty() ? std::wstring{} : StrF(L"LyricsSource", { source }));
                 UpdateLyricsPosition(QpcNowMs(), true);
             }
+            // Outside the rebuild: the same lyrics may arrive again from another source.
+            // Only names the UI knows (docs/ipc.md): never an internal value such as "cache".
+            std::wstring source;
+            if (lyrics.source == "lrclib" || lyrics.source == "netease" || lyrics.source == "qqmusic")
+                source = Str(L"Provider_" + Widen(lyrics.source));
+            else if (lyrics.source == "local") source = Str(L"LyricsSourceLocal");
+            else if (lyrics.source == "cache") source = Str(L"LyricsSourceCache");
+            else if (lyrics.source == "remote") source = Str(L"LyricsSourcePhone");
+            LyricsSourceLabel().Text(source.empty() ? std::wstring{} : StrF(L"LyricsSource", { source }));
             SetLyricsLayout(true, true);
         }
         else if (m_lyricsShown && !m_lyricsIdentity.empty() && pending && !m_holdExpired)

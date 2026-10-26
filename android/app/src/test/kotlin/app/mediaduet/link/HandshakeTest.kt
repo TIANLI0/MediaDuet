@@ -138,6 +138,96 @@ class HandshakeTest {
         assertNull(trust.key(peer.id))
     }
 
+    // ---- QR pairing (§3.5) -----------------------------------------------------------------
+
+    private val qrToken = ByteArray(QrPairing.TOKEN_BYTES) { (0x40 + it).toByte() }
+
+    private fun armQr(peerId: String = peer.id) = pairing.armQr(peerId, "Scanned PC", qrToken)
+
+    @Test
+    fun qrPairingSucceedsWithoutSas() {
+        armQr()
+        server.connect().use { c ->
+            val st = peer.startPairing(c, qr = true)
+            assertEquals("pair.response", st.response.type)
+            assertNull(pairing.state.value.prompt) // no SAS for the user to compare
+            c.sendHandshake(peer.id, "pair.confirm", buildJsonObject {
+                put("mac", B64.encode(KeySchedule.qrConfirmMac(qrToken, "C", st.transcript!!)))
+            })
+            val confirm = c.readHandshake()
+            assertEquals("pair.confirm", confirm.type)
+            assertArrayEquals(KeySchedule.qrConfirmMac(qrToken, "S", st.transcript!!), confirm.body.requireBase64("mac", 32))
+            val result = c.readHandshake()
+            assertEquals("pair.result", result.type)
+            assertEquals("true", result.str("ok"))
+            // K is the one of SAS pairing (§3.3), not derived from T.
+            assertArrayEquals(st.secrets!!.pairingKey, trust.key(peer.id))
+        }
+        assertEquals(true, waitFor { pairing.state.value.lastOutcome }.success)
+        assertFalse(pairing.isOpen())
+        assertNull(pairing.state.value.qr) // disarmed after a success
+    }
+
+    @Test
+    fun qrPairingWithWrongTokenFails() {
+        armQr()
+        server.connect().use { c ->
+            val st = peer.startPairing(c, qr = true)
+            val wrong = ByteArray(QrPairing.TOKEN_BYTES) { 1 }
+            c.sendHandshake(peer.id, "pair.confirm", buildJsonObject {
+                put("mac", B64.encode(KeySchedule.qrConfirmMac(wrong, "C", st.transcript!!)))
+            })
+            val result = c.readHandshake()
+            assertEquals("pair.result", result.type)
+            assertEquals("mac_mismatch", result.str("reason"))
+            assertTrue(c.isClosedByPeer())
+        }
+        assertNull(trust.key(peer.id))
+        // Still armed: the PC keeps trying while its code is shown.
+        waitFor { pairing.state.value.lastOutcome }
+        assertEquals(peer.id, pairing.state.value.qr?.peerId)
+    }
+
+    @Test
+    fun qrPairingNeedsAScannedCode() {
+        pairing.open() // plain pairing mode only
+        server.connect().use { c ->
+            val st = peer.startPairing(c, qr = true)
+            assertEquals("pair.result", st.response.type)
+            assertEquals("pairing_disabled", st.response.str("reason"))
+            assertTrue(c.isClosedByPeer())
+        }
+        assertNull(trust.key(peer.id))
+    }
+
+    @Test
+    fun qrPairingOnlyForTheScannedPc() {
+        armQr(peerId = "ffffffffffffffffffffffffffffffff")
+        server.connect().use { c ->
+            val st = peer.startPairing(c, qr = true)
+            assertEquals("pair.result", st.response.type)
+            assertEquals("pairing_disabled", st.response.str("reason"))
+        }
+        assertNull(trust.key(peer.id))
+    }
+
+    @Test
+    fun sasPairingStillWorksWhileArmedForQr() {
+        armQr(peerId = "ffffffffffffffffffffffffffffffff")
+        server.connect().use { c ->
+            val st = peer.startPairing(c)
+            val prompt = waitFor { pairing.state.value.prompt }
+            assertEquals(st.secrets!!.sas, prompt.sas)
+            pairing.accept(prompt.attemptId)
+            c.sendHandshake(peer.id, "pair.confirm", buildJsonObject {
+                put("mac", B64.encode(KeySchedule.confirmMac(st.secrets!!.pairingKey, "C", st.transcript!!)))
+            })
+            assertEquals("pair.confirm", c.readHandshake().type)
+            assertEquals("true", c.readHandshake().str("ok"))
+        }
+        assertEquals(32, waitFor { trust.key(peer.id) }.size)
+    }
+
     private fun trustPeer(): ByteArray {
         val k = ByteArray(32) { (it * 7).toByte() }
         trust.add(TrustedPeer(peer.id, peer.name, "windows", 0, 0), k)
@@ -164,6 +254,58 @@ class HandshakeTest {
             val pong = c.readUntil("pong")
             assertEquals(10L, pong.re)
             assertEquals("42", pong.str("t"))
+        }
+    }
+
+    // ---- lyrics.offset (§8.2) ---------------------------------------------------------------
+
+    private fun offsetSession(c: TestClientConnection, caps: List<String>): TestPeer.Session {
+        trustPeer()
+        val s = peer.hello(c, caps = caps) as TestPeer.Session
+        c.readUntil("media.snapshot")
+        return s
+    }
+
+    @Test
+    fun peerLyricsOffsetIsStoredAndNotEchoed() {
+        server.connect().use { c ->
+            offsetSession(c, listOf("media.source", "lyrics", "lyrics.offset"))
+            c.sendSecure(peer.envelope("lyrics.offset", buildJsonObject {
+                put("appId", "cloudmusic.exe")
+                put("offsetMs", -9000) // clamped to the allowed range
+            }, id = 20))
+            c.sendSecure(peer.envelope("ping", buildJsonObject { put("t", 1) }, id = 21))
+            var e = c.readControl()
+            while (e.type != "pong") {
+                assertFalse("echoed ${e.type}", e.type == "lyrics.offset")
+                e = c.readControl()
+            }
+            assertEquals("cloudmusic.exe" to -5000, waitFor { host.lyricOffsets.firstOrNull() })
+        }
+    }
+
+    @Test
+    fun lyricsOffsetGoesOnlyToPeersWithTheCap() {
+        server.connect().use { c ->
+            offsetSession(c, listOf("media.source", "lyrics", "lyrics.offset"))
+            link.broadcastLyricsOffset("com.netease.cloudmusic", 300)
+            val e = c.readUntil("lyrics.offset")
+            assertEquals("com.netease.cloudmusic", e.str("appId"))
+            assertEquals("300", e.str("offsetMs"))
+        }
+    }
+
+    @Test
+    fun lyricsOffsetNotSentWithoutTheCap() {
+        server.connect().use { c ->
+            offsetSession(c, listOf("media.source", "lyrics"))
+            link.broadcastLyricsOffset("com.netease.cloudmusic", 300)
+            c.sendSecure(peer.envelope("ping", buildJsonObject { put("t", 2) }, id = 30))
+            var e = c.readControl()
+            while (e.type != "pong") {
+                assertFalse(e.type == "lyrics.offset")
+                e = c.readControl()
+            }
         }
     }
 

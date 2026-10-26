@@ -166,6 +166,7 @@ LyricsOverlay::Strings strings() {
     s.earlier = L"Lyrics earlier 0.1 s";
     s.later = L"Lyrics later 0.1 s";
     s.resetOffset = L"Reset offset (now %s)";
+    s.fontSize = L"Text size (now %s)";
     s.unlockTip = L"Unlock desktop lyrics";
     return s;
 }

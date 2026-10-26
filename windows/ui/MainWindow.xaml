@@ -93,31 +93,34 @@
                 <TextBlock x:Name="TitleLabel" Margin="0,24,0,0" FontSize="22" FontWeight="SemiBold"
                            TextTrimming="CharacterEllipsis" TextAlignment="Center" MaxLines="2" TextWrapping="Wrap"
                            IsTextSelectionEnabled="True" />
+                <!-- Artist and album on one line ("Artist — Album") -->
                 <TextBlock x:Name="ArtistLabel" Margin="0,4,0,0" FontSize="15" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
                            TextAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                <TextBlock x:Name="AlbumLabel" Margin="0,2,0,0" FontSize="13" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
-                           TextAlignment="Center" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
 
-                <StackPanel Margin="0,12,0,0" HorizontalAlignment="Center" Orientation="Horizontal" Spacing="6">
-                    <Border Style="{StaticResource PillStyle}">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <FontIcon x:Name="DeviceIcon" FontSize="12" Glyph="&#xE977;" />
-                            <TextBlock x:Name="DeviceLabel" Style="{StaticResource CaptionTextBlockStyle}" MaxWidth="112"
-                                       TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
-                        </StackPanel>
-                    </Border>
-                    <Border Style="{StaticResource PillStyle}">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <FontIcon FontSize="12" Glyph="&#xE8D6;" />
-                            <TextBlock x:Name="AppLabel" Style="{StaticResource CaptionTextBlockStyle}" MaxWidth="112"
-                                       TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
-                        </StackPanel>
-                    </Border>
-                </StackPanel>
-                <TextBlock x:Name="StatusLabel" Margin="0,8,0,0" Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="NoWrap"
-                           TextTrimming="CharacterEllipsis" TextAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <!-- Where it plays (device + app) is also the player switcher: one quiet chip. -->
+                <DropDownButton x:Name="SourceButton" x:Uid="SourceButton" Margin="0,10,0,0" HorizontalAlignment="Center"
+                                MaxWidth="320" Padding="10,4,8,5" MinHeight="0" CornerRadius="14" BorderThickness="0"
+                                Background="{ThemeResource SubtleFillColorSecondaryBrush}">
+                    <Grid ColumnSpacing="7">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <FontIcon x:Name="DeviceIcon" FontSize="12" Glyph="&#xE977;" VerticalAlignment="Center"
+                                  Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <TextBlock x:Name="SourceButtonText" Grid.Column="1" Style="{StaticResource CaptionTextBlockStyle}"
+                                   VerticalAlignment="Center" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </Grid>
+                    <DropDownButton.Flyout>
+                        <MenuFlyout x:Name="SourceFlyout" Placement="Bottom" />
+                    </DropDownButton.Flyout>
+                </DropDownButton>
+                <!-- Only states the play button cannot show (paused by MediaDuet, buffering, compat mode) -->
+                <TextBlock x:Name="StatusLabel" Margin="0,6,0,0" Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="NoWrap"
+                           TextTrimming="CharacterEllipsis" TextAlignment="Center" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
 
-                <Slider x:Name="ProgressSlider" x:Uid="ProgressSlider" Margin="0,10,0,0" Minimum="0" Maximum="1" StepFrequency="1000"
+                <Slider x:Name="ProgressSlider" x:Uid="ProgressSlider" Margin="0,14,0,0" Minimum="0" Maximum="1" StepFrequency="1000"
                         IsThumbToolTipEnabled="False" />
                 <Grid Margin="2,-6,2,0" ColumnSpacing="8">
                     <Grid.ColumnDefinitions>
@@ -198,22 +201,6 @@
                     <TextBlock x:Name="InlineVolumeHintText" Grid.Column="1" Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap"
                                MaxLines="3" TextTrimming="CharacterEllipsis" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 </Grid>
-
-                <DropDownButton x:Name="SourceButton" x:Uid="SourceButton" Margin="0,12,0,4" HorizontalAlignment="Center"
-                                MaxWidth="340" Background="Transparent" BorderThickness="0" Padding="10,6" CornerRadius="16">
-                    <Grid ColumnSpacing="8">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <FontIcon FontSize="13" Glyph="&#xE8AB;" VerticalAlignment="Center" />
-                        <TextBlock x:Name="SourceButtonText" Grid.Column="1" Style="{StaticResource CaptionTextBlockStyle}"
-                                   VerticalAlignment="Center" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
-                    </Grid>
-                    <DropDownButton.Flyout>
-                        <MenuFlyout x:Name="SourceFlyout" Placement="Bottom" />
-                    </DropDownButton.Flyout>
-                </DropDownButton>
             </StackPanel>
             </ScrollViewer>
 
@@ -240,8 +227,41 @@
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <!-- Quick translation toggle (only when the lyrics carry translations) -->
+                    <!-- A quiet chip (not an accent fill): on = subtle fill + primary text, off = secondary text. -->
                     <ToggleButton x:Name="TranslationButton" x:Uid="TranslationButton" Visibility="Collapsed" VerticalAlignment="Center"
-                                  Padding="10,2,10,3" MinHeight="0" MinWidth="0" FontSize="12" CornerRadius="12" />
+                                  Padding="10,2,10,3" MinHeight="0" MinWidth="0" FontSize="12" CornerRadius="12" BorderThickness="0"
+                                  Background="Transparent" Foreground="{ThemeResource TextFillColorSecondaryBrush}">
+                        <!-- Per theme: a plain StaticResource alias would resolve against the app theme, not the window's. -->
+                        <ToggleButton.Resources>
+                            <ResourceDictionary>
+                                <ResourceDictionary.ThemeDictionaries>
+                                    <ResourceDictionary x:Key="Light">
+                                        <StaticResource x:Key="ToggleButtonBackgroundPointerOver" ResourceKey="SubtleFillColorSecondaryBrush" />
+                                        <StaticResource x:Key="ToggleButtonBackgroundPressed" ResourceKey="SubtleFillColorTertiaryBrush" />
+                                        <StaticResource x:Key="ToggleButtonBackgroundChecked" ResourceKey="SubtleFillColorSecondaryBrush" />
+                                        <StaticResource x:Key="ToggleButtonBackgroundCheckedPointerOver" ResourceKey="SubtleFillColorTertiaryBrush" />
+                                        <StaticResource x:Key="ToggleButtonBackgroundCheckedPressed" ResourceKey="SubtleFillColorSecondaryBrush" />
+                                        <StaticResource x:Key="ToggleButtonForegroundChecked" ResourceKey="TextFillColorPrimaryBrush" />
+                                        <StaticResource x:Key="ToggleButtonForegroundCheckedPointerOver" ResourceKey="TextFillColorPrimaryBrush" />
+                                        <StaticResource x:Key="ToggleButtonForegroundCheckedPressed" ResourceKey="TextFillColorSecondaryBrush" />
+                                    </ResourceDictionary>
+                                    <ResourceDictionary x:Key="Dark">
+                                        <StaticResource x:Key="ToggleButtonBackgroundPointerOver" ResourceKey="SubtleFillColorSecondaryBrush" />
+                                        <StaticResource x:Key="ToggleButtonBackgroundPressed" ResourceKey="SubtleFillColorTertiaryBrush" />
+                                        <StaticResource x:Key="ToggleButtonBackgroundChecked" ResourceKey="SubtleFillColorSecondaryBrush" />
+                                        <StaticResource x:Key="ToggleButtonBackgroundCheckedPointerOver" ResourceKey="SubtleFillColorTertiaryBrush" />
+                                        <StaticResource x:Key="ToggleButtonBackgroundCheckedPressed" ResourceKey="SubtleFillColorSecondaryBrush" />
+                                        <StaticResource x:Key="ToggleButtonForegroundChecked" ResourceKey="TextFillColorPrimaryBrush" />
+                                        <StaticResource x:Key="ToggleButtonForegroundCheckedPointerOver" ResourceKey="TextFillColorPrimaryBrush" />
+                                        <StaticResource x:Key="ToggleButtonForegroundCheckedPressed" ResourceKey="TextFillColorSecondaryBrush" />
+                                    </ResourceDictionary>
+                                </ResourceDictionary.ThemeDictionaries>
+                                <StaticResource x:Key="ToggleButtonBorderBrushChecked" ResourceKey="ControlFillColorTransparentBrush" />
+                                <StaticResource x:Key="ToggleButtonBorderBrushCheckedPointerOver" ResourceKey="ControlFillColorTransparentBrush" />
+                                <StaticResource x:Key="ToggleButtonBorderBrushCheckedPressed" ResourceKey="ControlFillColorTransparentBrush" />
+                            </ResourceDictionary>
+                        </ToggleButton.Resources>
+                    </ToggleButton>
                     <!-- Lyrics timing: per-app offset (lyrics.offset); shortcuts [ and ] -->
                     <Button x:Name="LyricsOffsetButton" x:Uid="LyricsOffsetButton" Grid.Column="1" Visibility="Collapsed" VerticalAlignment="Center"
                             Padding="10,2,10,3" MinHeight="0" MinWidth="0" CornerRadius="12" Background="Transparent" BorderThickness="0">
@@ -338,18 +358,6 @@
                     Style="{StaticResource AccentButtonStyle}" />
         </StackPanel>
 
-        <!-- Phone and PC on different major/minor versions (host: md::version), dismissible per pair.
-             Its own Auto row: while open it moves the player down instead of covering it. -->
-        <InfoBar x:Name="VersionBar" Grid.Row="0" HorizontalAlignment="Center" MaxWidth="760"
-                 Margin="24,2,24,10" IsOpen="False" Severity="Warning" IsClosable="True" />
-        <!-- A new MediaDuet version is available (Settings > About); closing it skips that version. -->
-        <InfoBar x:Name="UpdateBar" Grid.Row="0" HorizontalAlignment="Center" MaxWidth="760"
-                 Margin="24,2,24,10" IsOpen="False" Severity="Informational" IsClosable="True">
-            <InfoBar.ActionButton>
-                <Button x:Name="UpdateBarButton" x:Uid="UpdateBarButton" />
-            </InfoBar.ActionButton>
-        </InfoBar>
-
         <!-- Bottom bar -->
         <Grid x:Name="BottomBar" Grid.Row="2" Padding="24,6,16,12" ColumnSpacing="12">
             <Grid.ColumnDefinitions>
@@ -366,9 +374,6 @@
                 <TextBlock x:Name="PolicyText" Grid.Column="1" Style="{StaticResource CaptionTextBlockStyle}" VerticalAlignment="Center"
                            TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </Grid>
-            <InfoBar x:Name="ErrorBar" Grid.ColumnSpan="2" Margin="0,0,180,0" IsOpen="False" Severity="Error" IsClosable="True" />
-            <!-- Handoff progress and result (on top of the policy line, like ErrorBar) -->
-            <InfoBar x:Name="HandoffBar" Grid.ColumnSpan="2" Margin="0,0,180,0" IsOpen="False" Severity="Informational" IsClosable="True" />
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2">
                 <Button x:Name="VolumeButton" x:Uid="VolumeButton" Style="{StaticResource IconButtonStyle}">
                     <FontIcon x:Name="VolumeButtonIcon" FontSize="16" Glyph="&#xE995;" />
@@ -469,6 +474,36 @@
                 </Button>
             </StackPanel>
         </Grid>
+
+        <!-- Notices float over the player: opening or closing one never moves it. Each sits on a
+             FloatingNoticeStyle backing that stretches to the bar (nothing left once it closes). -->
+        <!-- Top: the version warning or (only without it) the update notice. -->
+        <Grid Grid.RowSpan="3" VerticalAlignment="Top" HorizontalAlignment="Center" MaxWidth="760" Margin="24,2,24,0">
+            <Border Style="{StaticResource FloatingNoticeStyle}" />
+            <!-- Phone and PC on different major/minor versions (host: md::version), dismissible per pair. -->
+            <InfoBar x:Name="VersionBar" IsOpen="False" Severity="Warning" IsClosable="True" />
+        </Grid>
+        <Grid Grid.RowSpan="3" VerticalAlignment="Top" HorizontalAlignment="Center" MaxWidth="760" Margin="24,2,24,0">
+            <Border Style="{StaticResource FloatingNoticeStyle}" />
+            <!-- A new MediaDuet version is available (Settings > About); closing it skips that version. -->
+            <InfoBar x:Name="UpdateBar" IsOpen="False" Severity="Informational" IsClosable="True">
+                <InfoBar.ActionButton>
+                    <Button x:Name="UpdateBarButton" x:Uid="UpdateBarButton" />
+                </InfoBar.ActionButton>
+            </InfoBar>
+        </Grid>
+        <!-- Bottom: over the policy line, clear of the bottom bar's buttons. -->
+        <StackPanel Grid.RowSpan="3" VerticalAlignment="Bottom" Margin="24,0,196,12">
+            <Grid>
+                <Border Style="{StaticResource FloatingNoticeStyle}" />
+                <InfoBar x:Name="ErrorBar" IsOpen="False" Severity="Error" IsClosable="True" />
+            </Grid>
+            <!-- Handoff progress and result -->
+            <Grid Margin="0,8,0,0">
+                <Border Style="{StaticResource FloatingNoticeStyle}" />
+                <InfoBar x:Name="HandoffBar" IsOpen="False" Severity="Informational" IsClosable="True" />
+            </Grid>
+        </StackPanel>
         </Grid>
 
         <!-- ===== Settings page: SettingsPage, created in code on first use (row 1) ===== -->

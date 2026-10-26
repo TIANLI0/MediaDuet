@@ -163,6 +163,16 @@ class Engine private constructor(private val app: Context) : LinkHost {
         userControl.value = UserControl(side, key, clock.nowMs())
     }
 
+    /**
+     * The user changed the manual lyrics offset of player [appId] (Now Playing, Settings): stored
+     * here and sent to the linked devices so a song shows with the same timing on both (§8.2).
+     */
+    fun setLyricOffset(appId: String, ms: Int) {
+        if (appId.isEmpty()) return
+        settings.setLyricOffset(appId, ms)
+        link.broadcastLyricsOffset(appId, settings.lyricOffsets.value[appId] ?: 0)
+    }
+
     private fun startTargetResolver() {
         scope.launch {
             var state: AutoState? = null
@@ -549,6 +559,7 @@ class Engine private constructor(private val app: Context) : LinkHost {
         add(Caps.VOLUME)
         add(Caps.HANDOFF)
         add(Caps.POLICY_PEER)
+        add(Caps.LYRICS_OFFSET)
         if (settings.audioReceiveEnabled.value) add(Caps.AUDIO_RECV_PCM)
     }
 
@@ -660,6 +671,8 @@ class Engine private constructor(private val app: Context) : LinkHost {
         this.lyrics.onPcLyrics(lyrics.trackId, remote.parseLyrics(lyrics), remote.sessionForTrack(lyrics.trackId)?.let(LyricsRepository::songOf))
     override fun onLyricsNone(peerId: String, trackId: String) =
         lyrics.onPcNone(trackId, remote.sessionForTrack(trackId)?.let(LyricsRepository::songOf))
+    // Stored only: a remote change is never sent on (no echo, see setLyricOffset).
+    override fun onPeerLyricsOffset(peerId: String, appId: String, offsetMs: Int) = settings.setLyricOffset(appId, offsetMs)
     override fun onPolicyStatus(peerId: String, status: PolicyStatus) = routePeer(peerId, { policy = status }) { remote.onPolicyStatus(status) }
     override fun onSinkState(peerId: String, state: SinkState) = routePeer(peerId, { sink = state }) { remote.onSinkState(state) }
     override fun mediaQueue(key: String): MediaQueue? = media.queues.value[key]?.let { fitRecord(it) }

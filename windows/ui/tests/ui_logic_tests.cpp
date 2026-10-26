@@ -611,6 +611,36 @@ TEST_CASE("ambient render: flowing artwork")
     for (size_t i = 0; i < a.size(); i += 4) diff += std::abs(a[i] - c[i]) + std::abs(a[i + 2] - c[i + 2]);
     CHECK(diff / (a.size() / 4) > 2.0);
 
+    // The motion is continuous: at 60 fps no frame jumps (copies are placed with sub-pixel
+    // precision in the small scene canvas, not snapped to whole canvas pixels = ~8 screen pixels).
+    {
+        auto window = ambient::SizesFor(1560, 1140);
+        float sigma = 0.57735f * std::min(window.sceneW, window.sceneH) * 0.16f + 0.5f;
+        std::vector<ambient::Rgb> prev, next;
+        std::vector<double> steps;
+        for (int i = 0; i <= 300; ++i)
+        {
+            ambient::DrawScene(two, 12.0f + i / 60.0f, window.sceneW, window.sceneH, next);
+            ambient::Blur(next, window.sceneW, window.sceneH, sigma);
+            if (i > 0)
+            {
+                double d = 0;
+                for (size_t k = 0; k < next.size(); ++k)
+                    d += std::abs(next[k].r - prev[k].r) + std::abs(next[k].g - prev[k].g) + std::abs(next[k].b - prev[k].b);
+                steps.push_back(d / next.size());
+            }
+            std::swap(prev, next);
+        }
+        double mean = 0, peak = 0;
+        for (double s : steps)
+        {
+            mean += s / steps.size();
+            peak = std::max(peak, s);
+        }
+        CHECK(mean > 0);
+        CHECK(peak < 2.5 * mean);
+    }
+
     // Large windows render at a reduced output size; empty sizes give nothing.
     auto big = ambient::SizesFor(3840, 2160);
     CHECK(static_cast<double>(big.outW) * big.outH <= ambient::kMaxOutputPixels);

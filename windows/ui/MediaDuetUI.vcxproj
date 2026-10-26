@@ -131,6 +131,7 @@
       <DependentUpon>LyricWrapPanel.idl</DependentUpon>
     </ClInclude>
     <ClInclude Include="RenderTest.h" />
+    <ClInclude Include="QrCode.h" />
     <ClInclude Include="App.xaml.h">
       <DependentUpon>App.xaml</DependentUpon>
     </ClInclude>
@@ -168,6 +169,11 @@
       <DependentUpon>LyricWrapPanel.idl</DependentUpon>
     </ClCompile>
     <ClCompile Include="RenderTest.cpp" />
+    <ClCompile Include="QrCode.cpp" />
+    <ClCompile Include="..\third_party\qrcodegen\qrcodegen.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <ObjectFileName>$(IntDir)third_party\</ObjectFileName>
+    </ClCompile>
     <!-- The host's lyrics timing reference implementation (docs/ipc.md "Lyrics timing"), compiled
          into the UI so the app cannot diverge from the desktop lyrics / taskbar. -->
     <ClCompile Include="..\core\src\lyrics\Karaoke.cpp">

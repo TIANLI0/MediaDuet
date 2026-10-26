@@ -80,6 +80,10 @@ class CryptoVectorsTest {
         assertArrayEquals(p.hex("pairing_key"), secrets.pairingKey)
         assertArrayEquals(p.hex("confirm_mac_client"), KeySchedule.confirmMac(secrets.pairingKey, "C", th))
         assertArrayEquals(p.hex("confirm_mac_server"), KeySchedule.confirmMac(secrets.pairingKey, "S", th))
+        val token = p.hex("qr_token")
+        assertArrayEquals(token, app.mediaduet.link.QrPairing.decodeToken(p.str("qr_token_b64url")))
+        assertArrayEquals(p.hex("qr_confirm_mac_client"), KeySchedule.qrConfirmMac(token, "C", th))
+        assertArrayEquals(p.hex("qr_confirm_mac_server"), KeySchedule.qrConfirmMac(token, "S", th))
     }
 
     @Test

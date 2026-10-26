@@ -97,6 +97,8 @@ namespace mdui
         void PairStart(std::string const& kind, std::string const& target);
         void PairRespond(bool accept);
         void PairCancel();
+        // Shows (or hides) a pairing QR code: the host tries every reachable phone meanwhile.
+        void PairQr(bool enable) { Send({ { "type", "pair.qr" }, { "enable", enable } }); }
         void DeviceForget(std::string const& id);
         void DeviceConnect(std::string const& id);
         void DeviceDisconnect(std::string const& id);

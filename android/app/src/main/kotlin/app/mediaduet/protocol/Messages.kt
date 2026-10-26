@@ -30,6 +30,7 @@ object MsgType {
     const val ARTWORK_GET = "artwork.get"
     const val LYRICS_PUSH = "lyrics.push"
     const val LYRICS_NONE = "lyrics.none"
+    const val LYRICS_OFFSET = "lyrics.offset"
     const val POLICY_STATUS = "policy.status"
     const val POLICY_CONFIG = "policy.config"
     const val AUDIO_OFFER = "audio.offer"
@@ -66,6 +67,8 @@ object Caps {
     const val HANDOFF = "handoff"
     /** Android peers arbitrate their own playback (§13): `policy.peer`. */
     const val POLICY_PEER = "policy.peer"
+    /** Manual lyrics offsets follow the user on both devices: `lyrics.offset` (§8.2). */
+    const val LYRICS_OFFSET = "lyrics.offset"
 }
 
 /** §6.1 string limits (code points). */

@@ -11,7 +11,8 @@
 //   its own Translation and implicit Vector3Transition, so the composition thread animates the
 //   follow scroll at the display refresh rate; lines below the current one arrive slightly later
 //   (wave). The current line sits at 38 % height.
-// * Font size and spacing scale with the viewport height (26 -> 34 epx).
+// * Font size and spacing scale with the viewport height (26 -> 34 epx), times the user's scale
+//   (ui.lyricsScale: right-click menu, Ctrl + = / - / 0).
 // * New lyrics fade in line by line (short stagger); FadeOut() dims the old lines while the next
 //   track's lyrics are loading.
 // * Mouse wheel / touch (or pen) dragging pauses following for 4 s; a "back to the current line"
@@ -52,6 +53,10 @@ namespace mdui
         bool Synced() const { return m_synced; }
         int ActiveLine() const { return m_active; }
         void SetTranslation(bool on);
+        // User scale of the height-based font size (ui.lyricsScale); rebuilds in place when it changes.
+        static constexpr double kMinFontScale = 0.7, kMaxFontScale = 1.6, kFontScaleStep = 0.1;
+        void SetFontScale(double scale);
+        double FontScale() const { return m_fontScale; }
         // Per frame (positionMs is the lyric position: smoothed clock minus the lyrics delay).
         // force re-applies the line states (appearance changes, new lyrics).
         void Update(double positionMs, bool force);
@@ -109,6 +114,7 @@ namespace mdui
         double m_width{ 0 };
         double m_height{ 0 };
         double m_fontSize{ 26 };
+        double m_fontScale{ 1.0 };
         bool m_placed{ false };          // initial position applied (needs layout)
         bool m_followPaused{ false };
         bool m_dragging{ false };        // touch / pen manipulation in progress

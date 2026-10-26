@@ -264,7 +264,6 @@
     <string name="source_title">Playing on</string>
     <string name="this_phone">This phone</string>
     <string name="banner_access">Media access is off — tap to fix</string>
-    <string name="banner_pair">Pair a PC or another device to get started</string>
     <string name="summary_all_set">All set</string>
     <string name="summary_translations_on">Translations on</string>
     <string name="summary_translations_off">Translations off</string>
@@ -511,4 +510,26 @@
     <string name="peer_state_idle">Idle</string>
     <string name="peer_none_connected">No other Android device is connected.</string>
     <string name="peer_policy_header_android">Other Android devices</string>
+    <!-- QR pairing (§3.5) -->
+    <string name="qr_scan_title">Scan the PC’s code</string>
+    <string name="qr_scan_hint">On the PC, open MediaDuet’s Settings › Devices &amp; pairing (click Show QR code if no code is shown) and point the camera at the code.</string>
+    <string name="qr_not_a_code">This is not a MediaDuet pairing code</string>
+    <string name="qr_camera_needed">MediaDuet uses the camera only to read the PC’s pairing code. Nothing is recorded or saved.</string>
+    <string name="qr_camera_allow">Allow camera</string>
+    <string name="qr_camera_denied">Camera access is turned off. Turn it on in the system settings to scan.</string>
+    <string name="qr_camera_unavailable">The camera is not available.</string>
+    <string name="qr_waiting">Waiting for %1$s to connect…</string>
+    <string name="qr_connecting">Pairing with %1$s…</string>
+    <string name="qr_not_found_hint">%1$s has not found this phone yet. Keep MediaDuet open on the PC, or enter this phone’s address there (Devices &amp; pairing › Connect by IP address):</string>
+    <string name="qr_no_address">This phone is not on a network the PC can reach. Connect both to the same Wi-Fi, or pair them over Bluetooth in the system settings.</string>
+    <string name="qr_local_network_needed">Allow access to devices on the local network so the PC can find this phone.</string>
+    <string name="qr_expired">The code has expired. Show a new one on the PC and scan again.</string>
+    <string name="qr_scan_again">Scan again</string>
+    <string name="qr_done">Done</string>
+    <string name="qr_torch">Flashlight</string>
+    <string name="qr_close">Close the scanner</string>
+    <string name="qr_unnamed_pc">the PC</string>
+    <string name="banner_scan">Scan to link a PC</string>
+    <string name="conn_scan">Scan to pair</string>
+    <string name="conn_scan_hint">Scan the code MediaDuet shows on the PC. There is no pairing code to compare.</string>
 </resources>

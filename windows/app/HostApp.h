@@ -100,13 +100,16 @@ private:
     int localOutputLatencyMs() const;
     int outputLatencyFor(const media::MediaSessionInfo& s, Side side) const;
     int64_t lyricsDelayFor(const media::MediaSessionInfo& s, Side side) const;
+    // Stores the manual lyrics offset of player appId (from this PC's UI or the phone).
+    void setLyricsOffset(const std::string& appId, int64_t offsetMs);
     void adjustLyricsOffset(const std::string& appId, int deltaMs, bool reset);
     void answerVolumeSet(bool ok, const std::string& code);
     void updateSmtc();
     void sendPolicyStatus();
 
     // pairing
-    void startPairing(const std::string& kind, const std::string& target);
+    // qrToken: an attempt of the QR pairing (no SAS dialog).
+    void startPairing(const std::string& kind, const std::string& target, Bytes qrToken = {});
     void pairingRespond(bool accept);
     void cancelPairing();
     void setPairing(std::string state, std::string error = {});
@@ -243,7 +246,21 @@ private:
         std::optional<link::LanEndpoint> lan;
         link::ConnectionPtr conn;
         uint64_t attempt = 0;
+        bool qr = false; // an attempt of the QR pairing below (not shown as a pairing dialog)
     } pairing_;
+    // QR pairing (spec §3.5): while the UI shows the code, every reachable phone is tried in turn.
+    struct QrPairing {
+        Bytes token;                            // the code's one-time secret; empty: no code shown
+        std::string payload;                    // mediaduet://pair?…
+        int64_t until = 0;                      // wall ms
+        std::string status;                     // waiting | succeeded | expired
+        std::string peerName;                   // succeeded: the phone
+        std::map<std::string, int64_t> triedAt; // candidate (kind:target) -> last attempt (mono ms)
+    } qr_;
+    ScopedTimer qrTimer_;
+    void startQrPairing();
+    void stopQrPairing(const std::string& status);
+    void qrTick();
     std::map<std::string, platform::BtCandidate> btCandidates_;
     bool discovering_ = false;
     bool standalone_ = false; // settings "mode" == "standalone": this PC only, no phone links

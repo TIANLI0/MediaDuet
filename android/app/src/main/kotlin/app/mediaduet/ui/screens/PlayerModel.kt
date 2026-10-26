@@ -44,7 +44,40 @@ class PlayerView(
     val key: String get() = info.key
     val playing: Boolean get() = info.status == PlayStatus.PLAYING || info.status == PlayStatus.BUFFERING
 
+    /** The song [art] belongs to: a new cover of the same song replaces it in place, without a cross-fade. */
+    val artKey: String get() = songKey(side, info)
+
     fun position(nowMs: Long = SystemClock.elapsedRealtime()): Long = positionAt(nowMs) ?: 0L
+}
+
+/**
+ * Cross-fade state for artwork: [contentKey] changes with the song (or between artwork and none),
+ * so a new cover of the same song replaces the old one in place.
+ */
+data class ArtFrame(val song: String, val art: Bitmap?) {
+    val contentKey: Any? get() = if (art == null) null else song
+}
+
+val PlayerView.artFrame: ArtFrame get() = ArtFrame(artKey, art)
+
+private fun songKey(side: Side, s: MediaSessionInfo) = "$side\u001f${s.key}\u001f${s.title}\u001f${s.artist}"
+
+/**
+ * The last artwork shown: kept while the cover of the same song changes and the new one is not
+ * decoded or downloaded yet (the PC upgrades thumbnails to high-resolution covers), so the player
+ * never falls back to the placeholder in between.
+ */
+private class ArtHold {
+    private var song: String? = null
+    private var art: Bitmap? = null
+
+    fun show(song: String, art: Bitmap?, pending: Boolean): Bitmap? {
+        if (art != null || !pending || song != this.song) {
+            this.song = song
+            this.art = art
+        }
+        return this.art
+    }
 }
 
 /** Builds the [PlayerView] for the engine's resolved control target. */
@@ -56,6 +89,7 @@ fun rememberPlayerView(engine: Engine): PlayerView? {
     val local by engine.localStates.collectAsStateWithLifecycle()
     val link by engine.link.status.collectAsStateWithLifecycle()
     val localLatency by engine.localOutputLatencyMs.collectAsStateWithLifecycle()
+    val hold = remember { ArtHold() }
     val t = target ?: return null
     return when (t.side) {
         Side.PC -> {
@@ -65,7 +99,7 @@ fun rememberPlayerView(engine: Engine): PlayerView? {
                 side = Side.PC,
                 automatic = t.automatic,
                 info = s,
-                art = artworks[s.artwork?.hash],
+                art = hold.show(songKey(Side.PC, s), artworks[s.artwork?.hash], pending = s.artwork != null),
                 connected = st.connected,
                 canControl = st.connected && Caps.MEDIA_CONTROL in link.current?.peerCaps.orEmpty(),
                 positionKey = st.positionAtMs to s.key,
@@ -79,11 +113,12 @@ fun rememberPlayerView(engine: Engine): PlayerView? {
             val s: LocalSessionState = local.firstOrNull { it.key == t.key } ?: return null
             val hash = s.artwork?.hash
             val art = remember(hash) { hash?.let { engine.artwork.bytes(it) }?.let { BitmapFactory.decodeByteArray(it, 0, it.size) } }
+            val info = s.toSessionInfo(SystemClock.elapsedRealtime())
             PlayerView(
                 side = Side.PHONE,
                 automatic = t.automatic,
-                info = s.toSessionInfo(SystemClock.elapsedRealtime()),
-                art = art,
+                info = info,
+                art = hold.show(songKey(Side.PHONE, info), art, pending = hash != null),
                 connected = true,
                 canControl = s.protocolActions().isNotEmpty(),
                 positionKey = Triple(s.key, s.lastPositionUpdateMs, s.state),

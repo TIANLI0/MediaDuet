@@ -277,8 +277,9 @@ void NeteaseCompat::checkQueueFile() {
 }
 
 int64_t NeteaseCompat::activeSongId(const std::string& key) const {
-    if (mem_ && memId_ > 0) return memId_;
-    return key == kKey ? songId_ : supId_;
+    int64_t shown = key == kKey ? songId_ : supId_;
+    if (mem_ && memId_ > 0 && memoryShows(shown, key == kKey ? titleMemId_ : supMemId_)) return memId_;
+    return shown;
 }
 
 void NeteaseCompat::applyQueue(media::MediaSessionInfo& s, int64_t activeId) const {
@@ -309,10 +310,11 @@ bool NeteaseCompat::playQueueItem(const std::string& key, int64_t id) {
     return true;
 }
 
-void NeteaseCompat::applyMemory(media::MediaSessionInfo& s, int64_t shownId) const {
+void NeteaseCompat::applyMemory(media::MediaSessionInfo& s, int64_t shownId, int64_t staleId) const {
     if (!mem_ || memStatus_ == media::PlaybackStatus::Unknown) return;
-    // The player switches songs a moment before the title follows: keep the old track's values meanwhile.
-    if (shownId > 0 && memId_ > 0 && shownId != memId_) return;
+    // The player and the title switch songs at slightly different moments: never mix one song's
+    // duration and position (or id) into the other (a wrong duration fails every lyrics match).
+    if (!memoryShows(shownId, staleId)) return;
     if (memStatus_ != media::PlaybackStatus::Stopped) s.status = memStatus_;
     s.positionMs = memPosMs_;
     s.positionAtMs = memAt_;
@@ -334,6 +336,7 @@ void NeteaseCompat::detach() {
     mem_.reset();
     memStatus_ = media::PlaybackStatus::Unknown;
     memId_ = 0;
+    titleMemId_ = supMemId_ = 0;
     memDurationMs_.reset();
     hook_ = nullptr;
     guardTimer_.cancel();
@@ -363,6 +366,7 @@ void NeteaseCompat::onTitle() {
     durationMs_.reset();
     artwork_.reset();
     songId_ = 0;
+    titleMemId_ = memId_;
     posMs_ = 0;
     posAt_ = sched_.nowMs();
     uint64_t gen = ++gen_;
@@ -426,6 +430,7 @@ void NeteaseCompat::supplement(media::MediaSessionInfo& s) {
         supAt_ = now;
         supDuration_.reset();
         supId_ = 0;
+        supMemId_ = memId_;
         uint64_t gen = ++supGen_;
         if (!s.title.empty()) {
             std::weak_ptr<bool> alive = alive_;
@@ -454,7 +459,7 @@ void NeteaseCompat::supplement(media::MediaSessionInfo& s) {
     if (supDuration_) pos = std::min(pos, *supDuration_);
     s.positionMs = pos;
     s.positionAtMs = supAt_;
-    applyMemory(s, supId_);
+    applyMemory(s, supId_, supMemId_);
     applyQueue(s, activeSongId(s.key));
 }
 
@@ -503,7 +508,7 @@ std::optional<media::MediaSessionInfo> NeteaseCompat::session() const {
                 media::action::Pause;
     s.artwork = artwork_;
     if (songId_ > 0) s.ids.netease = std::to_string(songId_);
-    applyMemory(s, songId_);
+    applyMemory(s, songId_, titleMemId_);
     applyQueue(s, activeSongId(kKey));
     media::sanitize(s);
     s.updateTrackId();

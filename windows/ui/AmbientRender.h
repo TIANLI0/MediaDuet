@@ -113,8 +113,10 @@ namespace mdui::ambient
             float orbit = 2.0f * kPi * seconds / b.orbitSeconds + b.phase;
             float cx = w * b.x + extent * b.drift * std::cos(orbit);
             float cy = h * b.y + extent * b.drift * std::sin(orbit);
-            float side = static_cast<float>(std::max(1, static_cast<int>(extent * b.scale)));
-            float left = static_cast<float>(static_cast<int>(cx - side / 2)), top = static_cast<float>(static_cast<int>(cy - side / 2));
+            // Sub-pixel placement: the canvas is ~1/8 of the window, so snapping a copy to whole
+            // canvas pixels (as Android's IntOffset does at full size) jumps it by ~8 screen pixels.
+            float side = std::max(1.0f, extent * b.scale);
+            float left = cx - side / 2, top = cy - side / 2;
             float angle = (b.phase * 57.3f + 360.0f * seconds / b.turnSeconds) * kPi / 180.0f;
             float c = std::cos(angle), s = std::sin(angle);
             float reach = side * 0.7072f + 1;

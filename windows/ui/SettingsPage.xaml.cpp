@@ -6,6 +6,7 @@
 
 #include "Controller.h"
 #include "PlaybackClock.h"
+#include "QrCode.h"
 #include "RenderTest.h"
 #include "Strings.h"
 #include "Version.h"
@@ -290,7 +291,6 @@ namespace winrt::MediaDuetUI::implementation
             Controller::Get().LaunchHost();
             UpdateHostBar();
         });
-
         // Font family
         OverlayFontCombo().SelectionChanged([this](auto&&, auto&&) {
             if (m_applying) return;
@@ -351,6 +351,8 @@ namespace winrt::MediaDuetUI::implementation
             else Controller::Get().ConnectManual(Narrow(host), p);
         };
         ManualPairButton().Click([manual](auto&&, auto&&) { manual(true); });
+        QrShowButton().Click([this](auto&&, auto&&) { ShowQr(true); });
+        QrHideButton().Click([this](auto&&, auto&&) { ShowQr(false); });
         ManualConnectButton().Click([manual](auto&&, auto&&) { manual(false); });
 
         // Diagnostics rows (labels are static; values filled from "diagnostics" messages).
@@ -684,6 +686,9 @@ namespace winrt::MediaDuetUI::implementation
         if (started) Controller::Get().AcquireDiscovery();
         if (!want && m_discoveryHeld) Controller::Get().ReleaseDiscovery();
         m_discoveryHeld = want;
+        // The pairing QR code lives as long as the page: shown at once while no phone is paired.
+        if (started && Controller::Get().Model().devices.empty()) ShowQr(true);
+        else if (!want && (m_qrShown || !Controller::Get().Model().pairing.qrStatus.empty())) ShowQr(false);
         if (!m_spinnerTimer)
         {
             m_spinnerTimer = DispatcherQueue().CreateTimer();
@@ -727,6 +732,7 @@ namespace winrt::MediaDuetUI::implementation
             c.ReleaseDiscovery();
             m_discoveryHeld = false;
         }
+        if (m_qrShown) c.PairQr(false);
         for (auto& s : m_sliders)
         {
             if (s->debounce.IsRunning())
@@ -810,6 +816,7 @@ namespace winrt::MediaDuetUI::implementation
             sig += d.id + "|" + d.name + "|" + d.platform + "|" + d.btAddress + "|" + d.lanHost + "|" +
                 (d.connected ? "1" : "0") + d.transport + "|" + std::to_string(d.lastSeen) + "|" + d.app + "|" + d.versionMatch + "\n";
         UpdateDevicesVersionBar();
+        UpdateQr();
         if (sig == m_devicesSignature) return;
         m_devicesSignature = sig;
 
@@ -904,6 +911,35 @@ namespace winrt::MediaDuetUI::implementation
         if (match == "patch") t += L"  \x00B7  " + std::wstring(Str(L"VersionPatchNote"));
         else if (match == "mismatch") t += L"  \x00B7  " + std::wstring(Str(L"VersionMismatchShort"));
         return t;
+    }
+
+    void SettingsPage::ShowQr(bool show)
+    {
+        m_qrShown = show;
+        Controller::Get().PairQr(show);
+    }
+
+    void SettingsPage::UpdateQr()
+    {
+        auto const& p = Controller::Get().Model().pairing;
+        bool waiting = p.qrStatus == "waiting" && !p.qrPayload.empty();
+        if (!waiting) m_qrPayload.clear();
+        else if (p.qrPayload != m_qrPayload)
+        {
+            m_qrPayload = p.qrPayload;
+            QrPath().Data(QrGeometry(m_qrPayload));
+        }
+        if (p.qrStatus == "succeeded" || p.qrStatus == "expired") m_qrShown = false;
+        QrFrame().Visibility(waiting ? Visibility::Visible : Visibility::Collapsed);
+        QrIcon().Visibility(waiting ? Visibility::Collapsed : Visibility::Visible);
+        if (waiting) QrPairText().Text(Str(L"QrPairWaiting"));
+        else if (p.qrStatus == "succeeded") QrPairText().Text(StrF(L"QrPairSucceeded", { Widen(p.qrPeerName) }));
+        else if (p.qrStatus == "expired") QrPairText().Text(Str(L"QrPairExpired"));
+        else QrPairText().Text(Str(L"QrPairIdle"));
+        bool again = p.qrStatus == "succeeded" || p.qrStatus == "expired";
+        QrShowButton().Content(box_value(Str(again ? L"QrShowAgain" : L"QrShowButton")));
+        QrShowButton().Visibility(waiting ? Visibility::Collapsed : Visibility::Visible);
+        QrHideButton().Visibility(waiting ? Visibility::Visible : Visibility::Collapsed);
     }
 
     void SettingsPage::UpdateDevicesVersionBar()

@@ -53,6 +53,7 @@ inline constexpr const char* MediaCommandResult = "media.command.result";
 inline constexpr const char* ArtworkGet = "artwork.get";
 inline constexpr const char* LyricsPush = "lyrics.push";
 inline constexpr const char* LyricsNone = "lyrics.none";
+inline constexpr const char* LyricsOffset = "lyrics.offset";
 inline constexpr const char* PolicyStatus = "policy.status";
 inline constexpr const char* PolicyConfig = "policy.config";
 inline constexpr const char* AudioOffer = "audio.offer";

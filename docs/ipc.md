@@ -180,6 +180,11 @@ Every message has a `"type"` field. Messages from the UI to the host may carry a
   `rejected`, `pairing_disabled`, `mac_mismatch`, `busy`, `protocol`,
   `bad_message`. `connection.lastError` is free-form diagnostic text (English)
   and should be shown only as secondary detail.
+* `pairing.qr` (only while a QR code was asked for, `pair.qr`): `{status, payload,
+  expiresInMs, peerName}`. `status` ∈ `waiting` (show `payload` as a QR code),
+  `succeeded` (`peerName` paired), `expired`. Meanwhile the host tries QR pairing
+  (protocol §3.5) with every phone it can reach; those attempts never appear in
+  `pairing.state` (it stays `idle`), so no pairing dialog opens.
 
 ### `lyrics` (sent when the lyrics for the focused track change)
 ```json
@@ -194,6 +199,11 @@ Every message has a `"type"` field. Messages from the UI to the host may carry a
   "lines":[{"t":12000,"d":3500,"text":"…","tr":"(translated line, optional)","words":[{"t":12000,"d":400,"text":"…"}]}]
 }
 ```
+`source` names where the lyrics came from, also when they were read from the
+host's cache: `netease`, `qqmusic`, `lrclib`, `local` (a file in the lyrics
+folder) or the provider the phone named; `cache` is a cached copy from before
+1.9.0 (provider unknown) and `remote` lyrics from the phone without a provider.
+The UI shows only names it knows (unknown values: no source line).
 `status` ∈ `loading`, `found`, `notfound`, `disabled`. `words` is present only for
 enhanced (word-timed) LRC. Without lyrics the UI shows only the media card — no
 placeholder lyrics.
@@ -239,6 +249,7 @@ handoffs started from the UI and from the phone.
 | `pair.start` | `kind` (`bt`/`lan`), `target` (BT device id or `host:port`) | Starts pairing. |
 | `pair.respond` | `accept` (bool) | User accepted/rejected the SAS. |
 | `pair.cancel` | — | Abort pairing. |
+| `pair.qr` | `enable` (bool) | Show (a fresh) or hide the pairing QR code (`pairing.qr`). A `pair.start` hides it. |
 | `device.forget` | `id` | Revoke trust and delete the pairing key. |
 | `device.connect` | `id` | Connect now (resets back-off). |
 | `device.disconnect` | `id` | Disconnect and pause auto-reconnect until `device.connect`. |
@@ -382,6 +393,7 @@ Unknown keys are preserved. Defaults:
     "alwaysOnTop": false,
     "animations": true,
     "lowPower": false,
+    "lyricsScale": 1.0,
     "main": {"x": null, "y": null, "width": null, "height": null, "maximized": false},
     "compact": {"x": null, "y": null, "alwaysOnTop": true, "snap": true}
   },
@@ -393,6 +405,8 @@ Unknown keys are preserved. Defaults:
 * `update.auto` (default `true`): check for a new version once a day.
   `ui.updateDismissed`: the version whose "update available" bar the user closed.
 * `language` ∈ `auto`, `zh-CN`, `en-US`; `theme` ∈ `system`, `light`, `dark`.
+* `ui.lyricsScale` (0.7 – 1.6, default `1.0`): text size of the main window's lyrics,
+  relative to the size that follows the window height (right-click menu, Ctrl + = / - / 0).
 * `ui.main.width` / `ui.main.height` (physical pixels, `null` = default size) and
   `ui.main.maximized` are written by the UI to restore the main window.
 * `mode` ∈ `linked` (with a paired phone) or `standalone` (this PC only, see

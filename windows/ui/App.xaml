@@ -120,6 +120,13 @@
                 <Setter Property="CornerRadius" Value="8" />
                 <Setter Property="MinHeight" Value="156" />
             </Style>
+            <!-- Notices (InfoBars) float over the page instead of taking a row: showing or hiding one
+                 never moves the page. This opaque backing, in the bar's cell, keeps them readable over
+                 the content (an informational InfoBar's own background is translucent). -->
+            <Style x:Key="FloatingNoticeStyle" TargetType="Border">
+                <Setter Property="Background" Value="{ThemeResource AcrylicInAppFillColorDefaultBrush}" />
+                <Setter Property="CornerRadius" Value="{ThemeResource ControlCornerRadius}" />
+            </Style>
             <Style x:Key="PillStyle" TargetType="Border">
                 <Setter Property="Background" Value="{ThemeResource PillBackgroundBrush}" />
                 <Setter Property="CornerRadius" Value="12" />

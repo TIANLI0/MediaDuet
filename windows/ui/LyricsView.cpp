@@ -42,8 +42,16 @@ namespace mdui
     double LyricsView::FontSizeFor(double height) const
     {
         // 26 epx in short windows, growing to 34 epx in tall ones (Apple Music full-screen feel).
-        if (height <= 0) return 26;
-        return std::round(std::clamp(26.0 + (height - 520.0) * (8.0 / 680.0), 26.0, 34.0));
+        double base = height <= 0 ? 26.0 : std::clamp(26.0 + (height - 520.0) * (8.0 / 680.0), 26.0, 34.0);
+        return std::round(base * m_fontScale);
+    }
+
+    void LyricsView::SetFontScale(double scale)
+    {
+        scale = std::clamp(scale, kMinFontScale, kMaxFontScale);
+        if (std::abs(scale - m_fontScale) < 1e-3) return;
+        m_fontScale = scale;
+        if (m_panel && !m_lines.empty() && FontSizeFor(m_height) != m_fontSize) Rebuild();
     }
 
     void LyricsView::Attach(Grid const& viewport, Canvas const& canvas, StackPanel const& panel, Button const& followButton,

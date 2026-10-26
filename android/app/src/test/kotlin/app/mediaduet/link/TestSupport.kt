@@ -102,6 +102,10 @@ class FakeHost(val device: DeviceInfo) : LinkHost {
     override fun onArtworkNotFound(peerId: String, hash: String) = Unit
     override fun onLyrics(peerId: String, lyrics: LyricsPush) = Unit
     override fun onLyricsNone(peerId: String, trackId: String) = Unit
+    val lyricOffsets = CopyOnWriteArrayList<Pair<String, Int>>()
+    override fun onPeerLyricsOffset(peerId: String, appId: String, offsetMs: Int) {
+        lyricOffsets += appId to offsetMs
+    }
     override fun onPolicyStatus(peerId: String, status: PolicyStatus) = Unit
     override suspend fun onAudioOffer(peerId: String, offer: AudioOffer, baseKey: ByteArray): JsonObject =
         buildJsonObject { put("ok", false) }
@@ -265,7 +269,7 @@ class TestPeer(val id: String = "0123456789abcdef0123456789abcdef", val name: St
     class Session(val conn: TestClientConnection, val sid: String, val resumed: Boolean, val serverCaps: List<String>)
 
     /** Runs pair.request -> pair.response; returns the computed SAS and secrets. */
-    fun startPairing(conn: TestClientConnection): PairingState {
+    fun startPairing(conn: TestClientConnection, qr: Boolean = false): PairingState {
         val kp = P256.generate()
         val epk = P256.encodePublic(kp.public)
         val nonce = Rand.bytes(32)
@@ -273,6 +277,7 @@ class TestPeer(val id: String = "0123456789abcdef0123456789abcdef", val name: St
             put("device", device.toJson())
             put("epk", B64.encode(epk))
             put("nonce", B64.encode(nonce))
+            if (qr) put("qr", true)
         })
         val resp = conn.readHandshake()
         if (resp.type != "pair.response") return PairingState(resp, null, null, null)

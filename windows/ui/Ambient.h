@@ -11,6 +11,7 @@
 
 #include <chrono>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include <winrt/Microsoft.UI.Xaml.Media.Imaging.h>
@@ -46,7 +47,7 @@ namespace mdui
         bool m_animations{ true };
         bool m_flowing{ false };
         float m_seconds{ ambient::kStartSeconds };
-        std::chrono::steady_clock::time_point m_lastFrame{};
+        std::optional<winrt::Windows::Foundation::TimeSpan> m_lastFrame;   // RenderingTime of the last frame
         bool m_busy{ false };      // a render is in flight (never more than one)
         bool m_pending{ false };   // render again when it lands
         double m_scale{ 1.0 };

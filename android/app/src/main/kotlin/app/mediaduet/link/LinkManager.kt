@@ -33,7 +33,9 @@ import app.mediaduet.protocol.truncateCodePoints
 import app.mediaduet.protocol.optLong
 import app.mediaduet.protocol.optArray
 import app.mediaduet.protocol.optString
+import app.mediaduet.protocol.requireLong
 import app.mediaduet.protocol.requireString
+import app.mediaduet.remote.LyricsDelay
 import app.mediaduet.util.MdLog
 import app.mediaduet.util.MonoClock
 import kotlinx.coroutines.CancellationException
@@ -75,6 +77,8 @@ interface LinkHost {
     fun onArtworkNotFound(peerId: String, hash: String)
     fun onLyrics(peerId: String, lyrics: LyricsPush)
     fun onLyricsNone(peerId: String, trackId: String)
+    /** The peer's user changed the manual lyrics offset of player [appId] (`lyrics.offset`): store, never echo. */
+    fun onPeerLyricsOffset(peerId: String, appId: String, offsetMs: Int) = Unit
     fun onPolicyStatus(peerId: String, status: PolicyStatus)
     /** The PC's Bluetooth audio receiver changed (`audio.sink.state`). */
     fun onSinkState(peerId: String, state: SinkState) = Unit
@@ -592,6 +596,11 @@ class LinkManager(
             }
             MsgType.LYRICS_PUSH -> host.onLyrics(peerId, LyricsPush.parse(env.body))
             MsgType.LYRICS_NONE -> host.onLyricsNone(peerId, env.body.requireString("trackId", 64))
+            MsgType.LYRICS_OFFSET -> host.onPeerLyricsOffset(
+                peerId,
+                env.body.requireString("appId", StrLimit.APP_ID),
+                env.body.requireLong("offsetMs").coerceIn(LyricsDelay.MIN_OFFSET_MS.toLong(), LyricsDelay.MAX_OFFSET_MS.toLong()).toInt(),
+            )
             MsgType.POLICY_STATUS -> host.onPolicyStatus(peerId, PolicyStatus.parse(env.body))
             MsgType.AUDIO_SINK_STATE -> host.onSinkState(peerId, SinkState.parse(env.body))
             MsgType.MEDIA_QUEUE -> host.onPeerQueue(peerId, MediaQueue.parse(env.body))
@@ -736,6 +745,19 @@ class LinkManager(
         scope.launch(dispatcher) {
             sessions.values.filter { it.isConnected && Caps.POLICY_PEER in it.peerCaps }
                 .forEach { send(it, null, MsgType.POLICY_PEER, policy.toJson()) }
+        }
+    }
+
+    /** The user changed the manual lyrics offset of [appId]: tell every peer that announced `lyrics.offset`. */
+    fun broadcastLyricsOffset(appId: String, offsetMs: Int) {
+        if (appId.isEmpty()) return
+        val body = buildJsonObject {
+            put("appId", appId)
+            put("offsetMs", offsetMs.coerceIn(LyricsDelay.MIN_OFFSET_MS, LyricsDelay.MAX_OFFSET_MS))
+        }
+        scope.launch(dispatcher) {
+            sessions.values.filter { it.isConnected && Caps.LYRICS_OFFSET in it.peerCaps }
+                .forEach { send(it, null, MsgType.LYRICS_OFFSET, body) }
         }
     }
 

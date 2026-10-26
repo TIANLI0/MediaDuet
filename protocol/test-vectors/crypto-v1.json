@@ -19,7 +19,11 @@
     "sas": "410860",
     "pairing_key": "3631923bea09baaed93d7de2a615aaed90c32768fd925bfc629f895582434a64",
     "confirm_mac_client": "e9eaa478edc6b51ab2c9557e0fd1944a0fda3361e2f667c602ca8ccb603d6ee9",
-    "confirm_mac_server": "cc01529efbade8dd65be058e9758e4eb05e16e13f6a82695baefbb8e6c9cc5e7"
+    "confirm_mac_server": "cc01529efbade8dd65be058e9758e4eb05e16e13f6a82695baefbb8e6c9cc5e7",
+    "qr_token": "404142434445464748494a4b4c4d4e4f",
+    "qr_token_b64url": "QEFCQ0RFRkdISUpLTE1OTw",
+    "qr_confirm_mac_client": "575a26c283434aaf9d3c4bdac612709235eeca22d5055519329a28db2fb815d7",
+    "qr_confirm_mac_server": "d89b5a046f4e5b2b8e7aa1825e9fadf07ca84d043464ccbf4b3da4b5c0781366"
   },
   "session": {
     "pairing_key": "3631923bea09baaed93d7de2a615aaed90c32768fd925bfc629f895582434a64",

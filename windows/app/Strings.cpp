@@ -48,6 +48,7 @@ const std::map<std::string_view, Entry>& table() {
         {"overlay.earlier", {L"Lyrics earlier 0.1 s", L"歌词提前 0.1 秒"}},
         {"overlay.later", {L"Lyrics later 0.1 s", L"歌词延后 0.1 秒"}},
         {"overlay.resetOffset", {L"Reset lyrics offset (now %s)", L"重置歌词偏移（当前 %s）"}},
+        {"overlay.fontSize", {L"Text size (now %s)", L"字体大小（当前 %s）"}},
         {"overlay.previous", {L"Previous", L"上一首"}},
         {"overlay.playPause", {L"Play / Pause", L"播放 / 暂停"}},
         {"overlay.next", {L"Next", L"下一首"}},

@@ -51,6 +51,8 @@ namespace winrt::MediaDuetUI::implementation
         void UpdateHostBar();
         void UpdateDevices();
         void UpdateDiscovered();
+        void UpdateQr();
+        void ShowQr(bool show);
         void UpdateConnection();
         void UpdateArbitration();
         void UpdateLyricsPage();
@@ -85,6 +87,8 @@ namespace winrt::MediaDuetUI::implementation
         bool m_closed{ false };
         std::wstring m_page{ L"general" };
         bool m_discoveryHeld{ false };
+        bool m_qrShown{ false };      // this page asked the host for a pairing QR code
+        std::string m_qrPayload;      // the code drawn in QrPath
         // Stops the discovery spinner after a while: an indeterminate ProgressRing redraws at the
         // display refresh rate (~120 ms CPU/s measured on a 300 Hz display).
         Microsoft::UI::Dispatching::DispatcherQueueTimer m_spinnerTimer{ nullptr };

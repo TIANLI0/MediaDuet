@@ -238,6 +238,10 @@ namespace mdui
         std::string sas;
         std::string peerName;
         std::string error;
+        // QR pairing (pairing.qr): "" (no code), waiting, succeeded, expired.
+        std::string qrStatus;
+        std::string qrPayload;
+        std::string qrPeerName;
     };
 
     struct Discovered
