@@ -66,13 +66,6 @@ std::string base64Encode(ByteView data) {
     return out;
 }
 
-std::string base64UrlEncode(ByteView data) {
-    std::string out = base64Encode(data);
-    while (!out.empty() && out.back() == '=') out.pop_back();
-    for (char& c : out) c = c == '+' ? '-' : c == '/' ? '_' : c;
-    return out;
-}
-
 static int b64Val(char c) {
     if (c >= 'A' && c <= 'Z') return c - 'A';
     if (c >= 'a' && c <= 'z') return c - 'a' + 26;

@@ -87,6 +87,9 @@
     <string name="cdm_unsupported">此设备不支持配套设备功能。</string>
     <string name="cdm_associate">关联电脑</string>
     <string name="cdm_remove">移除</string>
+    <string name="cdm_bonded">已与这台手机蓝牙配对的电脑：</string>
+    <string name="cdm_associate_bonded">关联</string>
+    <string name="cdm_associate_scan">查找其他电脑</string>
     <string name="cdm_failed">关联失败：%1$s</string>
     <string name="cdm_no_presence">检测设备是否在附近需要 Android 12 或更高版本。</string>
     <string name="transports_header">传输通道</string>
@@ -155,6 +158,9 @@
     <string name="oem_pixel">Pixel / 原生 Android：电池设为“无限制”即可。</string>
 
     <string name="settings_title">设置</string>
+    <string name="tab_home">首页</string>
+    <string name="tab_devices">设备</string>
+    <string name="tab_settings">设置</string>
     <string name="settings_device_header">本机</string>
     <string name="settings_device_name">在电脑上显示的名称</string>
     <string name="settings_fgs">保持连接服务运行</string>
@@ -240,6 +246,7 @@
     <string name="source_title">播放来源</string>
     <string name="this_phone">手机</string>
     <string name="banner_access">媒体访问未开启，点按修复</string>
+    <string name="banner_pair">配对电脑或其他设备即可开始</string>
     <string name="summary_all_set">已就绪</string>
     <string name="summary_translations_on">显示翻译</string>
     <string name="summary_translations_off">不显示翻译</string>
@@ -387,6 +394,9 @@
     <string name="handoff_notification_title">在手机上继续播放</string>
     <string name="handoff_notification_text">轻触在%1$s中继续播放「%2$s」。</string>
     <string name="handoff_title">在另一台设备上继续</string>
+    <string name="home_needs_pc">连接电脑后可用</string>
+    <string name="handoff_needs_song">播放一首歌后，可以在另一台设备上接着听</string>
+    <string name="handoff_no_apps">另一台设备上没有可以接力的音乐 App</string>
     <string name="handoff_to_pc">在 %1$s 上继续</string>
     <string name="handoff_to_phone">在这台手机上继续</string>
     <string name="handoff_in_app">用%1$s，从当前进度接着播放</string>
@@ -481,26 +491,28 @@
     <string name="peer_state_idle">空闲</string>
     <string name="peer_none_connected">未连接其他安卓设备。</string>
     <string name="peer_policy_header_android">其他安卓设备</string>
-    <!-- QR pairing (§3.5) -->
-    <string name="qr_scan_title">扫描电脑上的二维码</string>
-    <string name="qr_scan_hint">在电脑上打开 MediaDuet 的“设置 › 设备与配对”（没有二维码时点“显示二维码”），再将相机对准二维码。</string>
-    <string name="qr_not_a_code">这不是 MediaDuet 配对码</string>
-    <string name="qr_camera_needed">MediaDuet 仅用相机读取电脑上的配对码，不会录制或保存任何画面。</string>
-    <string name="qr_camera_allow">允许使用相机</string>
-    <string name="qr_camera_denied">相机权限已关闭，请在系统设置中开启后再扫码。</string>
-    <string name="qr_camera_unavailable">相机不可用。</string>
-    <string name="qr_waiting">等待 %1$s 连接…</string>
-    <string name="qr_connecting">正在与 %1$s 配对…</string>
-    <string name="qr_not_found_hint">%1$s 还没有找到这部手机。请保持电脑上的 MediaDuet 打开，或在电脑上输入这部手机的地址（设备与配对 › 通过 IP 地址连接）：</string>
-    <string name="qr_no_address">这部手机当前不在电脑可以访问的网络上。请将两台设备连接到同一 Wi-Fi，或先在系统设置中通过蓝牙配对。</string>
-    <string name="qr_local_network_needed">请允许访问本地网络中的设备，电脑才能找到这部手机。</string>
-    <string name="qr_expired">二维码已过期，请在电脑上重新显示二维码后再扫。</string>
-    <string name="qr_scan_again">重新扫码</string>
-    <string name="qr_done">完成</string>
-    <string name="qr_torch">手电筒</string>
-    <string name="qr_close">关闭扫码</string>
-    <string name="qr_unnamed_pc">电脑</string>
-    <string name="banner_scan">扫码连接电脑</string>
-    <string name="conn_scan">扫码配对</string>
-    <string name="conn_scan_hint">扫描电脑上 MediaDuet 显示的二维码，无需核对配对码。</string>
+
+    <!-- 用手机解锁电脑 (docs/unlock.md) -->
+    <string name="channel_unlock">解锁电脑</string>
+    <string name="channel_unlock_desc">锁定的电脑请求你用指纹确认解锁。</string>
+    <string name="unlock_notification_title">解锁%1$s？</string>
+    <string name="unlock_notification_text">轻触并验证指纹，即可解锁%1$s。</string>
+    <string name="unlock_enroll_notification_title">用这台手机解锁%1$s？</string>
+    <string name="unlock_enroll_notification_text">轻触并验证指纹，允许这台手机解锁%1$s。</string>
+    <string name="unlock_prompt_title">解锁%1$s</string>
+    <string name="unlock_prompt_text">验证身份以解锁%1$s。</string>
+    <string name="unlock_enroll_prompt_title">用这台手机解锁%1$s</string>
+    <string name="unlock_enroll_prompt_text">验证身份后，即可用这台手机解锁%1$s。</string>
+    <string name="unlock_header">解锁电脑</string>
+    <string name="unlock_empty">要用这台手机解锁电脑，请在电脑上的 MediaDuet 设置中开启。</string>
+    <string name="unlock_last_used">上次解锁：%1$s</string>
+    <string name="unlock_never_used">尚未使用</string>
+    <string name="unlock_remove_title">不再解锁%1$s？</string>
+    <string name="unlock_remove_text">这台手机会删除密钥。若要再次用手机解锁这台电脑，需要在电脑上重新设置。</string>
+    <string name="unlock_fullscreen_title">在锁屏上弹出</string>
+    <string name="unlock_fullscreen_text">手机锁定或熄屏时，指纹验证会自动弹出。</string>
+    <string name="unlock_overlay_title">在其他应用上层弹出</string>
+    <string name="unlock_overlay_text">正在使用其他应用时，指纹验证也会立即弹出，而不只是一条通知。</string>
+    <string name="unlock_fullscreen_allow">允许</string>
+    <string name="unlock_no_screen_lock">请先在这台手机上设置锁屏密码和指纹。</string>
 </resources>

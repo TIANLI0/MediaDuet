@@ -190,17 +190,6 @@
                     <TextBlock x:Name="InlineVolumeText" Width="36" VerticalAlignment="Center" Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 </StackPanel>
-                <!-- The phone refused a volume change (Android background restriction): non-blocking hint. -->
-                <Grid x:Name="InlineVolumeHint" Margin="8,4,8,0" ColumnSpacing="6" HorizontalAlignment="Center" Visibility="Collapsed">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <FontIcon FontSize="12" Glyph="&#xE7BA;" VerticalAlignment="Top" Margin="0,2,0,0"
-                              Foreground="{ThemeResource SystemFillColorCautionBrush}" />
-                    <TextBlock x:Name="InlineVolumeHintText" Grid.Column="1" Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap"
-                               MaxLines="3" TextTrimming="CharacterEllipsis" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                </Grid>
             </StackPanel>
             </ScrollViewer>
 
@@ -291,8 +280,6 @@
                             </Flyout>
                         </Button.Flyout>
                     </Button>
-                    <TextBlock x:Name="LyricsSourceLabel" Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" TextWrapping="NoWrap"
-                               TextTrimming="CharacterEllipsis" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
                 </Grid>
             </Grid>
         </Grid>

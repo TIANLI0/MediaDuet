@@ -5,6 +5,7 @@
 #include "IpcServer.h"
 #include "ResumeButton.h"
 #include "TrayIcon.h"
+#include "UnlockHost.h"
 
 #include "Scheduler.h"
 #include "Stores.h"
@@ -108,8 +109,7 @@ private:
     void sendPolicyStatus();
 
     // pairing
-    // qrToken: an attempt of the QR pairing (no SAS dialog).
-    void startPairing(const std::string& kind, const std::string& target, Bytes qrToken = {});
+    void startPairing(const std::string& kind, const std::string& target);
     void pairingRespond(bool accept);
     void cancelPairing();
     void setPairing(std::string state, std::string error = {});
@@ -176,6 +176,7 @@ private:
     bool gated_ = false;
     std::unique_ptr<platform::LyricsService> lyrics_;
     std::unique_ptr<HandoffHost> handoff_;
+    std::unique_ptr<UnlockHost> unlock_;
     // Taskbar "continue on this PC" for the phone's song (handoff.taskbarResume).
     std::unique_ptr<ResumeButton> resume_;
     void updateResumeButton();
@@ -246,21 +247,7 @@ private:
         std::optional<link::LanEndpoint> lan;
         link::ConnectionPtr conn;
         uint64_t attempt = 0;
-        bool qr = false; // an attempt of the QR pairing below (not shown as a pairing dialog)
     } pairing_;
-    // QR pairing (spec §3.5): while the UI shows the code, every reachable phone is tried in turn.
-    struct QrPairing {
-        Bytes token;                            // the code's one-time secret; empty: no code shown
-        std::string payload;                    // mediaduet://pair?…
-        int64_t until = 0;                      // wall ms
-        std::string status;                     // waiting | succeeded | expired
-        std::string peerName;                   // succeeded: the phone
-        std::map<std::string, int64_t> triedAt; // candidate (kind:target) -> last attempt (mono ms)
-    } qr_;
-    ScopedTimer qrTimer_;
-    void startQrPairing();
-    void stopQrPairing(const std::string& status);
-    void qrTick();
     std::map<std::string, platform::BtCandidate> btCandidates_;
     bool discovering_ = false;
     bool standalone_ = false; // settings "mode" == "standalone": this PC only, no phone links

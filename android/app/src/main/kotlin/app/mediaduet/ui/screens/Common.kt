@@ -66,18 +66,19 @@ fun ScreenScaffold(
             .padding(horizontal = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Column(Modifier.widthIn(max = maxWidth).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-            Spacer(Modifier.height(12.dp))
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        // Compact title bar: the tab bar and mini player already take room at the bottom.
+        Column(Modifier.widthIn(max = maxWidth).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Spacer(Modifier.height(4.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 // Back button and title share one row; the subtitle runs full width beneath.
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (onBack != null && backdrop != null) {
-                        GlassIconButton(AppIcons.ChevronLeft, stringResource(R.string.back), onBack, backdrop, size = 48.dp, iconSize = 24.dp)
+                        GlassIconButton(AppIcons.ChevronLeft, stringResource(R.string.back), onBack, backdrop, size = 40.dp, iconSize = 22.dp)
                     }
                     Text(
                         title,
                         Modifier.weight(1f).padding(horizontal = 8.dp),
-                        style = MaterialTheme.typography.headlineLarge,
+                        style = MaterialTheme.typography.headlineMedium,
                         color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -110,7 +111,7 @@ fun ScreenScaffold(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Column(Modifier.widthIn(max = maxWidth).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                Spacer(Modifier.height(18.dp))
+                Spacer(Modifier.height(4.dp))
                 content()
                 // Never let content end behind the floating mini player + tab bar.
                 Spacer(Modifier.height(LocalBottomInset.current + 16.dp))

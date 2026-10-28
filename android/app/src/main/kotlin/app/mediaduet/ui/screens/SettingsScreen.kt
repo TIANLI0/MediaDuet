@@ -72,78 +72,124 @@ import app.mediaduet.ui.components.liquid.LiquidToggle
 import app.mediaduet.ui.theme.LocalGlass
 import kotlinx.coroutines.launch
 
-/** iOS-style grouped settings list; every row shows a live status summary. */
+/** Permission rows still missing (the Settings › Permissions summary; Home warns while > 0). */
 @Composable
-fun SettingsRoot(ui: UiContext, onBack: () -> Unit) {
-    val engine = ui.engine
-    val context = LocalContext.current
-    val link by engine.link.status.collectAsStateWithLifecycle()
-    val policy by engine.remote.policy.collectAsStateWithLifecycle()
-    val translations by engine.settings.showTranslations.collectAsStateWithLifecycle()
-    val audioOn by engine.settings.audioReceiveEnabled.collectAsStateWithLifecycle()
-    val audio by engine.audio.status.collectAsStateWithLifecycle()
-    val mode by engine.settings.mode.collectAsStateWithLifecycle()
-    val peerSettings by engine.settings.peerPolicy.collectAsStateWithLifecycle()
-    val linked = mode.linked
-    val current = link.current
-    val twoPane = LocalTwoPane.current
+private fun missingPermissions(ui: UiContext): Int {
     val p = ui.permissions
-    val missing = listOf(
+    return listOf(
         !p.listenerAccess,
         p.notificationsRequired && !p.notifications,
         p.bluetoothRequired && !p.bluetooth,
         p.localNetworkRequired && !p.localNetwork,
     ).count { it }
+}
 
-    ScreenScaffold(stringResource(R.string.settings_title), backdrop = ui.backdrop, onBack = onBack, maxWidth = if (twoPane) 480.dp else 640.dp) {
-        SectionHeader(stringResource(R.string.mode_header))
-        WorkModeCard(ui)
+/**
+ * The Home tab (where the app opens): the link to the PC and what this phone does with it.
+ * iOS-style grouped list; every row shows a live status summary.
+ */
+@Composable
+fun HomeRoot(ui: UiContext) {
+    val engine = ui.engine
+    val link by engine.link.status.collectAsStateWithLifecycle()
+    val policy by engine.remote.policy.collectAsStateWithLifecycle()
+    val audioOn by engine.settings.audioReceiveEnabled.collectAsStateWithLifecycle()
+    val audio by engine.audio.status.collectAsStateWithLifecycle()
+    val mode by engine.settings.mode.collectAsStateWithLifecycle()
+    val peerSettings by engine.settings.peerPolicy.collectAsStateWithLifecycle()
+    val unlockPcs by engine.unlock.store.pcs.collectAsStateWithLifecycle()
+    val linked = mode.linked
+    val current = link.current
+    val twoPane = LocalTwoPane.current
+    val missing = missingPermissions(ui)
+    val separator = stringResource(R.string.list_separator)
+
+    ScreenScaffold(stringResource(R.string.tab_home), maxWidth = if (twoPane) 480.dp else 640.dp) {
+        if (missing > 0) {
+            GlassCard(ui.backdrop, Modifier.fillMaxWidth(), contentPadding = PaddingValues(vertical = 4.dp)) {
+                NavRow(
+                    AppIcons.Shield, stringResource(R.string.permissions_title),
+                    pluralStringResource(R.plurals.summary_missing, missing, missing),
+                    attention = true,
+                ) { ui.openSettings(SettingsRoute.PERMISSIONS) }
+            }
+        }
+        if (!linked) {
+            // This phone only: nothing to link to; the work mode is the one thing to decide here.
+            SectionHeader(stringResource(R.string.mode_header))
+            WorkModeCard(ui)
+            return@ScreenScaffold
+        }
         GlassCard(ui.backdrop, Modifier.fillMaxWidth(), contentPadding = PaddingValues(vertical = 4.dp)) {
-            if (linked) NavRow(
+            NavRow(
                 AppIcons.Link, stringResource(R.string.connection_title),
                 current?.let { s ->
                     val primary = s.transports.firstOrNull { it.primary } ?: s.transports.firstOrNull()
-                    listOfNotNull(primary?.let { transportLabel(it.kind) }, s.peer.name).joinToString(stringResource(R.string.list_separator))
+                    listOfNotNull(primary?.let { transportLabel(it.kind) }, s.peer.name).joinToString(separator)
                 } ?: stringResource(R.string.conn_disconnected),
-                selected = twoPane && ui.nav.route == SettingsRoute.CONNECTION,
             ) { ui.openSettings(SettingsRoute.CONNECTION) }
-            if (linked) RowDivider()
+        }
+        // Where the sound goes and what plays: "Play on PC", handoff, the sources (as in the player's sheet).
+        SectionHeader(stringResource(R.string.source_title))
+        GlassCard(ui.backdrop, Modifier.fillMaxWidth()) {
+            SourceChoices(ui, showUnavailable = true) {}
+        }
+        GlassCard(ui.backdrop, Modifier.fillMaxWidth(), contentPadding = PaddingValues(vertical = 4.dp)) {
+            NavRow(
+                AppIcons.Tune, stringResource(R.string.settings_policy_header),
+                policy?.let { policyModeLabel(it.mode) } ?: peerModeLabel(peerSettings.mode),
+                selected = twoPane && ui.nav.route == SettingsRoute.ARBITRATION,
+            ) { ui.openSettings(SettingsRoute.ARBITRATION) }
+            RowDivider()
+            NavRow(
+                AppIcons.Speaker, stringResource(R.string.settings_audio_row),
+                stringResource(
+                    when {
+                        !audioOn -> R.string.summary_off
+                        audio.phase == AudioReceiver.Phase.STREAMING -> R.string.summary_streaming
+                        else -> R.string.summary_on
+                    },
+                ),
+                selected = twoPane && ui.nav.route == SettingsRoute.AUDIO,
+            ) { ui.openSettings(SettingsRoute.AUDIO) }
+            RowDivider()
+            NavRow(
+                AppIcons.Unlock, stringResource(R.string.unlock_header),
+                unlockPcs.takeIf { it.isNotEmpty() }?.joinToString(separator) { it.pcName } ?: stringResource(R.string.summary_off),
+                selected = twoPane && ui.nav.route == SettingsRoute.UNLOCK,
+            ) { ui.openSettings(SettingsRoute.UNLOCK) }
+        }
+    }
+}
+
+/** The Settings tab: how MediaDuet behaves on this phone. iOS-style grouped list with live summaries. */
+@Composable
+fun SettingsRoot(ui: UiContext) {
+    val engine = ui.engine
+    val context = LocalContext.current
+    val link by engine.link.status.collectAsStateWithLifecycle()
+    val translations by engine.settings.showTranslations.collectAsStateWithLifecycle()
+    val current = link.current
+    val twoPane = LocalTwoPane.current
+    val missing = missingPermissions(ui)
+
+    ScreenScaffold(stringResource(R.string.settings_title), maxWidth = if (twoPane) 480.dp else 640.dp) {
+        SectionHeader(stringResource(R.string.mode_header))
+        WorkModeCard(ui)
+        GlassCard(ui.backdrop, Modifier.fillMaxWidth(), contentPadding = PaddingValues(vertical = 4.dp)) {
             NavRow(
                 AppIcons.Shield, stringResource(R.string.permissions_title),
                 if (missing == 0) stringResource(R.string.summary_all_set) else pluralStringResource(R.plurals.summary_missing, missing, missing),
                 attention = missing > 0,
                 selected = twoPane && ui.nav.route == SettingsRoute.PERMISSIONS,
             ) { ui.openSettings(SettingsRoute.PERMISSIONS) }
-        }
-        GlassCard(ui.backdrop, Modifier.fillMaxWidth(), contentPadding = PaddingValues(vertical = 4.dp)) {
-            if (linked) {
-                NavRow(
-                    AppIcons.Tune, stringResource(R.string.settings_policy_header),
-                    policy?.let { policyModeLabel(it.mode) } ?: peerModeLabel(peerSettings.mode),
-                    selected = twoPane && ui.nav.route == SettingsRoute.ARBITRATION,
-                ) { ui.openSettings(SettingsRoute.ARBITRATION) }
-                RowDivider()
-            }
+            RowDivider()
             NavRow(
                 AppIcons.QuoteBubble, stringResource(R.string.settings_lyrics_header),
                 stringResource(if (translations) R.string.summary_translations_on else R.string.summary_translations_off),
                 selected = twoPane && ui.nav.route == SettingsRoute.LYRICS,
             ) { ui.openSettings(SettingsRoute.LYRICS) }
             RowDivider()
-            if (linked) {
-                NavRow(
-                    AppIcons.Speaker, stringResource(R.string.settings_audio_row),
-                    stringResource(
-                        when {
-                            !audioOn -> R.string.summary_off
-                            audio.phase == AudioReceiver.Phase.STREAMING -> R.string.summary_streaming
-                            else -> R.string.summary_on
-                        },
-                    ),
-                    selected = twoPane && ui.nav.route == SettingsRoute.AUDIO,
-                ) { ui.openSettings(SettingsRoute.AUDIO) }
-                RowDivider()
-            }
             NavRow(
                 AppIcons.Globe, stringResource(R.string.settings_language_header),
                 languageLabel(remember { AppLanguage.current(context) }),

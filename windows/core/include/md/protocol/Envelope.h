@@ -71,6 +71,11 @@ inline constexpr const char* HandoffStart = "handoff.start";
 inline constexpr const char* HandoffPlay = "handoff.play";
 inline constexpr const char* HandoffProgress = "handoff.progress";
 inline constexpr const char* HandoffResult = "handoff.result";
+inline constexpr const char* UnlockEnroll = "unlock.enroll";
+inline constexpr const char* UnlockRequest = "unlock.request";
+inline constexpr const char* UnlockCancel = "unlock.cancel";
+inline constexpr const char* UnlockResult = "unlock.result";
+inline constexpr const char* UnlockRevoke = "unlock.revoke";
 } // namespace types
 
 } // namespace md::proto

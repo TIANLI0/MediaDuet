@@ -73,14 +73,6 @@
   <data name="HdrPairNew.Text" xml:space="preserve"><value>配对新手机</value></data>
   <data name="PairHowTitle.Text" xml:space="preserve"><value>附近的手机</value></data>
   <data name="PairHowDesc.Text" xml:space="preserve"><value>在 Android 手机上打开 MediaDuet 并点按“与电脑配对”。已通过蓝牙配对或位于同一网络的手机会显示在这里。</value></data>
-  <data name="QrPairTitle.Text" xml:space="preserve"><value>扫码配对</value></data>
-  <data name="QrHideButton.Content" xml:space="preserve"><value>收起</value></data>
-  <data name="QrShowButton" xml:space="preserve"><value>显示二维码</value></data>
-  <data name="QrShowAgain" xml:space="preserve"><value>重新生成</value></data>
-  <data name="QrPairIdle" xml:space="preserve"><value>在手机上打开 MediaDuet，点“扫码连接电脑”扫描二维码，无需核对配对码。</value></data>
-  <data name="QrPairWaiting" xml:space="preserve"><value>用手机上的 MediaDuet 扫描这个二维码（5 分钟内有效）。手机需要和这台电脑在同一网络，或已通过蓝牙配对。</value></data>
-  <data name="QrPairSucceeded" xml:space="preserve"><value>已与 {0} 配对。</value></data>
-  <data name="QrPairExpired" xml:space="preserve"><value>二维码已失效，请重新生成。</value></data>
   <data name="Searching.Text" xml:space="preserve"><value>正在搜索…</value></data>
   <data name="DiscoveredEmptyText.Text" xml:space="preserve"><value>尚未发现手机。请确认蓝牙已开启且手机已在 Windows 设置中与此电脑配对，或者两台设备位于同一网络。</value></data>
   <data name="ManualTitle.Text" xml:space="preserve"><value>通过 IP 地址连接</value></data>
@@ -140,6 +132,12 @@
   <data name="PriorityAppInput.PlaceholderText" xml:space="preserve"><value>应用标识，例如 spotify.exe 或 com.netease.cloudmusic</value></data>
   <data name="HdrLyricsSources.Text" xml:space="preserve"><value>来源</value></data>
   <data name="SetOnlineLyricsTitle.Text" xml:space="preserve"><value>在线查找歌词</value></data>
+  <data name="SetLyricsCurrentTitle.Text" xml:space="preserve"><value>当前歌曲</value></data>
+  <data name="SetLyricsCurrentDesc.Text" xml:space="preserve"><value>正在显示的歌词来自哪里</value></data>
+  <data name="LyricsStatusNone" xml:space="preserve"><value>没有在播放</value></data>
+  <data name="LyricsStatusLoading" xml:space="preserve"><value>正在查找…</value></data>
+  <data name="LyricsStatusDisabled" xml:space="preserve"><value>在线歌词已关闭</value></data>
+  <data name="LyricsStatusNotFound" xml:space="preserve"><value>没有找到歌词</value></data>
   <data name="SetOnlineLyricsDesc.Text" xml:space="preserve"><value>从下方的来源搜索当前曲目的同步歌词。</value></data>
   <data name="PrivacyNoteProviders.Title" xml:space="preserve"><value>隐私</value></data>
   <data name="PrivacyNoteProviders.Message" xml:space="preserve"><value>只会向已启用的来源（网易云音乐、QQ 音乐、LRCLIB）发送当前曲目的标题、艺术家、专辑和时长，不会发送任何其他信息，也不需要账户。</value></data>
@@ -202,9 +200,6 @@
   <data name="WelcomeStandaloneDesc.Text" xml:space="preserve"><value>为此电脑上播放的内容提供播放器、歌词、桌面歌词和任务栏歌词。无需手机，不进行蓝牙或网络连接。</value></data>
   <data name="WelcomeFootnote.Text" xml:space="preserve"><value>之后可随时在“设置 &gt; 常规”中更改。</value></data>
   <data name="HdrArtwork.Text" xml:space="preserve"><value>封面</value></data>
-  <data name="HdrHandoff.Text" xml:space="preserve"><value>接力</value></data>
-  <data name="SetTaskbarResumeTitle.Text" xml:space="preserve"><value>在任务栏显示手机上的播放</value></data>
-  <data name="SetTaskbarResumeDesc.Text" xml:space="preserve"><value>手机用网易云音乐、QQ 音乐或 Spotify 播放，且这台电脑装有同一款应用时，任务栏会出现一个按钮，点击即在电脑上从相同进度继续播放。</value></data>
   <data name="SetArtworkOnlineTitle.Text" xml:space="preserve"><value>在线查找高清封面</value></data>
   <data name="SetArtworkOnlineDesc.Text" xml:space="preserve"><value>当播放器只提供小尺寸封面时，MediaDuet 会在网易云音乐、QQ 音乐或 iTunes 中查找这首歌（会发送歌名、歌手和专辑）。关闭后，之前找到的封面仍会使用。</value></data>
   <data name="HdrDeveloper.Text" xml:space="preserve"><value>开发者</value></data>
@@ -498,6 +493,36 @@
   <data name="TaskbarReason_taskbar_not_ready" xml:space="preserve"><value>正在等待任务栏（会自动重试）</value></data>
   <data name="TaskbarReason_no_taskbar" xml:space="preserve"><value>暂未找到任务栏（会自动重试）</value></data>
   <data name="TaskbarReason_unavailable" xml:space="preserve"><value>暂时不可用（会自动重试）</value></data>
+  <data name="UnlockHeader.Text" xml:space="preserve"><value>用手机解锁此电脑</value></data>
+  <data name="UnlockDescription.Text" xml:space="preserve"><value>在手机上通过生物识别或锁屏密码确认，即可在开机、重启后登录，或解锁此电脑。安装的系统服务会在登录前运行。需要已配对的手机及可用的网络或蓝牙连接。</value></data>
+  <data name="UnlockEnable" xml:space="preserve"><value>设置手机解锁</value></data>
+  <data name="UnlockSetupAgain" xml:space="preserve"><value>重新设置</value></data>
+  <data name="UnlockDisable.Content" xml:space="preserve"><value>移除</value></data>
+  <data name="UnlockRepair.Content" xml:space="preserve"><value>修复组件</value></data>
+  <data name="UnlockPassword" xml:space="preserve"><value>Windows 账户密码</value></data>
+  <data name="UnlockPasswordHint" xml:space="preserve"><value>请输入 Windows 账户密码（不是 Windows Hello PIN），在手机上确认登记后，允许安装登录组件与自动启动的系统服务。密码只保留在此电脑上。</value></data>
+  <data name="UnlockReady" xml:space="preserve"><value>已连接的手机支持解锁，可以开始设置。</value></data>
+  <data name="UnlockNoPhone" xml:space="preserve"><value>请连接已配对且支持手机解锁的手机以开始设置。</value></data>
+  <data name="UnlockStale" xml:space="preserve"><value>账户密码或手机密钥已更改，请重新设置手机解锁。</value></data>
+  <data name="UnlockComponentMissing" xml:space="preserve"><value>开机登录服务不可用或需要迁移登记信息。请点击“修复组件”以启用重启后登录。</value></data>
+  <data name="UnlockConnected" xml:space="preserve"><value>已启用 · {0} 已连接</value></data>
+  <data name="UnlockOffline" xml:space="preserve"><value>已启用 · 等待 {0} 连接</value></data>
+  <data name="UnlockLast" xml:space="preserve"><value>上次解锁：{0}</value></data>
+  <data name="UnlockSetup_verifying" xml:space="preserve"><value>正在验证 Windows 密码…</value></data>
+  <data name="UnlockSetup_installing" xml:space="preserve"><value>请允许安装 Windows 解锁组件…</value></data>
+  <data name="UnlockSetup_waiting_phone" xml:space="preserve"><value>请在手机上确认登记…</value></data>
+  <data name="UnlockErr_wrong_password" xml:space="preserve"><value>Windows 密码不正确，请使用账户密码而非 PIN。</value></data>
+  <data name="UnlockErr_no_phone" xml:space="preserve"><value>请连接支持手机解锁的手机。</value></data>
+  <data name="UnlockErr_elevation_cancelled" xml:space="preserve"><value>已取消组件安装。</value></data>
+  <data name="UnlockErr_component_failed" xml:space="preserve"><value>无法安装或保存解锁组件，请重试。</value></data>
+  <data name="UnlockErr_phone_denied" xml:space="preserve"><value>已在手机上取消登记。</value></data>
+  <data name="UnlockErr_phone_timeout" xml:space="preserve"><value>等待手机确认超时，请重试。</value></data>
+  <data name="UnlockErr_phone_no_auth" xml:space="preserve"><value>请先在手机上设置安全锁屏。</value></data>
+  <data name="UnlockErr_phone_failed" xml:space="preserve"><value>手机解锁设置失败，请检查手机后重试。</value></data>
+  <data name="UnlockErr_busy" xml:space="preserve"><value>另一项解锁操作正在进行，请稍后重试。</value></data>
+  <data name="HdrHandoff.Text" xml:space="preserve"><value>接力</value></data>
+  <data name="SetTaskbarResumeTitle.Text" xml:space="preserve"><value>在任务栏显示手机上的播放</value></data>
+  <data name="SetTaskbarResumeDesc.Text" xml:space="preserve"><value>手机用网易云音乐、QQ 音乐或 Spotify 播放，且这台电脑装有同一款应用时，任务栏会出现一个按钮，点击即在电脑上从相同进度继续播放。</value></data>
   <data name="SetTaskbarAlignTitle.Text" xml:space="preserve"><value>对齐方式</value></data>
   <data name="SetTaskbarAlignDesc.Text" xml:space="preserve"><value>组件贴靠所在空白区域的哪一侧，歌词也向这一侧对齐。打开或关闭应用时任务栏图标会增减：“靠左”“靠右”贴住区域稳定的一端（如屏幕边缘、小组件或通知区域），歌词位置不随图标数量移动；“自动”紧贴任务栏图标。</value></data>
   <data name="TaskbarAlignAuto.Content" xml:space="preserve"><value>自动（紧贴任务栏图标）</value></data>

@@ -56,7 +56,7 @@ sealed interface HandshakeResult {
 }
 
 /**
- * Server (S) side of the pairing (§3.3, QR pairing §3.5) and session (§4) handshakes for one connection.
+ * Server (S) side of the pairing (§3.3) and session (§4) handshakes for one connection.
  * Any violation sends the matching error / pair.result and closes the connection.
  */
 class ServerHandshake(
@@ -206,19 +206,15 @@ class ServerHandshake(
         val peer: DeviceInfo
         val epkC: ByteArray
         val nC: ByteArray
-        val qr: Boolean
         try {
             peer = DeviceInfo.parse(request.body.requireObject("device"))
             if (peer.id != request.src) throw BadMessageException("device.id != src")
             epkC = request.body.requireBase64("epk", 65)
             nC = request.body.requireBase64("nonce", 32)
-            qr = request.body.optBool("qr") == true
         } catch (e: BadMessageException) {
             throw Abort("bad pair.request: ${e.message}", ErrorCode.BAD_MESSAGE, request.id)
         }
         if (!pairing.isOpen()) throw Abort("pairing disabled", pairReason = "pairing_disabled")
-        // QR pairing (§3.5): only the PC whose code was scanned; its one-time secret T replaces the SAS.
-        val qrToken = if (qr) pairing.qrTokenFor(peer.id) ?: throw Abort("not armed for ${peer.id}", pairReason = "pairing_disabled") else null
         if (pairing.isBusy()) throw Abort("pairing busy", pairReason = "busy")
         val peerKey = try {
             P256.decodePublic(epkC)
@@ -233,10 +229,8 @@ class ServerHandshake(
         val th = KeySchedule.pairingTranscript(nC, nS, epkC, epkS, peer.id, me.id)
         val secrets = KeySchedule.pairing(z, th)
 
-        val attempt = (if (qrToken != null) pairing.beginQr(peer) else pairing.begin(peer, secrets.sas, conn.kind))
+        val attempt = pairing.begin(peer, secrets.sas, conn.kind)
             ?: throw Abort("pairing unavailable", pairReason = if (pairing.isOpen()) "busy" else "pairing_disabled")
-        val confirmC = qrToken?.let { KeySchedule.qrConfirmMac(it, "C", th) } ?: KeySchedule.confirmMac(secrets.pairingKey, "C", th)
-        val confirmS = qrToken?.let { KeySchedule.qrConfirmMac(it, "S", th) } ?: KeySchedule.confirmMac(secrets.pairingKey, "S", th)
         var success = false
         var failReason: String? = "aborted"
         try {
@@ -246,7 +240,7 @@ class ServerHandshake(
                 put("nonce", B64.encode(nS))
             }, request.id))
 
-            var localAccepted = qrToken != null // no SAS to compare
+            var localAccepted = false
             var peerConfirmed = false
             val deadline = started + pairingTimeoutMs
             while (!(localAccepted && peerConfirmed)) {
@@ -288,7 +282,7 @@ class ServerHandshake(
                                     failReason = "mac_mismatch"
                                     throw Abort("bad confirm", pairReason = "mac_mismatch")
                                 }
-                                if (!constantTimeEquals(mac, confirmC)) {
+                                if (!constantTimeEquals(mac, KeySchedule.confirmMac(secrets.pairingKey, "C", th))) {
                                     failReason = "mac_mismatch"
                                     throw Abort("confirm mac mismatch", pairReason = "mac_mismatch")
                                 }
@@ -313,7 +307,7 @@ class ServerHandshake(
             }
 
             conn.sendHandshake(envelope(conn, MsgType.PAIR_CONFIRM, buildJsonObject {
-                put("mac", B64.encode(confirmS))
+                put("mac", B64.encode(KeySchedule.confirmMac(secrets.pairingKey, "S", th)))
             }, null))
             val now = wallClock()
             trust.add(TrustedPeer(peer.id, peer.name, peer.platform, now, now, peer.app), secrets.pairingKey)
@@ -321,7 +315,7 @@ class ServerHandshake(
             conn.closeAfterFlush("paired")
             success = true
             failReason = null
-            MdLog.i(TAG, "paired with ${peer.name} (${peer.id})${if (qrToken != null) " by QR code" else ""}")
+            MdLog.i(TAG, "paired with ${peer.name} (${peer.id})")
             return HandshakeResult.Paired(peer)
         } catch (e: CancellationException) {
             failReason = "cancelled"

@@ -80,11 +80,14 @@ namespace mdui
         if (!m_thread.joinable()) return;
         SetEvent(m_stopEvent);
         m_thread.join();
+        std::lock_guard lock(m_mutex);
+        for (auto& message : m_queue) SecureZeroMemory(message.data(), message.size());
+        m_queue.clear();
     }
 
     bool PipeClient::Send(std::string line)
     {
-        if (!m_connected.load()) return false;
+        if (!m_connected.load()) { SecureZeroMemory(line.data(), line.size()); return false; }
         line.push_back('\n');
         {
             std::lock_guard lock(m_mutex);
@@ -126,6 +129,7 @@ namespace mdui
             backoff = kMinBackoffMs;
             {
                 std::lock_guard lock(m_mutex);
+                for (auto& message : m_queue) SecureZeroMemory(message.data(), message.size());
                 m_queue.clear();
             }
             m_connected = true;
@@ -204,8 +208,12 @@ namespace mdui
                     std::lock_guard lock(m_mutex);
                     batch.swap(m_queue);
                 }
-                for (auto const& msg : batch)
-                    if (!WriteAll(pipe, msg, false)) break;
+                for (auto& msg : batch) {
+                    bool ok = WriteAll(pipe, msg, false);
+                    SecureZeroMemory(msg.data(), msg.size());
+                    if (!ok) break;
+                }
+                for (auto& msg : batch) SecureZeroMemory(msg.data(), msg.size());
                 break;
             }
             if (r == WAIT_OBJECT_0 + 1)
@@ -238,14 +246,17 @@ namespace mdui
                     std::lock_guard lock(m_mutex);
                     batch.swap(m_queue);
                 }
-                for (auto const& msg : batch)
+                for (auto& msg : batch)
                 {
-                    if (!WriteAll(pipe, msg, true))
+                    bool ok = WriteAll(pipe, msg, true);
+                    SecureZeroMemory(msg.data(), msg.size());
+                    if (!ok)
                     {
                         alive = false;
                         break;
                     }
                 }
+                for (auto& msg : batch) SecureZeroMemory(msg.data(), msg.size());
             }
             else
             {

@@ -14,7 +14,7 @@
 #>
 param(
     [ValidateSet('x64', 'ARM64')] [string]$Arch = 'x64',
-    [string]$Version = '1.9.0',
+    [string]$Version = '1.10.0',
     [switch]$SkipTests
 )
 $ErrorActionPreference = 'Stop'
@@ -39,12 +39,14 @@ if ($LASTEXITCODE) { throw 'CMake configure failed' }
 cmake --build $build
 if ($LASTEXITCODE) { throw 'Host build failed' }
 if (-not $SkipTests) {
-    & (Join-Path $build 'md_tests.exe')
+    ctest --test-dir $build --output-on-failure
     if ($LASTEXITCODE) { throw 'Unit tests failed' }
 }
 
 $uiProj = Join-Path $win 'ui\MediaDuetUI.vcxproj'
-msbuild $uiProj -restore -m -p:Configuration=Release -p:Platform=$Arch -v:minimal
+# A clean rebuild: an incremental build once kept objects compiled against an older Model.h,
+# and the mixed struct layouts crashed the settings page.
+msbuild $uiProj -restore -t:Rebuild -m -p:Configuration=Release -p:Platform=$Arch -v:minimal
 if ($LASTEXITCODE) { throw 'WinUI build failed' }
 $uiExe = Get-ChildItem (Join-Path $win 'ui') -Recurse -Filter MediaDuetUI.exe |
     Where-Object { $_.FullName -match "\\$Arch\\Release\\" -and $_.FullName -notmatch '\\obj\\' } |
@@ -52,11 +54,16 @@ $uiExe = Get-ChildItem (Join-Path $win 'ui') -Recurse -Filter MediaDuetUI.exe |
 if (-not $uiExe) { throw 'MediaDuetUI.exe not found after build' }
 
 $dist = Join-Path $root "dist\MediaDuet-$Version-win-$Arch"
+$dist = [IO.Path]::GetFullPath($dist)
+$distRoot = [IO.Path]::GetFullPath((Join-Path $root 'dist')) + [IO.Path]::DirectorySeparatorChar
+if (-not $dist.StartsWith($distRoot, [StringComparison]::OrdinalIgnoreCase)) { throw 'Staging path is outside dist' }
 if (Test-Path $dist) { Remove-Item $dist -Recurse -Force }
 New-Item -ItemType Directory -Force $dist | Out-Null
 # UI first (it brings the self-contained Windows App SDK runtime), then the host.
 Copy-Item (Join-Path $uiExe.DirectoryName '*') $dist -Recurse -Force
 Copy-Item (Join-Path $build 'MediaDuet.exe') $dist
+Copy-Item (Join-Path $build 'MediaDuetUnlock.dll') $dist
+Copy-Item (Join-Path $build 'MediaDuetUnlockService.exe') $dist
 Copy-Item (Join-Path $win 'app\resources\app_512.png') (Join-Path $dist 'MediaDuet.png')
 Copy-Item (Join-Path $root 'LICENSE') $dist
 Copy-Item (Join-Path $root 'README.md') $dist

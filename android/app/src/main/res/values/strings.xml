@@ -97,6 +97,9 @@
     <string name="cdm_unsupported">This device does not support companion device setup.</string>
     <string name="cdm_associate">Associate PC</string>
     <string name="cdm_remove">Remove</string>
+    <string name="cdm_bonded">PCs paired with this phone over Bluetooth:</string>
+    <string name="cdm_associate_bonded">Associate</string>
+    <string name="cdm_associate_scan">Find another PC</string>
     <string name="cdm_failed">Association failed: %1$s</string>
     <string name="cdm_no_presence">Presence detection requires Android 12 or newer.</string>
     <string name="transports_header">Transports</string>
@@ -168,6 +171,9 @@
 
     <!-- Settings -->
     <string name="settings_title">Settings</string>
+    <string name="tab_home">Home</string>
+    <string name="tab_devices">Devices</string>
+    <string name="tab_settings">Settings</string>
     <string name="settings_device_header">This device</string>
     <string name="settings_device_name">Name shown on the PC</string>
     <string name="settings_fgs">Keep connection service running</string>
@@ -264,6 +270,7 @@
     <string name="source_title">Playing on</string>
     <string name="this_phone">This phone</string>
     <string name="banner_access">Media access is off — tap to fix</string>
+    <string name="banner_pair">Pair a PC or another device to get started</string>
     <string name="summary_all_set">All set</string>
     <string name="summary_translations_on">Translations on</string>
     <string name="summary_translations_off">Translations off</string>
@@ -416,6 +423,9 @@
     <string name="handoff_notification_title">Continue on this phone</string>
     <string name="handoff_notification_text">Tap to continue “%2$s” in %1$s.</string>
     <string name="handoff_title">Continue on another device</string>
+    <string name="home_needs_pc">Available while your PC is connected</string>
+    <string name="handoff_needs_song">Play a song, then continue it on the other device</string>
+    <string name="handoff_no_apps">The other device has no music app that can take over the song</string>
     <string name="handoff_to_pc">Continue on %1$s</string>
     <string name="handoff_to_phone">Continue on this phone</string>
     <string name="handoff_in_app">In %1$s, from where you are</string>
@@ -510,26 +520,28 @@
     <string name="peer_state_idle">Idle</string>
     <string name="peer_none_connected">No other Android device is connected.</string>
     <string name="peer_policy_header_android">Other Android devices</string>
-    <!-- QR pairing (§3.5) -->
-    <string name="qr_scan_title">Scan the PC’s code</string>
-    <string name="qr_scan_hint">On the PC, open MediaDuet’s Settings › Devices &amp; pairing (click Show QR code if no code is shown) and point the camera at the code.</string>
-    <string name="qr_not_a_code">This is not a MediaDuet pairing code</string>
-    <string name="qr_camera_needed">MediaDuet uses the camera only to read the PC’s pairing code. Nothing is recorded or saved.</string>
-    <string name="qr_camera_allow">Allow camera</string>
-    <string name="qr_camera_denied">Camera access is turned off. Turn it on in the system settings to scan.</string>
-    <string name="qr_camera_unavailable">The camera is not available.</string>
-    <string name="qr_waiting">Waiting for %1$s to connect…</string>
-    <string name="qr_connecting">Pairing with %1$s…</string>
-    <string name="qr_not_found_hint">%1$s has not found this phone yet. Keep MediaDuet open on the PC, or enter this phone’s address there (Devices &amp; pairing › Connect by IP address):</string>
-    <string name="qr_no_address">This phone is not on a network the PC can reach. Connect both to the same Wi-Fi, or pair them over Bluetooth in the system settings.</string>
-    <string name="qr_local_network_needed">Allow access to devices on the local network so the PC can find this phone.</string>
-    <string name="qr_expired">The code has expired. Show a new one on the PC and scan again.</string>
-    <string name="qr_scan_again">Scan again</string>
-    <string name="qr_done">Done</string>
-    <string name="qr_torch">Flashlight</string>
-    <string name="qr_close">Close the scanner</string>
-    <string name="qr_unnamed_pc">the PC</string>
-    <string name="banner_scan">Scan to link a PC</string>
-    <string name="conn_scan">Scan to pair</string>
-    <string name="conn_scan_hint">Scan the code MediaDuet shows on the PC. There is no pairing code to compare.</string>
+
+    <!-- Unlocking the PC with this phone (docs/unlock.md) -->
+    <string name="channel_unlock">Unlock PC</string>
+    <string name="channel_unlock_desc">A locked PC asks you to confirm with your fingerprint.</string>
+    <string name="unlock_notification_title">Unlock %1$s?</string>
+    <string name="unlock_notification_text">Tap and confirm with your fingerprint to unlock %1$s.</string>
+    <string name="unlock_enroll_notification_title">Unlock %1$s with this phone?</string>
+    <string name="unlock_enroll_notification_text">Tap and confirm with your fingerprint to let this phone unlock %1$s.</string>
+    <string name="unlock_prompt_title">Unlock %1$s</string>
+    <string name="unlock_prompt_text">Confirm it’s you to unlock %1$s.</string>
+    <string name="unlock_enroll_prompt_title">Unlock %1$s with this phone</string>
+    <string name="unlock_enroll_prompt_text">Confirm it’s you. From then on, %1$s can be unlocked from this phone.</string>
+    <string name="unlock_header">Unlock PCs</string>
+    <string name="unlock_empty">To unlock a PC with this phone, turn it on in MediaDuet on the PC (Settings).</string>
+    <string name="unlock_last_used">Last unlocked %1$s</string>
+    <string name="unlock_never_used">Not used yet</string>
+    <string name="unlock_remove_title">Stop unlocking %1$s?</string>
+    <string name="unlock_remove_text">This phone forgets the key. To unlock that PC with the phone again, set it up again on the PC.</string>
+    <string name="unlock_fullscreen_title">Show on the lock screen</string>
+    <string name="unlock_fullscreen_text">Lets the fingerprint prompt come up by itself when this phone is locked or its screen is off.</string>
+    <string name="unlock_overlay_title">Pop up over other apps</string>
+    <string name="unlock_overlay_text">Lets the fingerprint prompt come up at once while you use another app, not just as a notification.</string>
+    <string name="unlock_fullscreen_allow">Allow</string>
+    <string name="unlock_no_screen_lock">Set up a screen lock and a fingerprint on this phone first.</string>
 </resources>

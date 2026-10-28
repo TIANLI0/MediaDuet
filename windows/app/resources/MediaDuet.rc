@@ -8,8 +8,8 @@ IDI_TRAY_OFF ICON "tray_off.ico"
 1 RT_MANIFEST "MediaDuet.manifest"
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,9,0,0
- PRODUCTVERSION 1,9,0,0
+ FILEVERSION 1,10,0,0
+ PRODUCTVERSION 1,10,0,0
  FILEFLAGSMASK 0x3fL
  FILEOS 0x40004L
  FILETYPE 0x1L
@@ -20,12 +20,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "tianli"
             VALUE "FileDescription", "MediaDuet"
-            VALUE "FileVersion", "1.9.0"
+            VALUE "FileVersion", "1.10.0"
             VALUE "InternalName", "MediaDuet"
             VALUE "LegalCopyright", "Copyright (c) 2026 tianli. MIT License."
             VALUE "OriginalFilename", "MediaDuet.exe"
             VALUE "ProductName", "MediaDuet"
-            VALUE "ProductVersion", "1.9.0"
+            VALUE "ProductVersion", "1.10.0"
         END
     END
     BLOCK "VarFileInfo"

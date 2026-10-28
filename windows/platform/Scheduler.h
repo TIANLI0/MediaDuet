@@ -25,6 +25,9 @@ public:
     void cancel(TimerId id) override;
 
     DWORD threadId() const { return thread_; }
+    // Owner thread only; used after service workers have stopped, before tearing
+    // down the message window, to release queued transport/connection callbacks.
+    void flushPosted();
 
 private:
     static LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);

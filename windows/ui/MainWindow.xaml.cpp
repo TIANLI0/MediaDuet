@@ -1402,15 +1402,7 @@ namespace winrt::MediaDuetUI::implementation
                 m_lyricsView.Build(lyrics, m_translationOn);   // fades the new lines in one by one
                 UpdateLyricsPosition(QpcNowMs(), true);
             }
-            // Outside the rebuild: the same lyrics may arrive again from another source.
-            // Only names the UI knows (docs/ipc.md): never an internal value such as "cache".
-            std::wstring source;
-            if (lyrics.source == "lrclib" || lyrics.source == "netease" || lyrics.source == "qqmusic")
-                source = Str(L"Provider_" + Widen(lyrics.source));
-            else if (lyrics.source == "local") source = Str(L"LyricsSourceLocal");
-            else if (lyrics.source == "cache") source = Str(L"LyricsSourceCache");
-            else if (lyrics.source == "remote") source = Str(L"LyricsSourcePhone");
-            LyricsSourceLabel().Text(source.empty() ? std::wstring{} : StrF(L"LyricsSource", { source }));
+            // (Where the lyrics come from is shown in Settings > Lyrics, not in the player.)
             SetLyricsLayout(true, true);
         }
         else if (m_lyricsShown && !m_lyricsIdentity.empty() && pending && !m_holdExpired)
@@ -1690,15 +1682,10 @@ namespace winrt::MediaDuetUI::implementation
         InlineVolume().Visibility(inlineShown ? Visibility::Visible : Visibility::Collapsed);
         if (inlineShown) ApplyVolume(m_inlineVolume, focused);
 
-        // The phone blocked a volume change while MediaDuet is in the background there.
+        // The phone blocked a volume change while MediaDuet is in the background there: said in the
+        // volume flyout only (a hint in the player would move its layout).
         bool restricted = connected && c.RemoteVolumeRestricted();
-        if (restricted)
-        {
-            auto hint = Str(L"VolumeBackgroundRestricted");
-            InlineVolumeHintText().Text(hint);
-            RemoteVolumeHintText().Text(hint);
-        }
-        InlineVolumeHint().Visibility(restricted && inlineShown && side == Side::Remote ? Visibility::Visible : Visibility::Collapsed);
+        if (restricted) RemoteVolumeHintText().Text(Str(L"VolumeBackgroundRestricted"));
         RemoteVolumeHint().Visibility(restricted ? Visibility::Visible : Visibility::Collapsed);
 
         LocalVolumeRow().Visibility(connected && local.available ? Visibility::Visible : Visibility::Collapsed);

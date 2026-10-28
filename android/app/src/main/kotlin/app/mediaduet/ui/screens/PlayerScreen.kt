@@ -1125,11 +1125,10 @@ private fun StatusPill(ui: UiContext, view: PlayerView?, backdrop: Backdrop, red
         val local = app.mediaduet.BuildConfig.VERSION_NAME
         c.takeIf { VersionCompat.compare(local, it.peer.app) == VersionCompat.Level.MISMATCH && dismissed != "$local|${it.peer.app}" }
     }
-    // A null route: the pill opens the QR scanner (nothing paired yet, §3.5).
-    val issue: Pair<String, SettingsRoute?>? = when {
+    val issue: Pair<String, SettingsRoute>? = when {
         !ui.permissions.listenerAccess -> stringResource(R.string.banner_access) to SettingsRoute.PERMISSIONS
         !mode.linked -> null
-        peers.isEmpty() -> stringResource(R.string.banner_scan) to null
+        peers.isEmpty() -> stringResource(R.string.banner_pair) to SettingsRoute.CONNECTION
         current == null || view?.fallback == true -> stringResource(R.string.pill_pc_disconnected) to SettingsRoute.CONNECTION
         versionWarning != null -> stringResource(R.string.version_pill, versionWarning.peer.name) to SettingsRoute.CONNECTION
         else -> null
@@ -1150,18 +1149,12 @@ private fun StatusPill(ui: UiContext, view: PlayerView?, backdrop: Backdrop, red
             Modifier
                 .liquidGlass(backdrop, press, glass.bar, glass.isDark)
                 .then(press.modifier)
-                .clickable(interactionSource = null, indication = null, role = Role.Button) {
-                    if (route == null) ui.openScanner() else ui.openSettings(route)
-                }
+                .clickable(interactionSource = null, indication = null, role = Role.Button) { ui.openSettings(route) }
                 .heightIn(min = 40.dp)
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (route == null) {
-                Icon(AppIcons.QrCode, null, Modifier.size(18.dp), tint = glass.accent)
-            } else {
-                Box(Modifier.size(8.dp).background(glass.warn, RoundedCornerShape(50)))
-            }
+            Box(Modifier.size(8.dp).background(glass.warn, RoundedCornerShape(50)))
             Spacer(Modifier.width(10.dp))
             Text(text, style = MaterialTheme.typography.labelLarge, maxLines = 2)
             Icon(AppIcons.ChevronRight, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1664,23 +1657,12 @@ private fun VolumeSlider(
 }
 
 
-/** Control-target switcher: Automatic, this phone's sessions and the PC's sessions. */
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+/** Control-target switcher (the player's sheet): [SourceChoices] on strong glass. */
 @Composable
 private fun TargetSheet(ui: UiContext) {
-    val engine = ui.engine
     val open = ui.nav.sheetOpen
-    val remote by engine.remote.state.collectAsStateWithLifecycle()
-    val local by engine.localStates.collectAsStateWithLifecycle()
-    val choice by engine.settings.target.collectAsStateWithLifecycle()
-    val resolved by engine.target.collectAsStateWithLifecycle()
-    val link by engine.link.status.collectAsStateWithLifecycle()
-    val policy by engine.remote.policy.collectAsStateWithLifecycle()
-    val sink by engine.remote.sink.collectAsStateWithLifecycle()
-    val mode by engine.settings.mode.collectAsStateWithLifecycle()
     val reduced = rememberReducedMotion()
     val glass = LocalGlass.current
-    val haptics = LocalHapticFeedback.current
     val close = { ui.setNav(ui.nav.copy(sheetOpen = false)) }
     AnimatedVisibility(open, enter = fadeIn(if (reduced) snap() else tween(200)), exit = fadeOut(if (reduced) snap() else tween(200))) {
         Box(
@@ -1708,89 +1690,122 @@ private fun TargetSheet(ui: UiContext) {
             ) {
                 Text(stringResource(R.string.source_title), style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(8.dp))
-                // Sound output first: one switch sends this phone's audio to the PC's speakers.
-                if (mode.linked && link.current != null && remote?.connected == true) {
-                    sink?.let { PcSpeakerRow(ui, it, link.current?.peer?.name ?: stringResource(R.string.pc_generic)) }
-                    // Handoff is coordinated by a PC (§8.7).
-                    if (link.current?.peer?.platform == LinkStatus.PLATFORM_WINDOWS) HandoffRows(ui, close)
-                }
-                fun pick(c: TargetChoice) {
-                    haptics.performHapticFeedback(HapticFeedbackType.Confirm)
-                    engine.settings.setTarget(c)
-                    close()
-                }
-                SourceRow(AppIcons.Auto, stringResource(R.string.target_auto), stringResource(R.string.target_auto_text), selected = choice.side == null) {
-                    pick(TargetChoice.AUTO)
-                }
+                SourceChoices(ui, close = close)
+            }
+        }
+    }
+}
 
-                SheetDivider()
-                SheetHeader(stringResource(R.string.this_phone))
-                if (local.isEmpty()) {
-                    SheetNote(stringResource(R.string.phone_empty))
-                } else {
-                    val phoneActive = SnapshotBuilder.pickActive(local)?.key
-                    for (s in local) {
-                        SourceRow(
-                            AppIcons.Phone,
-                            s.appName,
-                            listOf(s.title, statusLabel(s.status)).filter { it.isNotEmpty() }.joinToString(stringResource(R.string.list_separator)),
-                            selected = choice.side == Side.PHONE && resolved?.side == Side.PHONE && resolved?.key == s.key,
-                        ) { pick(TargetChoice(Side.PHONE, if (s.key == phoneActive) null else s.key)) }
-                    }
-                }
+/**
+ * Where the sound goes and what the player controls: "Play on PC" (this phone's audio on the PC's
+ * speakers), handoff of the current song to the other device, then Automatic, this phone's sessions
+ * and the PC's sessions. The player's sheet and the Home tab show the same list; [close] runs after a
+ * choice (closes the sheet). With [showUnavailable] (Home) "Play on PC" and handoff stay listed while
+ * they cannot be used, saying why, instead of disappearing.
+ */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+internal fun SourceChoices(ui: UiContext, showUnavailable: Boolean = false, close: () -> Unit) {
+    val engine = ui.engine
+    val remote by engine.remote.state.collectAsStateWithLifecycle()
+    val local by engine.localStates.collectAsStateWithLifecycle()
+    val choice by engine.settings.target.collectAsStateWithLifecycle()
+    val resolved by engine.target.collectAsStateWithLifecycle()
+    val link by engine.link.status.collectAsStateWithLifecycle()
+    val policy by engine.remote.policy.collectAsStateWithLifecycle()
+    val sink by engine.remote.sink.collectAsStateWithLifecycle()
+    val mode by engine.settings.mode.collectAsStateWithLifecycle()
+    val haptics = LocalHapticFeedback.current
+    // Sound output first: one switch sends this phone's audio to the PC's speakers.
+    if (mode.linked && link.current != null && remote?.connected == true) {
+        sink?.let { PcSpeakerRow(ui, it, link.current?.peer?.name ?: stringResource(R.string.pc_generic)) }
+        // Handoff is coordinated by a PC (§8.7).
+        if (link.current?.peer?.platform == LinkStatus.PLATFORM_WINDOWS) HandoffRows(ui, showUnavailable, close)
+    } else if (showUnavailable && mode.linked) {
+        // Both need the PC: listed with the way to connect it.
+        val needsPc = stringResource(R.string.home_needs_pc)
+        SourceRow(AppIcons.Speaker, stringResource(R.string.pc_speaker_title), needsPc, selected = false, chevron = true, enabled = false) {
+            ui.openSettings(SettingsRoute.CONNECTION)
+        }
+        SourceRow(AppIcons.Computer, stringResource(R.string.handoff_title), needsPc, selected = false, chevron = true, enabled = false) {
+            ui.openSettings(SettingsRoute.CONNECTION)
+        }
+        SheetDivider()
+    }
+    fun pick(c: TargetChoice) {
+        haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+        engine.settings.setTarget(c)
+        close()
+    }
+    SourceRow(AppIcons.Auto, stringResource(R.string.target_auto), stringResource(R.string.target_auto_text), selected = choice.side == null) {
+        pick(TargetChoice.AUTO)
+    }
 
-                if (mode.linked) {
-                    SheetDivider()
-                    val connected = link.current != null && remote?.connected == true
-                    SheetHeader(link.current?.peer?.name ?: stringResource(R.string.pc_generic))
-                    // Several devices connected: the player shows one of them at a time.
-                    val devices = link.connectedSessions
-                    if (devices.size > 1) {
-                        FlowRow(
-                            Modifier.padding(vertical = 4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            for (d in devices) {
-                                GlassButton(
-                                    {
-                                        haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
-                                        engine.focusPeer(d.peer.id)
-                                    },
-                                    ui.backdrop,
-                                    height = 36.dp,
-                                    selected = d.sid == link.current?.sid,
-                                ) {
-                                    Icon(platformIcon(d.peer.platform), null, Modifier.size(18.dp))
-                                    Text(d.peer.name, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                }
-                            }
-                        }
-                    }
-                    val st = remote
-                    when {
-                        !connected -> SourceRow(
-                            AppIcons.Link, stringResource(R.string.pill_pc_disconnected), stringResource(R.string.sheet_pc_disconnected_text),
-                            selected = false, chevron = true,
-                        ) {
-                            close()
-                            ui.openSettings(SettingsRoute.CONNECTION)
-                        }
-                        st == null || st.snapshot.sessions.isEmpty() -> SheetNote(stringResource(R.string.empty_no_media))
-                        else -> for (s in st.snapshot.sessions) {
-                            SourceRow(
-                                platformIcon(link.current?.peer?.platform.orEmpty()),
-                                s.appName.ifEmpty { s.appId },
-                                listOf(s.title, statusLabel(s.status)).filter { it.isNotEmpty() }.joinToString(stringResource(R.string.list_separator)),
-                                selected = choice.side == Side.PC && resolved?.side == Side.PC && resolved?.key == s.key,
-                            ) { pick(TargetChoice(Side.PC, if (s.key == st.snapshot.active) null else s.key)) }
-                        }
-                    }
-                    policy?.takeIf { connected }?.let { pol ->
-                        SheetNote(stringResource(R.string.settings_policy_current, policyModeLabel(pol.mode)))
+    SheetDivider()
+    SheetHeader(stringResource(R.string.this_phone))
+    if (local.isEmpty()) {
+        SheetNote(stringResource(R.string.phone_empty))
+    } else {
+        val phoneActive = SnapshotBuilder.pickActive(local)?.key
+        for (s in local) {
+            SourceRow(
+                AppIcons.Phone,
+                s.appName,
+                listOf(s.title, statusLabel(s.status)).filter { it.isNotEmpty() }.joinToString(stringResource(R.string.list_separator)),
+                selected = choice.side == Side.PHONE && resolved?.side == Side.PHONE && resolved?.key == s.key,
+            ) { pick(TargetChoice(Side.PHONE, if (s.key == phoneActive) null else s.key)) }
+        }
+    }
+
+    if (mode.linked) {
+        SheetDivider()
+        val connected = link.current != null && remote?.connected == true
+        SheetHeader(link.current?.peer?.name ?: stringResource(R.string.pc_generic))
+        // Several devices connected: the player shows one of them at a time.
+        val devices = link.connectedSessions
+        if (devices.size > 1) {
+            FlowRow(
+                Modifier.padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                for (d in devices) {
+                    GlassButton(
+                        {
+                            haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
+                            engine.focusPeer(d.peer.id)
+                        },
+                        ui.backdrop,
+                        height = 36.dp,
+                        selected = d.sid == link.current?.sid,
+                    ) {
+                        Icon(platformIcon(d.peer.platform), null, Modifier.size(18.dp))
+                        Text(d.peer.name, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }
+        }
+        val st = remote
+        when {
+            !connected -> SourceRow(
+                AppIcons.Link, stringResource(R.string.pill_pc_disconnected), stringResource(R.string.sheet_pc_disconnected_text),
+                selected = false, chevron = true,
+            ) {
+                close()
+                ui.openSettings(SettingsRoute.CONNECTION)
+            }
+            st == null || st.snapshot.sessions.isEmpty() -> SheetNote(stringResource(R.string.empty_no_media))
+            else -> for (s in st.snapshot.sessions) {
+                SourceRow(
+                    platformIcon(link.current?.peer?.platform.orEmpty()),
+                    s.appName.ifEmpty { s.appId },
+                    listOf(s.title, statusLabel(s.status)).filter { it.isNotEmpty() }.joinToString(stringResource(R.string.list_separator)),
+                    selected = choice.side == Side.PC && resolved?.side == Side.PC && resolved?.key == s.key,
+                ) { pick(TargetChoice(Side.PC, if (s.key == st.snapshot.active) null else s.key)) }
+            }
+        }
+        policy?.takeIf { connected }?.let { pol ->
+            SheetNote(stringResource(R.string.settings_policy_current, policyModeLabel(pol.mode)))
         }
     }
 }
@@ -1837,7 +1852,7 @@ private fun PcSpeakerRow(ui: UiContext, sink: SinkState, pcName: String) {
  * (a toast then says where, or why not). Shown only when the other side has a music app for it.
  */
 @Composable
-private fun HandoffRows(ui: UiContext, close: () -> Unit) {
+private fun HandoffRows(ui: UiContext, showUnavailable: Boolean, close: () -> Unit) {
     val engine = ui.engine
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
@@ -1848,17 +1863,24 @@ private fun HandoffRows(ui: UiContext, close: () -> Unit) {
     val pcApps by engine.pcHandoffApps.collectAsStateWithLifecycle()
     val phoneApps by engine.phoneHandoffApps.collectAsStateWithLifecycle()
     val busy by engine.handoffBusy.collectAsStateWithLifecycle()
-    val t = resolved ?: return
     if (Caps.HANDOFF !in link.current?.peerCaps.orEmpty()) return
+    // Home keeps the entry with the reason it cannot be used right now.
+    val unavailable: @Composable (Int) -> Unit = { reason ->
+        if (showUnavailable) {
+            SourceRow(AppIcons.Computer, stringResource(R.string.handoff_title), stringResource(reason), selected = false, enabled = false) {}
+            SheetDivider()
+        }
+    }
+    val t = resolved ?: return unavailable(R.string.handoff_needs_song)
     val (title, appId) = when (t.side) {
         Side.PHONE -> local.firstOrNull { it.key == t.key }?.let { it.title to it.packageName }
         Side.PC -> remote?.snapshot?.sessions?.firstOrNull { it.key == t.key }?.let { it.title to it.appId }
-    } ?: return
-    if (title.isBlank()) return
+    } ?: return unavailable(R.string.handoff_needs_song)
+    if (title.isBlank()) return unavailable(R.string.handoff_needs_song)
     val own = HandoffApp.ofSession(appId)
     // The source's own app first when the other side has it.
     val apps = (if (t.side == Side.PHONE) pcApps else phoneApps).sortedByDescending { it == own }
-    if (apps.isEmpty()) return
+    if (apps.isEmpty()) return unavailable(R.string.handoff_no_apps)
     val pcName = link.current?.peer?.name ?: stringResource(R.string.pc_generic)
     SheetHeader(stringResource(R.string.handoff_title))
     for (app in apps) {
@@ -1943,11 +1965,12 @@ private fun SheetNote(text: String) =
     Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 6.dp))
 
 @Composable
-private fun SourceRow(icon: ImageVector, title: String, subtitle: String, selected: Boolean, chevron: Boolean = false, onClick: () -> Unit) {
+private fun SourceRow(icon: ImageVector, title: String, subtitle: String, selected: Boolean, chevron: Boolean = false, enabled: Boolean = true, onClick: () -> Unit) {
     val glass = LocalGlass.current
     Row(
         Modifier
             .fillMaxWidth()
+            .graphicsLayer { alpha = if (enabled) 1f else 0.55f }
             .clip(RoundedCornerShape(12.dp))
             .clickable(role = if (chevron) Role.Button else Role.RadioButton, onClick = onClick)
             .heightIn(min = 56.dp)

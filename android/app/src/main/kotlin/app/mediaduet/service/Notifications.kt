@@ -12,6 +12,7 @@ import android.os.Build
 import androidx.core.content.ContextCompat
 import app.mediaduet.R
 import app.mediaduet.ui.MainActivity
+import app.mediaduet.unlock.UnlockActivity
 
 object Notifications {
     const val CHANNEL_LINK = "link"
@@ -20,6 +21,7 @@ object Notifications {
     const val CHANNEL_ATTENTION = "attention"
     const val CHANNEL_HANDOFF = "handoff"
     const val CHANNEL_LYRICS = "lyrics"
+    const val CHANNEL_UNLOCK = "unlock"
 
     const val ID_LINK = 1
     const val ID_MIRROR = 2
@@ -28,6 +30,7 @@ object Notifications {
     const val ID_HANDOFF = 5
     const val ID_UPDATE = 6
     const val ID_LYRICS = 7
+    const val ID_UNLOCK = 8
 
     /** At most one "volume control restricted" notification per this interval. */
     private const val VOLUME_NOTICE_INTERVAL_MS = 10 * 60_000L
@@ -61,6 +64,11 @@ object Notifications {
                 NotificationChannel(CHANNEL_HANDOFF, context.getString(R.string.channel_handoff), NotificationManager.IMPORTANCE_HIGH).apply {
                     description = context.getString(R.string.channel_handoff_desc)
                     setShowBadge(false)
+                },
+                NotificationChannel(CHANNEL_UNLOCK, context.getString(R.string.channel_unlock), NotificationManager.IMPORTANCE_HIGH).apply {
+                    description = context.getString(R.string.channel_unlock_desc)
+                    setShowBadge(false)
+                    lockscreenVisibility = Notification.VISIBILITY_PUBLIC
                 },
             ),
         )
@@ -209,6 +217,41 @@ object Notifications {
             .build()
         try {
             context.getSystemService(NotificationManager::class.java).notify(ID_UPDATE, n)
+        } catch (e: SecurityException) {
+            // Permission revoked between the check and the call.
+        }
+    }
+
+    /** Android 14+ asks the user to allow full-screen notifications; granted at install before. */
+    fun canUseFullScreen(context: Context): Boolean =
+        Build.VERSION.SDK_INT < 34 || context.getSystemService(NotificationManager::class.java).canUseFullScreenIntent()
+
+    /**
+     * A PC asks to be unlocked (or to set that up, [enroll]): a heads-up notification that opens
+     * [UnlockActivity] (the system's fingerprint prompt). With the full-screen permission the
+     * activity also comes up by itself on a locked or dark phone. Stays until the request ends.
+     */
+    fun showUnlock(context: Context, pcName: String, enroll: Boolean, timeoutMs: Long) {
+        if (!canPost(context)) return
+        createChannels(context)
+        val tap = PendingIntent.getActivity(
+            context, ID_UNLOCK, UnlockActivity.intent(context), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val text = context.getString(if (enroll) R.string.unlock_enroll_notification_text else R.string.unlock_notification_text, pcName)
+        val n = Notification.Builder(context, CHANNEL_UNLOCK)
+            .setSmallIcon(R.drawable.ic_stat_link)
+            .setContentTitle(context.getString(if (enroll) R.string.unlock_enroll_notification_title else R.string.unlock_notification_title, pcName))
+            .setContentText(text)
+            .setStyle(Notification.BigTextStyle().bigText(text))
+            .setCategory(Notification.CATEGORY_STATUS)
+            .setVisibility(Notification.VISIBILITY_PUBLIC)
+            .setOngoing(true)
+            .setTimeoutAfter(timeoutMs)
+            .setContentIntent(tap)
+            .apply { if (canUseFullScreen(context)) setFullScreenIntent(tap, true) }
+            .build()
+        try {
+            context.getSystemService(NotificationManager::class.java).notify(ID_UNLOCK, n)
         } catch (e: SecurityException) {
             // Permission revoked between the check and the call.
         }

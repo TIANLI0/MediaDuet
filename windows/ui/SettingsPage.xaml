@@ -187,6 +187,20 @@
                             <!-- Phone and PC on different versions (md::version rule, from the host). -->
                             <InfoBar x:Name="DevicesVersionBar" IsOpen="False" IsClosable="False" Margin="0,12,0,0" />
 
+                            <TextBlock x:Uid="UnlockHeader" Style="{StaticResource SectionHeaderStyle}" />
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel Spacing="10">
+                                    <TextBlock x:Uid="UnlockDescription" Style="{StaticResource CardDescriptionStyle}" />
+                                    <TextBlock x:Name="UnlockStatus" Style="{StaticResource CardDescriptionStyle}" />
+                                    <TextBlock x:Name="UnlockLast" Style="{StaticResource CardDescriptionStyle}" Visibility="Collapsed" />
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Button x:Name="UnlockEnable" Style="{StaticResource AccentButtonStyle}" />
+                                        <Button x:Name="UnlockDisable" x:Uid="UnlockDisable" Visibility="Collapsed" />
+                                        <Button x:Name="UnlockRepair" x:Uid="UnlockRepair" Visibility="Collapsed" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
                             <TextBlock x:Uid="HdrPaired" Style="{StaticResource SectionHeaderStyle}" />
                             <StackPanel x:Name="PairedList" />
                             <Border x:Name="PairedEmpty" Style="{StaticResource CardStyle}">
@@ -194,26 +208,6 @@
                             </Border>
 
                             <TextBlock x:Name="PairNewHeader" x:Uid="HdrPairNew" Style="{StaticResource SectionHeaderStyle}" />
-                            <!-- QR pairing (spec §3.5): the phone scans the code, nothing to compare. The code
-                                 stays dark on white in both themes so that every camera reads it. -->
-                            <Border Style="{StaticResource CardStyle}">
-                                <Grid ColumnSpacing="20">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                                    <FontIcon x:Name="QrIcon" Style="{StaticResource CardIconStyle}" Glyph="&#xED14;" />
-                                    <Border x:Name="QrFrame" Width="196" Height="196" Padding="14" CornerRadius="8" Background="White"
-                                            Visibility="Collapsed" Margin="0,4,0,4">
-                                        <Path x:Name="QrPath" Fill="Black" Stretch="Uniform" />
-                                    </Border>
-                                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                                        <TextBlock x:Uid="QrPairTitle" Style="{StaticResource CardTitleStyle}" />
-                                        <TextBlock x:Name="QrPairText" Style="{StaticResource CardDescriptionStyle}" />
-                                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,10,0,0">
-                                            <Button x:Name="QrShowButton" Style="{StaticResource AccentButtonStyle}" />
-                                            <Button x:Name="QrHideButton" x:Uid="QrHideButton" Visibility="Collapsed" />
-                                        </StackPanel>
-                                    </StackPanel>
-                                </Grid>
-                            </Border>
                             <Border Style="{StaticResource CardStyle}">
                                 <Grid ColumnSpacing="12">
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
@@ -476,6 +470,19 @@
                             <TextBlock x:Uid="NavLyricsTitle" Style="{StaticResource PageTitleStyle}" />
 
                             <TextBlock x:Uid="HdrLyricsSources" Style="{StaticResource SectionHeaderStyle}" />
+                            <!-- Where the lyrics shown now come from (not shown in the player). -->
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE8D6;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetLyricsCurrentTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="SetLyricsCurrentDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                    <TextBlock x:Name="LyricsCurrentSource" Grid.Column="2" VerticalAlignment="Center" Margin="24,0,0,0"
+                                               MaxWidth="260" TextTrimming="CharacterEllipsis" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                </Grid>
+                            </Border>
                             <Border Style="{StaticResource CardStyle}">
                                 <StackPanel Spacing="10">
                                     <Grid>

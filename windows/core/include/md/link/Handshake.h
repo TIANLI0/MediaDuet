@@ -26,8 +26,6 @@ struct PairingSecrets {
 };
 PairingSecrets pairing(ByteView z, ByteView transcript);
 Bytes confirmMac(ByteView pairingKey, char role, ByteView transcript);
-// QR pairing (§3.5): proves knowledge of the QR code's one-time secret instead of a SAS comparison.
-Bytes qrConfirmMac(ByteView qrToken, char role, ByteView transcript);
 
 Bytes sessionMac(ByteView pairingKey, std::string_view label, ByteView transcript); // "server"/"client"
 
@@ -43,8 +41,7 @@ struct HandshakeFailure {
     std::string message;
 };
 
-// Client side of pairing (spec §3.3). With a QR token (§3.5) both sides prove they know it
-// instead: no SAS, no user decision.
+// Client side of pairing (spec §3.3).
 class PairingClient {
 public:
     struct Callbacks {
@@ -54,7 +51,7 @@ public:
         std::function<void(const HandshakeFailure&)> onFailed;
     };
     PairingClient(proto::DeviceInfo self, Callbacks cb, std::function<crypto::EcdhKey()> keygen = nullptr,
-                  std::function<Bytes(size_t)> rng = nullptr, Bytes qrToken = {});
+                  std::function<Bytes(size_t)> rng = nullptr);
 
     void start(int64_t wallMs);
     void onEnvelope(const proto::Envelope& e);
@@ -83,7 +80,6 @@ private:
     bool userAccepted_ = false;
     bool peerConfirmed_ = false;
     std::function<Bytes(size_t)> rng_;
-    Bytes qr_; // QR pairing secret (empty: SAS pairing)
 };
 
 // Client side of the session handshake (spec §4).

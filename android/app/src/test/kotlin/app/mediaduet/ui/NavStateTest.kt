@@ -8,47 +8,69 @@ import org.junit.Test
 
 class NavStateTest {
     @Test
-    fun backStackOrder() {
-        // Settings pushed over Now Playing in lyrics mode with the sheet open.
-        var s: NavState? = NavState(lyricsMode = true, sheetOpen = true).open(SettingsRoute.CONNECTION)
-        assertTrue(s!!.backPopsSettingsPage)
-        assertFalse(s.sheetOpen) // pushing Settings closes the sheet
-        s = s.back()
-        assertEquals(NavState(Section.SETTINGS, null, lyricsMode = true), s) // sub-page -> settings root
-        s = s!!.back()
-        assertEquals(NavState(lyricsMode = true), s) // settings root -> Now Playing (lyrics kept)
-        s = s!!.back()
-        assertEquals(NavState(), s) // lyrics -> player
-        assertNull(s!!.back()) // Now Playing -> leave the app
-        val sheet = NavState(lyricsMode = true, sheetOpen = true)
-        assertEquals(NavState(lyricsMode = true), sheet.back()) // sheet first
+    fun opensOnHome() {
+        assertEquals(Tab.HOME, NavState().tab)
+        assertFalse(NavState().playerOpen)
     }
 
     @Test
-    fun openAndShowPlayer() {
-        val sub = NavState().open(SettingsRoute.PERMISSIONS)
-        assertEquals(NavState(Section.SETTINGS, SettingsRoute.PERMISSIONS), sub)
-        assertEquals(NavState(), sub.showPlayer()) // the whole Settings stack closes
-        assertEquals(NavState(Section.SETTINGS), NavState(sheetOpen = true).open(null))
-        assertEquals(NavState(lyricsMode = true), NavState(Section.SETTINGS, SettingsRoute.ABOUT, lyricsMode = true).showPlayer())
+    fun backStackOrder() {
+        // The player in lyrics mode with the sheet open, over a page of the Settings tab.
+        var s: NavState? = NavState().open(SettingsRoute.ABOUT).showPlayer().copy(lyricsMode = true, sheetOpen = true)
+        assertFalse(s!!.backPopsSettingsPage)
+        s = s.back()
+        assertEquals(NavState(Tab.SETTINGS, SettingsRoute.ABOUT, playerOpen = true, lyricsMode = true), s) // sheet first
+        s = s!!.back()
+        assertEquals(NavState(Tab.SETTINGS, SettingsRoute.ABOUT, playerOpen = true), s) // lyrics -> player
+        s = s!!.back()
+        assertEquals(NavState(Tab.SETTINGS, SettingsRoute.ABOUT), s) // player closes
+        assertTrue(s!!.backPopsSettingsPage)
+        s = s.back()
+        assertEquals(NavState(Tab.SETTINGS), s) // page -> tab root
+        s = s!!.back()
+        assertEquals(NavState(), s) // other tab -> Home
+        assertNull(s!!.back()) // Home -> leave the app
+    }
+
+    @Test
+    fun pagesOpenOnTheirTab() {
+        assertEquals(NavState(Tab.HOME, SettingsRoute.UNLOCK), NavState(Tab.SETTINGS).open(SettingsRoute.UNLOCK))
+        assertEquals(NavState(Tab.SETTINGS, SettingsRoute.PERMISSIONS), NavState().open(SettingsRoute.PERMISSIONS))
+        // Connection is the Devices tab itself.
+        assertEquals(NavState(Tab.DEVICES), NavState(Tab.HOME, SettingsRoute.AUDIO).open(SettingsRoute.CONNECTION))
+        assertEquals(NavState(Tab.SETTINGS), NavState().open(null))
+        // Opening a page from the player closes it (lyrics mode is kept for next time).
+        assertEquals(NavState(Tab.DEVICES, lyricsMode = true), NavState(playerOpen = true, lyricsMode = true, sheetOpen = true).open(SettingsRoute.CONNECTION))
+    }
+
+    @Test
+    fun selectingTabs() {
+        assertEquals(NavState(Tab.DEVICES), NavState(Tab.HOME, SettingsRoute.AUDIO).select(Tab.DEVICES))
+        assertEquals(NavState(Tab.HOME), NavState(Tab.HOME, SettingsRoute.AUDIO).select(Tab.HOME)) // re-tap pops the page
+        assertEquals(NavState(playerOpen = true), NavState().showPlayer())
     }
 
     @Test
     fun encodingSurvivesProcessDeath() {
-        for (s in listOf(NavState(), NavState(Section.SETTINGS, SettingsRoute.AUDIO), NavState(lyricsMode = true, sheetOpen = true))) {
+        for (s in listOf(
+            NavState(),
+            NavState(Tab.SETTINGS, SettingsRoute.AUDIO),
+            NavState(Tab.DEVICES, playerOpen = true, lyricsMode = true, sheetOpen = true),
+        )) {
             assertEquals(s, NavState.decode(s.encode()))
         }
         assertEquals(NavState(), NavState.decode("garbage"))
         assertEquals(NavState(), NavState.decode(null))
-        assertEquals(NavState(), NavState.decode("v2|NOPE|-|false|false"))
+        assertEquals(NavState(), NavState.decode("v3|NOPE|-|false|false|false"))
     }
 
     @Test
-    fun roundThreeEncodingsDecode() {
-        // Old bottom-tab encodings: the Settings tab (any page) opens the Settings root.
-        assertEquals(NavState(Section.SETTINGS), NavState.decode("SETTINGS|CONNECTION|false|false"))
-        assertEquals(NavState(Section.SETTINGS), NavState.decode("SETTINGS|-|true|false"))
-        assertEquals(NavState(lyricsMode = true), NavState.decode("NOW|-|true|false"))
-        assertEquals(NavState(), NavState.decode("NOW|-|maybe|false"))
+    fun olderEncodingsDecode() {
+        // v2 (Now Playing was home): the app now opens on Home; a Settings page opens on its tab.
+        assertEquals(NavState(lyricsMode = true), NavState.decode("v2|NOW|-|true|false"))
+        assertEquals(NavState(Tab.SETTINGS, SettingsRoute.LYRICS), NavState.decode("v2|SETTINGS|LYRICS|false|false"))
+        assertEquals(NavState(Tab.DEVICES), NavState.decode("v2|SETTINGS|CONNECTION|false|false"))
+        assertEquals(NavState(Tab.SETTINGS), NavState.decode("v2|SETTINGS|-|false|false"))
+        assertEquals(NavState(), NavState.decode("SETTINGS|CONNECTION|false|false"))
     }
 }

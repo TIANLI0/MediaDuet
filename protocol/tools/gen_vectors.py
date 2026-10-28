@@ -7,7 +7,6 @@ implementations must reproduce every value in their unit tests.
 
 Usage:  python -I protocol/tools/gen_vectors.py
 """
-import base64
 import hashlib
 import hmac
 import json
@@ -90,10 +89,6 @@ def main():
     k = hkdf_expand(prk_p, b"pairing key", 32)
     mac_confirm_c = hmac256(k, b"confirm" + b"C" + th_p)
     mac_confirm_s = hmac256(k, b"confirm" + b"S" + th_p)
-    # QR pairing (§3.5): the one-time secret T from the QR code replaces the SAS comparison.
-    qr_t = bytes(range(0x40, 0x50))
-    mac_qr_c = hmac256(qr_t, b"qr confirm" + b"C" + th_p)
-    mac_qr_s = hmac256(qr_t, b"qr confirm" + b"S" + th_p)
 
     # ---- session (reuses the same ephemeral keys for brevity) ----
     th_s = hashlib.sha256(b"MediaDuet-session-v1" + n_c + n_s + epk_c + epk_s
@@ -140,10 +135,6 @@ def main():
             "sas": f"{sas:06d}", "pairing_key": k.hex(),
             "confirm_mac_client": mac_confirm_c.hex(),
             "confirm_mac_server": mac_confirm_s.hex(),
-            "qr_token": qr_t.hex(),
-            "qr_token_b64url": base64.urlsafe_b64encode(qr_t).rstrip(b"=").decode(),
-            "qr_confirm_mac_client": mac_qr_c.hex(),
-            "qr_confirm_mac_server": mac_qr_s.hex(),
         },
         "session": {
             "pairing_key": k.hex(),

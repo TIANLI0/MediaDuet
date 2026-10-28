@@ -4,6 +4,7 @@
 #include "Strings.h"
 #include "TrayIcon.h"
 #include "AppIdentity.h"
+#include "UnlockSetup.h"
 
 #include "md/util/Log.h"
 #include "md/util/Text.h"
@@ -21,6 +22,14 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, LPWSTR, int) {
     std::string show;
     int argc = 0;
     LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+    if (argc == 2 && std::wstring(argv[1]) == L"--unlock-remove") {
+        LocalFree(argv); return md::app::removeUnlockForCurrentUser();
+    }
+    if (argc > 1 && std::wstring(argv[1]) == L"--unlock-component") {
+        int rc = argc == 4 || argc == 5 ? md::app::runUnlockComponent(argv[2], argv[3], argc == 5 ? argv[4] : L"") : 2;
+        LocalFree(argv);
+        return rc;
+    }
     for (int i = 1; i < argc; ++i) {
         std::wstring a = argv[i];
         if (a == L"--background") background = true;

@@ -461,10 +461,6 @@ namespace mdui
         s.pairing.sas = JStr(pr, "sas");
         s.pairing.peerName = JStr(pr, "peerName");
         s.pairing.error = JStr(pr, "error");
-        auto const& qr = JObj(pr, "qr");
-        s.pairing.qrStatus = JStr(qr, "status");
-        s.pairing.qrPayload = JStr(qr, "payload");
-        s.pairing.qrPeerName = JStr(qr, "peerName");
 
         for (auto const& d : JArr(j, "discovered"))
         {
@@ -502,6 +498,7 @@ namespace mdui
             s.handoff.waitingForTap = JBool(active, "waitingForTap", false);
         }
         if (auto u = j.find("update"); u != j.end()) s.update = ParseUpdate(*u);
+        s.unlock = JObj(j, "unlock");
         return s;
     }
 

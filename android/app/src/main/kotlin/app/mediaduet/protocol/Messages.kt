@@ -49,6 +49,11 @@ object MsgType {
     const val HANDOFF_PROGRESS = "handoff.progress"
     const val HANDOFF_RESULT = "handoff.result"
     const val POLICY_PEER = "policy.peer"
+    const val UNLOCK_ENROLL = "unlock.enroll"
+    const val UNLOCK_REQUEST = "unlock.request"
+    const val UNLOCK_CANCEL = "unlock.cancel"
+    const val UNLOCK_RESULT = "unlock.result"
+    const val UNLOCK_REVOKE = "unlock.revoke"
 }
 
 object Caps {
@@ -69,6 +74,8 @@ object Caps {
     const val POLICY_PEER = "policy.peer"
     /** Manual lyrics offsets follow the user on both devices: `lyrics.offset` (§8.2). */
     const val LYRICS_OFFSET = "lyrics.offset"
+    /** The phone unlocks the PC's lock screen after the user confirmed (docs/unlock.md): `unlock.*`. */
+    const val UNLOCK = "unlock"
 }
 
 /** §6.1 string limits (code points). */

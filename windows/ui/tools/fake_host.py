@@ -468,7 +468,8 @@ class FakeHost:
                 "connection": {"status": self.connection_status, "transport": "bt" if self.connection_status == "connected" else None,
                                "secondary": "lan" if self.connection_status == "connected" else None,
                                "peer": peer, "sinceTick": self.since, "rttMs": 41 if self.connection_status == "connected" else None,
-                               "mode": self.settings["connection"]["mode"], "lastError": None,
+                               "mode": self.settings["connection"]["mode"],
+                               "lastError": ("LAN connect to 192.168.1.20:47321 failed: the remote host refused the connection (WSAECONNREFUSED 10061) after 3 attempts; Bluetooth RFCOMM socket closed by peer" if self.args.long_names else None),
                                "bytesIn": self.bytes_in, "bytesOut": self.bytes_out,
                                "bluetooth": {"adapter": True, "on": True}},
                 "devices": self.devices,
@@ -495,6 +496,11 @@ class FakeHost:
                 "diagnostics": {"enabled": self.diag_enabled},
                 # Handoff: music apps on this "PC" and the "phone" (the player card's menu).
                 "handoff": {"apps": {"local": ["netease", "spotify"], "remote": ["qqmusic", "netease"]}, "active": None},
+                "unlock": {"available": self.args.unlock != "unavailable", "enabled": self.args.unlock in ("enabled", "offline", "stale", "component", "waiting"), "bootEnabled": self.args.unlock != "component",
+                           "phone": {"id": "0123456789abcdef0123456789abcdef", "name": "TEST Phone"},
+                           "phoneConnected": self.args.unlock != "offline", "component": "missing" if self.args.unlock == "component" else "ok",
+                           "stale": self.args.unlock == "stale", "setup": "waiting_phone" if self.args.unlock == "waiting" else None,
+                           "lastUnlockAt": None},
                 "update": {"phase": self.args.update, "current": self.self_app,
                            "latest": "1.5.1" if self.args.update in ("available", "downloading") else self.self_app,
                            "page": "https://github.com/TIANLI0/MediaDuet/releases/latest", "notes": "",
@@ -653,15 +659,22 @@ class FakeHost:
     # ---- commands ------------------------------------------------------------------------
     def handle(self, msg):
         t = msg.get("type")
-        print("[fake-host] <-", json.dumps(msg, ensure_ascii=False))
+        logged = {**msg, "password": "[redacted]"} if "password" in msg else msg
+        print("[fake-host] <-", json.dumps(logged, ensure_ascii=False))
         if self.log_file:
-            self.log_file.write(json.dumps(msg, ensure_ascii=False) + "\n")
+            self.log_file.write(json.dumps(logged, ensure_ascii=False) + "\n")
             self.log_file.flush()
         ok, error = True, None
         lyrics_changed = False
         resend_hello = False
         with self.lock:
-            if t == "media.command":
+            if t == "unlock.enable":
+                self.args.unlock = "enabled"
+            elif t == "unlock.disable":
+                self.args.unlock = "ready"
+            elif t == "unlock.repair":
+                self.args.unlock = "enabled"
+            elif t == "media.command":
                 s = self.find(msg.get("side"), msg.get("key"))
                 action = msg.get("action")
                 if not s:
@@ -713,15 +726,6 @@ class FakeHost:
                     self.pairing = dict(self.pairing, state="failed", error="rejected")
             elif t == "pair.cancel":
                 self.pairing = {"state": "idle", "sas": None, "peerName": None, "error": None}
-            elif t == "pair.qr":
-                # QR pairing (spec §3.5): a code the "phone" never scans.
-                self.pairing = dict(self.pairing)
-                if msg.get("enable"):
-                    token = base64.urlsafe_b64encode(os.urandom(16)).rstrip(b"=").decode()
-                    self.pairing["qr"] = {"status": "waiting", "expiresInMs": 300000, "peerName": None,
-                                          "payload": f"mediaduet://pair?v=1&id={'0' * 32}&t={token}&n=Test%20PC&p=windows"}
-                else:
-                    self.pairing.pop("qr", None)
             elif t == "device.forget":
                 self.devices = [d for d in self.devices if d["id"] != msg.get("id")]
                 if not self.devices:
@@ -874,6 +878,8 @@ def main():
     p.add_argument("--pipe", help="pipe name (default: MediaDuet.UI.<your SID>)")
     p.add_argument("--lang", choices=["auto", "zh-CN", "en-US"])
     p.add_argument("--theme", choices=["system", "light", "dark"])
+    p.add_argument("--unlock", default="ready", choices=["unavailable", "ready", "enabled", "offline", "stale", "component", "waiting"],
+                   help="phone unlock settings state (simulation only; never use a real password)")
     p.add_argument("--scenario", default="playing",
                    choices=["playing", "idle", "nopeer", "firstrun", "standalone", "pairing", "stale-pairing", "compat"])
     p.add_argument("--phone-version", default="1.5.0", help="the phone's app version (e.g. 1.1.0: version warning)")

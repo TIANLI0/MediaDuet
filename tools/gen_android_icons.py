@@ -58,8 +58,8 @@ ICONS = [
     ("Restore", "system/refresh_anticlockwise_1_line", "Reset."),
     ("VolumeUp", "media/volume_line", None),
     ("VolumeOff", "media/volume_off_line", None),
-    ("QrCode", "device/qrcode_2_line", "Scan a PC's pairing code."),
-    ("Flashlight", "device/flashlight_line", "Torch (QR scanner)."),
+    ("Home", "building/home_3_line", "Home tab."),
+    ("Unlock", "system/unlock_line", "Unlocking PCs with this phone."),
 ]
 
 MINUS = "M4 11h16a1 1 0 1 1 0 2H4a1 1 0 1 1 0-2Z"

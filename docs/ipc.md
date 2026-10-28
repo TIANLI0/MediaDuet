@@ -180,11 +180,6 @@ Every message has a `"type"` field. Messages from the UI to the host may carry a
   `rejected`, `pairing_disabled`, `mac_mismatch`, `busy`, `protocol`,
   `bad_message`. `connection.lastError` is free-form diagnostic text (English)
   and should be shown only as secondary detail.
-* `pairing.qr` (only while a QR code was asked for, `pair.qr`): `{status, payload,
-  expiresInMs, peerName}`. `status` ∈ `waiting` (show `payload` as a QR code),
-  `succeeded` (`peerName` paired), `expired`. Meanwhile the host tries QR pairing
-  (protocol §3.5) with every phone it can reach; those attempts never appear in
-  `pairing.state` (it stays `idle`), so no pairing dialog opens.
 
 ### `lyrics` (sent when the lyrics for the focused track change)
 ```json
@@ -249,7 +244,6 @@ handoffs started from the UI and from the phone.
 | `pair.start` | `kind` (`bt`/`lan`), `target` (BT device id or `host:port`) | Starts pairing. |
 | `pair.respond` | `accept` (bool) | User accepted/rejected the SAS. |
 | `pair.cancel` | — | Abort pairing. |
-| `pair.qr` | `enable` (bool) | Show (a fresh) or hide the pairing QR code (`pairing.qr`). A `pair.start` hides it. |
 | `device.forget` | `id` | Revoke trust and delete the pairing key. |
 | `device.connect` | `id` | Connect now (resets back-off). |
 | `device.disconnect` | `id` | Disconnect and pause auto-reconnect until `device.connect`. |

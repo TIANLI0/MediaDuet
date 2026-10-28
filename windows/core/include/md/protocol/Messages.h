@@ -37,6 +37,7 @@ inline constexpr const char* SmtcBridge = "smtc.bridge";
 inline constexpr const char* Volume = "volume";
 inline constexpr const char* Handoff = "handoff";
 inline constexpr const char* LyricsOffset = "lyrics.offset"; // manual lyrics offsets follow each other
+inline constexpr const char* Unlock = "unlock";              // the phone unlocks the PC (docs/unlock.md)
 } // namespace caps
 
 // Reads a base64 field of an exact decoded length; nullopt if missing/invalid.

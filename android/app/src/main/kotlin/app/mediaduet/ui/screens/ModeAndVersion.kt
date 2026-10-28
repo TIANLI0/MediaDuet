@@ -63,6 +63,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.mediaduet.BuildConfig
 import app.mediaduet.R
 import app.mediaduet.service.WorkMode
+import app.mediaduet.ui.SettingsRoute
 import app.mediaduet.ui.UiContext
 import app.mediaduet.ui.components.AppIcons
 import app.mediaduet.ui.components.GlassButton
@@ -166,8 +167,8 @@ fun ModeWelcome(ui: UiContext, backdrop: Backdrop, reduced: Boolean) {
                 Spacer(Modifier.height(28.dp))
                 GlassButton({
                     ui.engine.settings.setMode(pick)
-                    // Linking with a PC starts with scanning the code it shows (§3.5).
-                    if (pick == WorkMode.LINKED) ui.openScanner()
+                    // Linking with a PC starts on the Devices tab, where pairing mode is opened.
+                    if (pick == WorkMode.LINKED) ui.openSettings(SettingsRoute.CONNECTION)
                 }, backdrop, Modifier.fillMaxWidth(), prominent = true, height = 52.dp) {
                     Text(stringResource(R.string.mode_continue), style = MaterialTheme.typography.labelLarge)
                 }

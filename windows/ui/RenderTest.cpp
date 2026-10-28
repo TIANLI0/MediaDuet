@@ -6,6 +6,7 @@
 #include "MainWindow.xaml.h"
 #include "WindowUtil.h"
 
+#include <dbghelp.h>
 #include <winrt/Microsoft.UI.Windowing.h>
 #include <winrt/Microsoft.UI.Xaml.Media.Imaging.h>
 #include <winrt/Windows.Graphics.Imaging.h>
@@ -42,6 +43,45 @@ namespace mdui::render
         {
             std::wofstream out(g_outDir + L"\\render-test.log", std::ios::app);
             out << line << L"\n";
+        }
+
+        // Crashes during a render run: the faulting thread's stack, symbolized from the PDB next to the exe.
+        LONG CALLBACK LogCrash(EXCEPTION_POINTERS* info)
+        {
+            if (info->ExceptionRecord->ExceptionCode != EXCEPTION_ACCESS_VIOLATION) return EXCEPTION_CONTINUE_SEARCH;
+            static bool once = false;
+            if (once) return EXCEPTION_CONTINUE_SEARCH;
+            once = true;
+            using SymInit = BOOL(WINAPI*)(HANDLE, PCSTR, BOOL);
+            using SymAddr = BOOL(WINAPI*)(HANDLE, DWORD64, PDWORD64, void*);
+            using SymLine = BOOL(WINAPI*)(HANDLE, DWORD64, PDWORD, void*);
+            HMODULE dbg = LoadLibraryW(L"dbghelp.dll");
+            auto init = dbg ? reinterpret_cast<SymInit>(GetProcAddress(dbg, "SymInitialize")) : nullptr;
+            auto fromAddr = dbg ? reinterpret_cast<SymAddr>(GetProcAddress(dbg, "SymFromAddr")) : nullptr;
+            auto lineFromAddr = dbg ? reinterpret_cast<SymLine>(GetProcAddress(dbg, "SymGetLineFromAddr64")) : nullptr;
+            if (init) init(GetCurrentProcess(), nullptr, TRUE);
+            void* frames[48];
+            USHORT n = RtlCaptureStackBackTrace(0, 48, frames, nullptr);
+            wchar_t head[128];
+            swprintf_s(head, L"CRASH access violation at %p (%s %p)", info->ExceptionRecord->ExceptionAddress,
+                       info->ExceptionRecord->ExceptionInformation[0] ? L"write" : L"read",
+                       reinterpret_cast<void*>(info->ExceptionRecord->ExceptionInformation[1]));
+            Log(head);
+            for (USHORT i = 0; i < n; ++i) {
+                auto addr = reinterpret_cast<DWORD64>(frames[i]);
+                alignas(8) char buf[sizeof(SYMBOL_INFO) + 256]{};
+                auto sym = reinterpret_cast<SYMBOL_INFO*>(buf);
+                sym->SizeOfStruct = sizeof(SYMBOL_INFO);
+                sym->MaxNameLen = 255;
+                DWORD64 disp = 0;
+                IMAGEHLP_LINE64 line{ sizeof(line) };
+                DWORD lineDisp = 0;
+                std::string text = (fromAddr && fromAddr(GetCurrentProcess(), addr, &disp, sym)) ? sym->Name : "?";
+                if (lineFromAddr && lineFromAddr(GetCurrentProcess(), addr, &lineDisp, &line))
+                    text += std::string("  ") + line.FileName + ":" + std::to_string(line.LineNumber);
+                Log(L"  " + std::wstring(text.begin(), text.end()));
+            }
+            return EXCEPTION_CONTINUE_SEARCH;
         }
 
         BOOL CALLBACK CollectMonitor(HMONITOR, HDC, LPRECT rect, LPARAM data)
@@ -150,6 +190,40 @@ namespace mdui::render
             }
             co_await wil::resume_foreground(queue);
             co_return false;
+        }
+
+        FrameworkElement FindNamed(DependencyObject const& node, std::wstring_view name)
+        {
+            if (auto fe = node.try_as<FrameworkElement>(); fe && fe.Name() == name) return fe;
+            int n = Media::VisualTreeHelper::GetChildrenCount(node);
+            for (int i = 0; i < n; ++i)
+                if (auto hit = FindNamed(Media::VisualTreeHelper::GetChild(node, i), name)) return hit;
+            return nullptr;
+        }
+
+        // Where the settings column (the "Pages" grid) and its visible page sit in the window.
+        void LogSettingsColumn(Window const& window, std::wstring const& tag)
+        {
+            auto root = window.Content().as<UIElement>();
+            auto pages = FindNamed(root, L"Pages");
+            if (!pages) { Log(L"settings column " + tag + L": Pages not found"); return; }
+            auto at = pages.TransformToVisual(root).TransformPoint({ 0, 0 });
+            std::wstring line = L"settings column " + tag + L": x " + std::to_wstring(at.X) + L" w " +
+                std::to_wstring(pages.ActualWidth()) + L" desired " + std::to_wstring(pages.DesiredSize().Width);
+            auto panel = pages.as<Controls::Panel>();
+            for (auto const& child : panel.Children())
+            {
+                auto fe = child.as<FrameworkElement>();
+                if (fe.Visibility() != Visibility::Visible) continue;
+                auto p = fe.TransformToVisual(root).TransformPoint({ 0, 0 });
+                line += L"; page " + std::wstring(fe.Name()) + L" x " + std::to_wstring(p.X) + L" w " + std::to_wstring(fe.ActualWidth());
+            }
+            if (auto scroller = FindNamed(root, L"PageScroller"))
+            {
+                auto s = scroller.TransformToVisual(root).TransformPoint({ 0, 0 });
+                line += L"; scroller x " + std::to_wstring(s.X) + L" w " + std::to_wstring(scroller.ActualWidth());
+            }
+            Log(line);
         }
 
         Session const* Focused()
@@ -366,6 +440,28 @@ namespace mdui::render
             co_await Delay(900ms);
             co_await Capture(main, L"63-settings-about-light", false);
             c.SetSetting("theme", "dark");
+            // Every page in a tall window, for checking the card layout as a whole.
+            PrepareOffscreen(GetHwnd(main), 1040, 2600);
+            co_await Delay(500ms);
+            for (auto tag : {L"general", L"devices", L"unlock", L"connection", L"arbitration", L"lyrics", L"taskbar",
+                             L"integration", L"compat", L"audio", L"diagnostics", L"about"}) {
+                impl->ShowSettings(tag, false);
+                co_await Delay(700ms);
+                co_await Capture(main, std::wstring(L"64-settings-page-") + tag, true);
+            }
+            // Maximized-like wide windows: every page's column must sit at the same x.
+            for (int w : { 1366, 1920, 2560 }) {
+                PrepareOffscreen(GetHwnd(main), w, 1080);
+                co_await Delay(500ms);
+                for (auto tag : {L"general", L"devices", L"connection", L"arbitration", L"lyrics", L"taskbar",
+                                 L"integration", L"compat", L"audio", L"diagnostics", L"about"}) {
+                    impl->ShowSettings(tag, false);
+                    co_await Delay(700ms);
+                    LogSettingsColumn(main, std::to_wstring(w) + L" " + tag);
+                    co_await Capture(main, L"65-settings-wide-" + std::to_wstring(w) + L"-" + tag, true);
+                }
+            }
+            PrepareOffscreen(GetHwnd(main), 1040, 900);
             impl->ShowPlayer(false);
             co_await Delay(500ms);
             }
@@ -434,6 +530,7 @@ namespace mdui::render
         });
         g_active = true;
         g_outDir = std::move(outDir);
+        AddVectoredExceptionHandler(1, LogCrash);
         CreateDirectoryW(g_outDir.c_str(), nullptr);
         DeleteFileW((g_outDir + L"\\render-test.log").c_str());
     }

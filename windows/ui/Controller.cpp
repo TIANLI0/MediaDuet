@@ -583,7 +583,12 @@ namespace mdui
         int64_t rid = m_nextRid++;
         message["rid"] = rid;
         PendingRequest request{ JStr(message, "type"), JStr(message, "side") };
-        if (!m_pipe->Send(message.dump(-1, ' ', false, json::error_handler_t::replace))) return 0;
+        bool sent = m_pipe->Send(message.dump(-1, ' ', false, json::error_handler_t::replace));
+        if (message.contains("password") && message["password"].is_string()) {
+            auto& password = message["password"].get_ref<std::string&>();
+            SecureZeroMemory(password.data(), password.size());
+        }
+        if (!sent) return 0;
         m_pending[rid] = std::move(request);
         if (m_pending.size() > 256) m_pending.erase(m_pending.begin());
         return rid;

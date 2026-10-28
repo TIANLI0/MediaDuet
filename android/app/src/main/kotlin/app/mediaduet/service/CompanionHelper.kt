@@ -1,5 +1,9 @@
 package app.mediaduet.service
 
+import android.Manifest
+import android.annotation.SuppressLint
+import android.bluetooth.BluetoothClass
+import android.bluetooth.BluetoothManager
 import android.companion.AssociationInfo
 import android.companion.AssociationRequest
 import android.companion.BluetoothDeviceFilter
@@ -20,6 +24,9 @@ import app.mediaduet.util.MdLog
 class CompanionHelper(private val context: Context) {
 
     data class Association(val id: Int?, val name: String, val address: String?)
+
+    /** A computer this phone is bonded with over Bluetooth. */
+    data class BondedPc(val name: String, val address: String)
 
     private val cdm: CompanionDeviceManager? =
         if (context.packageManager.hasSystemFeature(PackageManager.FEATURE_COMPANION_DEVICE_SETUP)) {
@@ -48,17 +55,45 @@ class CompanionHelper(private val context: Context) {
         }
     }
 
+    /**
+     * Bonded Bluetooth computers that are not associated yet. The system chooser only scans for
+     * discoverable devices; a bonded PC is listed only when asked for by its address ([associate]).
+     */
+    @SuppressLint("MissingPermission") // checked below
+    fun bondedComputers(): List<BondedPc> {
+        if (cdm == null) return emptyList()
+        if (Build.VERSION.SDK_INT >= 31 &&
+            context.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED
+        ) return emptyList()
+        val adapter = context.getSystemService(BluetoothManager::class.java)?.adapter ?: return emptyList()
+        val associated = associations().mapNotNull { it.address?.uppercase() }.toSet()
+        return try {
+            adapter.bondedDevices.orEmpty()
+                .filter { it.bluetoothClass?.majorDeviceClass == BluetoothClass.Device.Major.COMPUTER }
+                .filter { it.address.uppercase() !in associated }
+                .map { BondedPc(it.name?.takeIf { n -> n.isNotBlank() } ?: it.address, it.address) }
+                .sortedBy { it.name.lowercase() }
+        } catch (e: SecurityException) {
+            MdLog.w(TAG, "cannot list bonded devices: ${e.message}")
+            emptyList()
+        }
+    }
+
     interface Callback {
         fun onChooser(sender: IntentSender)
         fun onFailure(error: String?)
     }
 
-    /** Starts the system association flow for a Bluetooth device (the PC). */
-    fun associate(callback: Callback) {
+    /**
+     * Starts the system association flow for a Bluetooth device (the PC): the bonded device at
+     * [address], or (null) a scan for discoverable devices.
+     */
+    fun associate(callback: Callback, address: String? = null) {
         val m = cdm ?: return callback.onFailure("unsupported")
+        val filter = BluetoothDeviceFilter.Builder().apply { if (address != null) setAddress(address) }.build()
         val request = AssociationRequest.Builder()
-            .addDeviceFilter(BluetoothDeviceFilter.Builder().build())
-            .setSingleDevice(false)
+            .addDeviceFilter(filter)
+            .setSingleDevice(address != null)
             .build()
         val cb = object : CompanionDeviceManager.Callback() {
             @Deprecated("API 33 uses onAssociationPending")

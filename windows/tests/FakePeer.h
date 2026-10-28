@@ -68,7 +68,6 @@ public:
         std::unique_ptr<link::SecureChannel> chan;
         bool pairingUserAccepted = false;
         bool clientConfirmed = false;
-        bool qr = false; // QR pairing (§3.5)
     };
     struct Session {
         std::string sid;
@@ -92,9 +91,6 @@ public:
     std::map<uint64_t, int> executions; // media.command id -> times executed
     std::vector<std::pair<link::TransportKind, std::string>> received; // (transport, type)
     std::string lastSas;
-    // QR pairing (§3.5): the scanned code's (PC id, secret); empty = not armed.
-    std::string qrId;
-    Bytes qrToken;
 
     explicit FakeServer(ManualScheduler& sched) : s(sched) {
         info.id = "fedcba9876543210fedcba9876543210";
@@ -277,8 +273,7 @@ public:
     }
 
     void onPairRequest(Conn& c, const proto::Envelope& e) {
-        c.qr = e.body.value("qr", false);
-        if (!pairingEnabled || (c.qr && (qrToken.empty() || e.src != qrId))) {
+        if (!pairingEnabled) {
             sendHandshake(c, proto::types::PairResult, {{"ok", false}, {"reason", "pairing_disabled"}});
             c.st = Conn::St::Dead;
             return;
@@ -300,7 +295,7 @@ public:
         c.pairKey = sec.pairingKey;
         lastSas = sec.sas;
         c.st = Conn::St::Pairing;
-        if (autoAcceptPairing && !c.qr) {
+        if (autoAcceptPairing) {
             c.pairingUserAccepted = true;
             sendHandshake(c, proto::types::PairConfirm,
                           {{"mac", base64Encode(link::ks::confirmMac(c.pairKey, 'S', c.pairTh))}});
@@ -309,16 +304,8 @@ public:
 
     void onPairConfirm(Conn& c, const proto::Envelope& e) {
         auto mac = proto::getB64(e.body, "mac", 32);
-        Bytes expected = c.qr ? link::ks::qrConfirmMac(qrToken, 'C', c.pairTh) : link::ks::confirmMac(c.pairKey, 'C', c.pairTh);
-        if (!mac || !crypto::constantTimeEqual(*mac, expected)) {
+        if (!mac || !crypto::constantTimeEqual(*mac, link::ks::confirmMac(c.pairKey, 'C', c.pairTh))) {
             sendHandshake(c, proto::types::PairResult, {{"ok", false}, {"reason", "mac_mismatch"}});
-            return;
-        }
-        if (c.qr) {
-            sendHandshake(c, proto::types::PairConfirm, {{"mac", base64Encode(link::ks::qrConfirmMac(qrToken, 'S', c.pairTh))}});
-            keys[c.clientId] = c.pairKey;
-            qrToken.clear();
-            sendHandshake(c, proto::types::PairResult, {{"ok", true}});
             return;
         }
         if (c.pairingUserAccepted) {

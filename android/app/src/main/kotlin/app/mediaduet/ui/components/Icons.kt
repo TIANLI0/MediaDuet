@@ -57,10 +57,10 @@ object AppIcons {
     val Restore: ImageVector @Composable get() = ImageVector.vectorResource(R.drawable.ic_mc_restore)
     val VolumeUp: ImageVector @Composable get() = ImageVector.vectorResource(R.drawable.ic_mc_volume_up)
     val VolumeOff: ImageVector @Composable get() = ImageVector.vectorResource(R.drawable.ic_mc_volume_off)
-    /** Scan a PC's pairing code. */
-    val QrCode: ImageVector @Composable get() = ImageVector.vectorResource(R.drawable.ic_mc_qr_code)
-    /** Torch (QR scanner). */
-    val Flashlight: ImageVector @Composable get() = ImageVector.vectorResource(R.drawable.ic_mc_flashlight)
+    /** Home tab. */
+    val Home: ImageVector @Composable get() = ImageVector.vectorResource(R.drawable.ic_mc_home)
+    /** Unlocking PCs with this phone. */
+    val Unlock: ImageVector @Composable get() = ImageVector.vectorResource(R.drawable.ic_mc_unlock)
     val VolumeDown: ImageVector @Composable get() = ImageVector.vectorResource(R.drawable.ic_mc_volume_down)
     val Minus: ImageVector @Composable get() = ImageVector.vectorResource(R.drawable.ic_mc_minus)
     /** Quote bubble (lyrics toggle). */

@@ -29,7 +29,7 @@ constexpr size_t kChunk = 32 * 1024;
 std::vector<std::string> baseCaps() {
     return {proto::caps::MediaSource, proto::caps::MediaControl, proto::caps::Artwork, proto::caps::Lyrics,
             proto::caps::PolicyHost,  proto::caps::SmtcBridge,   proto::caps::AudioA2dpSink,
-            proto::caps::AudioSendPcm, proto::caps::Volume, proto::caps::Handoff, proto::caps::LyricsOffset};
+            proto::caps::AudioSendPcm, proto::caps::Volume, proto::caps::Handoff, proto::caps::LyricsOffset, proto::caps::Unlock};
 }
 
 std::string osVersion() {
@@ -98,7 +98,6 @@ void HostApp::init() {
     appVolTimer_.bind(&sched_);
     volumeAnswerTimer_.bind(&sched_);
     lyricsGraceTimer_.bind(&sched_);
-    qrTimer_.bind(&sched_);
     resumeExpiry_.bind(&sched_);
     resumeFailed_.bind(&sched_);
 
@@ -184,7 +183,7 @@ void HostApp::init() {
                                                        }
                                                    },
                                                    [this] { log::info("ipc", "UI disconnected"); },
-                                                   [this](std::string line) { handleIpc(line); }});
+                                                   [this](const std::string& line) { handleIpc(line); }});
     ipc_->start();
 
     smtc_ = std::make_unique<platform::SmtcBridge>(sched_, [this](CommandAction a, std::optional<int64_t> pos) {
@@ -296,6 +295,27 @@ void HostApp::init() {
                         if (ipc_ && ipc_->connected())
                             ipc_->send(json{{"type", "handoff"}, {"outcome", handoff::toJson(o)}}.dump(-1, ' ', false, json::error_handler_t::replace));
                     }});
+    unlock_ = std::make_unique<UnlockHost>(sched_, UnlockHost::Callbacks{
+        [this] { return cm_->isUp() ? cm_->activePeer().value_or("") : ""; },
+        [this] { auto id = cm_->activePeer(); auto* d = id ? devices_.find(*id) : nullptr; return d ? d->name : ""; },
+        [this] { return !standalone_ && cm_->isUp() && peerHasCap(proto::caps::Unlock); },
+        [this](const char* type, json body, std::optional<uint64_t> re) { return cm_->send(type, std::move(body), re); },
+        [this] { return identity_.name; },
+        [] { return language() == Lang::Zh ? "zh-CN" : "en-US"; },
+        [this] { markDirty(); },
+        [this](const std::string& peerId) -> std::optional<unlock::BootRecord> {
+            auto* d = devices_.find(peerId); if (!d || d->key.size() != 32) return {};
+            unlock::BootRecord r;
+            r.self = {identity_.id, identity_.name, "windows", "PC", "Windows", MD_VERSION};
+            r.peer = {d->id, d->name, "android", d->btAddress, d->manualEndpoints, d->key};
+            if (dnssd_) for (const auto& service : dnssd_->current()) if (service.deviceId == peerId && r.peer.manualEndpoints.size() < 16)
+                r.peer.manualEndpoints.push_back(service.endpoint);
+            if (cm_->activePeer() == peerId && r.peer.manualEndpoints.size() < 16) {
+                auto host = cm_->remoteLanHost();
+                if (!host.empty()) r.peer.manualEndpoints.push_back({host, platform::kDefaultLanPort, "last"});
+            }
+            return r;
+        }});
     resume_ = std::make_unique<ResumeButton>(ResumeButton::Callbacks{[this] { onResumeClicked(); },
                                                                      [this] {
                                                                          resumeDismissed_ = resumeShown_;
@@ -412,13 +432,13 @@ void HostApp::shutdown() {
     diagTimer_.cancel();
     artTimer_.cancel();
     lyricsGraceTimer_.cancel();
-    qrTimer_.cancel();
     overlay_.reset();
     taskbar_.reset();
     smtc_.reset();
     dnssd_.reset();
     bt_.reset();
     handoff_.reset();
+    unlock_.reset();
     updater_.reset();
     cm_.reset();
     gsmtc_.reset();
@@ -447,7 +467,6 @@ void HostApp::applySettings() {
             // Drop everything that needs the phone; local sessions, lyrics, overlay and
             // taskbar keep working.
             if (auto id = cm_->activePeer()) cm_->disconnect(*id);
-            stopQrPairing("");
             cancelPairing();
             discovering_ = false;
             if (a2dp_->active()) a2dp_->disable();
@@ -539,7 +558,7 @@ void HostApp::reloadPeers() {
 
 void HostApp::updateDiscoveryWatchers() {
     bool lanAllowed = settings_.get<std::string>("connection.mode", "auto") != "bt_only";
-    bool want = !standalone_ && (discovering_ || !qr_.token.empty() || (lanAllowed && !devices_.devices().empty()));
+    bool want = !standalone_ && (discovering_ || (lanAllowed && !devices_.devices().empty()));
     if (want && !dnssd_->running()) dnssd_->start();
     if (!want && dnssd_->running()) dnssd_->stop();
 }
@@ -570,6 +589,7 @@ void HostApp::onLinkUp(const std::string& peerId, bool resumed) {
     lastSinkJson_.clear();
     sendSinkState();
     if (handoff_) handoff_->onLinkUp();
+    if (unlock_) unlock_->onLinkUp();
     updateTray();
     markDirty();
 }
@@ -586,6 +606,7 @@ void HostApp::onLinkDown(const std::string& peerId) {
     if (loopback_->running()) loopback_->stop("link down");
     audioOffer_.reset();
     if (handoff_) handoff_->onLinkDown();
+    if (unlock_) unlock_->onLinkDown();
     updateSmtc();
     updateFocus();
     updateTray();
@@ -593,6 +614,7 @@ void HostApp::onLinkDown(const std::string& peerId) {
 }
 
 void HostApp::onPeerRevoked(const std::string& peerId) {
+    if (unlock_) unlock_->onPeerRemoved(peerId);
     log::warn("host", "phone {} revoked this PC; removing pairing", peerId.substr(0, 8));
     devices_.remove(peerId);
     devices_.save();
@@ -620,6 +642,7 @@ void HostApp::onEnvelope(const std::string& peerId, const proto::Envelope& e, ui
     const auto& t = e.type;
     if (t == proto::types::MediaSnapshot) return onRemoteSnapshot(e);
     if (handoff_ && handoff_->onEnvelope(e)) return;
+    if (unlock_ && unlock_->onEnvelope(e)) return;
     if (t == proto::types::MediaCommand) return executeRemoteCommand(e, connId);
     if (t == proto::types::ArtworkGet) return serveArtwork(e, connId);
     if (t == proto::types::VolumeState) {
@@ -1463,16 +1486,13 @@ void HostApp::setPairing(std::string state, std::string error) {
     markDirty();
 }
 
-void HostApp::startPairing(const std::string& kind, const std::string& target, Bytes qrToken) {
-    // A pairing the user started from the list replaces a QR code that is shown.
-    if (qrToken.empty() && !qr_.token.empty()) stopQrPairing("");
+void HostApp::startPairing(const std::string& kind, const std::string& target) {
     cancelPairing();
     pairing_ = {};
     pairing_.kind = kind;
     pairing_.target = target;
-    pairing_.qr = !qrToken.empty();
     uint64_t attempt = ++pairing_.attempt;
-    auto onTransport = [this, attempt, qrToken](link::TransportPtr t, std::string err) {
+    auto onTransport = [this, attempt](link::TransportPtr t, std::string err) {
         if (attempt != pairing_.attempt || pairing_.state != "connecting") {
             if (t) t->close();
             return;
@@ -1505,12 +1525,8 @@ void HostApp::startPairing(const std::string& kind, const std::string& target, B
                 rec.manualEndpoints.push_back(*pairing_.lan);
             devices_.upsert(rec);
             if (!devices_.save()) log::error("host", "could not persist pairing");
-            log::info("host", "paired with {}{}", peer.name, pairing_.qr ? " (QR code)" : "");
+            log::info("host", "paired with {}", peer.name);
             setPairing("succeeded");
-            if (pairing_.qr) {
-                stopQrPairing("succeeded");
-                qr_.peerName = peer.name;
-            }
             reloadPeers();
             cm_->connectNow(peer.id);
         };
@@ -1522,7 +1538,7 @@ void HostApp::startPairing(const std::string& kind, const std::string& target, B
         };
         pairing_.conn = link::Connection::create(sched_, std::move(t), std::move(ev));
         proto::DeviceInfo self{identity_.id, identity_.name, "windows", "PC", osVersion(), MD_VERSION};
-        pairing_.conn->beginPairing(self, qrToken);
+        pairing_.conn->beginPairing(self);
     };
     setPairing("connecting");
     if (kind == "bt") {
@@ -1542,86 +1558,6 @@ void HostApp::startPairing(const std::string& kind, const std::string& target, B
         pairing_.lan = link::LanEndpoint{host, static_cast<uint16_t>(port), "manual"};
         factory_->connectLan(*pairing_.lan, onTransport);
     }
-}
-
-namespace {
-constexpr int64_t kQrValidMs = 5 * 60'000; // spec §3.5
-constexpr int64_t kQrTickMs = 1'500;
-constexpr int64_t kQrRetryMs = 6'000; // per phone: the phone may scan the code at any moment
-
-std::string urlEncode(const std::string& s) {
-    static const char* hex = "0123456789ABCDEF";
-    std::string out;
-    for (unsigned char c : s) {
-        if (std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
-            out += static_cast<char>(c);
-        } else {
-            out += '%';
-            out += hex[c >> 4];
-            out += hex[c & 15];
-        }
-    }
-    return out;
-}
-} // namespace
-
-void HostApp::startQrPairing() {
-    if (standalone_) return;
-    if (!pairing_.qr) cancelPairing();
-    qr_ = {};
-    qr_.token = crypto::randomBytes(16);
-    qr_.payload = "mediaduet://pair?v=1&id=" + identity_.id + "&t=" + base64UrlEncode(qr_.token) + "&n=" +
-                  urlEncode(identity_.name) + "&p=windows";
-    qr_.until = sched_.wallMs() + kQrValidMs;
-    qr_.status = "waiting";
-    log::info("host", "showing a pairing QR code");
-    bt_->discover();
-    updateDiscoveryWatchers();
-    markDirty();
-    qrTimer_.start(kQrTickMs, [this] { qrTick(); });
-}
-
-void HostApp::stopQrPairing(const std::string& status) {
-    bool shown = !qr_.token.empty();
-    secureZero(qr_.token);
-    qr_ = {};
-    qr_.status = status;
-    qrTimer_.cancel();
-    if (pairing_.qr && pairing_.state != "succeeded") cancelPairing();
-    if (shown) updateDiscoveryWatchers();
-    markDirty();
-}
-
-void HostApp::qrTick() {
-    if (qr_.token.empty()) return;
-    if (sched_.wallMs() >= qr_.until) {
-        log::info("host", "pairing QR code expired");
-        return stopQrPairing("expired");
-    }
-    qrTimer_.start(kQrTickMs, [this] { qrTick(); });
-    const auto& ps = pairing_.state;
-    if (ps == "connecting" || ps == "awaiting_user" || ps == "awaiting_peer") return; // one attempt at a time
-    // Every phone this PC can reach, the one tried longest ago first.
-    std::vector<std::pair<std::string, std::string>> candidates; // (kind, target)
-    for (auto& s : dnssd_->current()) candidates.push_back({"lan", s.endpoint.str()});
-    for (auto& [id, c] : btCandidates_)
-        if (c.hasService) candidates.push_back({"bt", id});
-    int64_t now = sched_.nowMs();
-    const std::pair<std::string, std::string>* next = nullptr;
-    int64_t oldest = INT64_MAX;
-    for (auto& c : candidates) {
-        auto it = qr_.triedAt.find(c.first + ":" + c.second);
-        int64_t at = it == qr_.triedAt.end() ? INT64_MIN : it->second;
-        if (at != INT64_MIN && now - at < kQrRetryMs) continue;
-        if (at < oldest) {
-            oldest = at;
-            next = &c;
-        }
-    }
-    if (!next) return;
-    qr_.triedAt[next->first + ":" + next->second] = now;
-    log::debug("host", "QR pairing: trying {} {}", next->first, next->second);
-    startPairing(next->first, next->second, qr_.token);
 }
 
 void HostApp::pairingRespond(bool accept) {
@@ -1708,7 +1644,9 @@ void HostApp::handleIpc(const std::string& line) {
     json m = json::parse(line, nullptr, false);
     if (!m.is_object()) return;
     std::string type = m.value("type", std::string());
-    log::debug("ipc", "<- {}", line.size() > 300 ? line.substr(0, 300) : line);
+    // unlock.enable carries the Windows password: never put its body in diagnostics.
+    if (type.starts_with("unlock.")) log::debug("ipc", "<- {}", type);
+    else log::debug("ipc", "<- {}", line.size() > 300 ? line.substr(0, 300) : line);
     auto result = [&](bool ok, const std::string& error = {}) {
         if (!m.contains("rid")) return;
         json r = {{"type", "result"}, {"rid", m["rid"]}, {"ok", ok}};
@@ -1716,12 +1654,30 @@ void HostApp::handleIpc(const std::string& line) {
         ipc_->send(r.dump());
     };
     // This PC only: commands that need a phone are refused (the UI hides them anyway).
-    static const char* const kNeedsPhone[] = {"pair.start", "pair.qr", "device.connect", "connect.manual"};
+    static const char* const kNeedsPhone[] = {"pair.start", "device.connect", "connect.manual"};
     bool enabling = m.value("enable", false);
     if (standalone_ && (std::find(std::begin(kNeedsPhone), std::end(kNeedsPhone), type) != std::end(kNeedsPhone) ||
                         (enabling && (type == "discover" || type == "audio.a2dpSink" || type == "audio.lanSend"))))
         return result(false, "standalone");
     try {
+        if (type == "unlock.enable" || type == "unlock.disable" || type == "unlock.repair") {
+            json rid = m.value("rid", json(nullptr));
+            auto done = [this, rid](bool ok, const std::string& error) {
+                if (rid.is_null() || !ipc_ || !ipc_->connected()) return;
+                json reply{{"type", "result"}, {"rid", rid}, {"ok", ok}};
+                if (!error.empty()) reply["error"] = error;
+                ipc_->send(reply.dump());
+            };
+            if (type == "unlock.enable") {
+                auto password = m.value("password", std::string());
+                if (m.contains("password") && m["password"].is_string()) {
+                    auto& s = m["password"].get_ref<std::string&>(); SecureZeroMemory(s.data(), s.size());
+                }
+                unlock_->enable(std::move(password), std::move(done));
+            } else if (type == "unlock.disable") unlock_->disable(std::move(done));
+            else unlock_->repair(std::move(done));
+            return;
+        }
         if (type == "media.command") {
             Side side = m.value("side", std::string("remote")) == "local" ? Side::Local : Side::Remote;
             auto act = media::actionFromString(m.value("action", std::string()));
@@ -1801,6 +1757,7 @@ void HostApp::handleIpc(const std::string& line) {
         }
         if (type == "device.forget") {
             std::string id = m.value("id", std::string());
+            if (unlock_) unlock_->onPeerRemoved(id);
             if (cm_->activePeer() == id) cm_->disconnect(id);
             bool ok = devices_.remove(id);
             devices_.save();
@@ -1833,11 +1790,6 @@ void HostApp::handleIpc(const std::string& line) {
             devices_.save();
             reloadPeers();
             cm_->connectNow(d->id);
-            return result(true);
-        }
-        if (type == "pair.qr") {
-            if (m.value("enable", false)) startQrPairing();
-            else stopQrPairing("");
             return result(true);
         }
         if (type == "discover") {
@@ -2049,16 +2001,10 @@ json HostApp::buildState() const {
                                {"error", lb.error.empty() ? json(nullptr) : json(lb.error)},
                                {"framesSent", lb.framesSent},
                                {"framesDropped", lb.framesDropped}}}};
-    // QR attempts run in the background: never shown as a pairing dialog (docs/ipc.md).
-    json pairing = {{"state", pairing_.qr ? std::string("idle") : pairing_.state},
-                    {"sas", pairing_.sas.empty() || pairing_.qr ? json(nullptr) : json(pairing_.sas)},
-                    {"peerName", pairing_.peerName.empty() || pairing_.qr ? json(nullptr) : json(pairing_.peerName)},
-                    {"error", pairing_.error.empty() || pairing_.qr ? json(nullptr) : json(pairing_.error)}};
-    if (!qr_.status.empty())
-        pairing["qr"] = {{"status", qr_.status},
-                         {"payload", qr_.payload.empty() ? json(nullptr) : json(qr_.payload)},
-                         {"expiresInMs", qr_.until ? std::max<int64_t>(0, qr_.until - sched_.wallMs()) : 0},
-                         {"peerName", qr_.peerName.empty() ? json(nullptr) : json(qr_.peerName)}};
+    json pairing = {{"state", pairing_.state},
+                    {"sas", pairing_.sas.empty() ? json(nullptr) : json(pairing_.sas)},
+                    {"peerName", pairing_.peerName.empty() ? json(nullptr) : json(pairing_.peerName)},
+                    {"error", pairing_.error.empty() ? json(nullptr) : json(pairing_.error)}};
     json discovered = json::array();
     for (auto& [id, c] : btCandidates_) {
         bool paired = false;
@@ -2099,6 +2045,7 @@ json HostApp::buildState() const {
             {"audioOutputLatency", {{"bluetooth", localVol_.bluetooth}, {"ms", localOutputLatencyMs()}}},
             {"settings", settings_.data()},
             {"handoff", handoff_ ? handoff_->stateJson() : json(nullptr)},
+            {"unlock", unlock_ ? unlock_->stateJson() : json(nullptr)},
             {"update", updater_ ? updater_->status() : json(nullptr)},
             {"diagnostics", {{"enabled", diagnostics_}}}};
 }

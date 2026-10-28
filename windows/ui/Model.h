@@ -238,10 +238,6 @@ namespace mdui
         std::string sas;
         std::string peerName;
         std::string error;
-        // QR pairing (pairing.qr): "" (no code), waiting, succeeded, expired.
-        std::string qrStatus;
-        std::string qrPayload;
-        std::string qrPeerName;
     };
 
     struct Discovered
@@ -327,6 +323,7 @@ namespace mdui
         bool diagnosticsEnabled{ false };
         Handoff handoff;
         Update update;
+        json unlock = json::object();
 
         // The session shown by the cards: focus.side/focus.key, else that side's active session,
         // else the first playing session, else the first session of any side. nullptr if none.

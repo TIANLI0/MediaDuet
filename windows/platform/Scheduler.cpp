@@ -111,6 +111,13 @@ void Win32Scheduler::drainPosted() {
     }
 }
 
+void Win32Scheduler::flushPosted() {
+    for (;;) {
+        { std::lock_guard lock(m_); if (posted_.empty()) return; }
+        drainPosted();
+    }
+}
+
 void Win32Scheduler::runTimers() {
     int64_t now = nowMs();
     // Collect due timers first: callbacks may schedule or cancel others.

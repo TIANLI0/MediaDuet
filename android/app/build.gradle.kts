@@ -20,8 +20,8 @@ android {
         applicationId = "app.mediaduet"
         minSdk = 29
         targetSdk = 37
-        versionCode = 17
-        versionName = "1.9.0"
+        versionCode = 18
+        versionName = "1.10.0"
         androidResources.localeFilters += listOf("en", "zh-rCN")
         // Ships for 64-bit ARM phones only. -Pmediaduet.emulatorAbi adds x86_64 for local emulator runs.
         ndk {
@@ -103,11 +103,6 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kyant.backdrop)
     implementation(libs.kyant.shapes)
-    // QR pairing (§3.5): CameraX preview + analysis, ZXing decoding (no Google Play services needed).
-    implementation(libs.camera.camera2)
-    implementation(libs.camera.lifecycle)
-    implementation(libs.camera.view)
-    implementation(libs.zxing.core)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

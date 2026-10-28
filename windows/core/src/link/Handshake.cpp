@@ -44,12 +44,6 @@ Bytes confirmMac(ByteView key, char role, ByteView th) {
     return crypto::hmacSha256(key, concat({view(label), th}));
 }
 
-Bytes qrConfirmMac(ByteView token, char role, ByteView th) {
-    std::string label = "qr confirm";
-    label += role;
-    return crypto::hmacSha256(token, concat({view(label), th}));
-}
-
 Bytes sessionMac(ByteView key, std::string_view label, ByteView th) {
     return crypto::hmacSha256(key, concat({view(label), th}));
 }
@@ -76,9 +70,8 @@ static std::string errorCodeOf(const Envelope& e) {
 // ======================================================================= PairingClient
 
 PairingClient::PairingClient(proto::DeviceInfo self, Callbacks cb, std::function<crypto::EcdhKey()> keygen,
-                             std::function<Bytes(size_t)> rng, Bytes qrToken)
-    : self_(std::move(self)), cb_(std::move(cb)), rng_(rng ? std::move(rng) : crypto::randomBytes),
-      qr_(std::move(qrToken)) {
+                             std::function<Bytes(size_t)> rng)
+    : self_(std::move(self)), cb_(std::move(cb)), rng_(rng ? std::move(rng) : crypto::randomBytes) {
     eph_ = keygen ? keygen() : crypto::EcdhKey::generate();
     nonce_ = rng_(32);
 }
@@ -96,16 +89,15 @@ Envelope PairingClient::make(const char* type, json body) {
 void PairingClient::start(int64_t wallMs) {
     wall_ = wallMs;
     state_ = State::AwaitResponse;
-    json body = {{"device", proto::toJson(self_)}, {"epk", base64Encode(eph_->publicKey())}, {"nonce", base64Encode(nonce_)}};
-    if (!qr_.empty()) body["qr"] = true;
-    cb_.send(make(proto::types::PairRequest, std::move(body)));
+    cb_.send(make(proto::types::PairRequest, {{"device", proto::toJson(self_)},
+                                              {"epk", base64Encode(eph_->publicKey())},
+                                              {"nonce", base64Encode(nonce_)}}));
 }
 
 void PairingClient::fail(std::string code, std::string msg, bool notifyPeer) {
     if (state_ == State::Failed || state_ == State::Done) return;
     state_ = State::Failed;
     secureZero(key_);
-    secureZero(qr_);
     if (notifyPeer) cb_.send(make(proto::types::PairResult, {{"ok", false}, {"reason", code}}));
     if (cb_.onFailed) cb_.onFailed({std::move(code), std::move(msg)});
 }
@@ -118,7 +110,6 @@ void PairingClient::onEnvelope(const Envelope& e) {
         if (!ok) return fail(e.body.value("reason", std::string("rejected")), "peer rejected pairing", false);
         if (state_ != State::AwaitResult) return fail("protocol", "unexpected pair.result", true);
         state_ = State::Done;
-        secureZero(qr_);
         if (cb_.onPaired) cb_.onPaired(peer_, key_);
         return;
     }
@@ -140,13 +131,6 @@ void PairingClient::onEnvelope(const Envelope& e) {
         auto secrets = ks::pairing(z, transcript_);
         secureZero(z);
         key_ = secrets.pairingKey;
-        if (!qr_.empty()) {
-            // QR pairing: confirm at once with the secret from the code (§3.5).
-            userAccepted_ = true;
-            state_ = State::AwaitPeerConfirm;
-            cb_.send(make(proto::types::PairConfirm, {{"mac", base64Encode(ks::qrConfirmMac(qr_, 'C', transcript_))}}));
-            return;
-        }
         state_ = State::AwaitUser;
         if (cb_.onSas) cb_.onSas(secrets.sas, peer_);
         return;
@@ -155,8 +139,7 @@ void PairingClient::onEnvelope(const Envelope& e) {
         if (state_ != State::AwaitUser && state_ != State::AwaitPeerConfirm)
             return fail("protocol", "unexpected pair.confirm", true);
         auto mac = proto::getB64(e.body, "mac", 32);
-        Bytes expected = qr_.empty() ? ks::confirmMac(key_, 'S', transcript_) : ks::qrConfirmMac(qr_, 'S', transcript_);
-        if (!mac || !crypto::constantTimeEqual(*mac, expected))
+        if (!mac || !crypto::constantTimeEqual(*mac, ks::confirmMac(key_, 'S', transcript_)))
             return fail("mac_mismatch", "pairing confirmation does not match", true);
         peerConfirmed_ = true;
         maybeFinish();
@@ -167,7 +150,7 @@ void PairingClient::onEnvelope(const Envelope& e) {
 
 void PairingClient::userDecision(bool accept, int64_t wallMs) {
     wall_ = wallMs;
-    if (state_ != State::AwaitUser || !qr_.empty()) return;
+    if (state_ != State::AwaitUser) return;
     if (!accept) return fail("rejected", "rejected by local user", true);
     userAccepted_ = true;
     cb_.send(make(proto::types::PairConfirm, {{"mac", base64Encode(ks::confirmMac(key_, 'C', transcript_))}}));

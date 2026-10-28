@@ -12,6 +12,10 @@ namespace md::platform {
 std::filesystem::path appDataDir();   // %LOCALAPPDATA%\MediaDuet
 std::filesystem::path cacheDir();     // %LOCALAPPDATA%\MediaDuet\cache
 
+std::optional<nlohmann::json> readJson(const std::filesystem::path& p);
+// Atomic (temp file + rename).
+bool writeJson(const std::filesystem::path& p, const nlohmann::json& j);
+
 struct Identity {
     std::string id;   // 32 hex chars
     std::string name; // defaults to the computer name

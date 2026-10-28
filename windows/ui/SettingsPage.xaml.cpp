@@ -6,7 +6,6 @@
 
 #include "Controller.h"
 #include "PlaybackClock.h"
-#include "QrCode.h"
 #include "RenderTest.h"
 #include "Strings.h"
 #include "Version.h"
@@ -180,6 +179,10 @@ namespace winrt::MediaDuetUI::implementation
         SettingsPageT::InitializeComponent();
         auto& c = Controller::Get();
 
+        UnlockEnable().Click([weak = get_weak()](auto&&, auto&&) { if (auto self = weak.get()) self->SetupUnlock(); });
+        UnlockDisable().Click([](auto&&, auto&&) { Controller::Get().Send({{"type", "unlock.disable"}}); });
+        UnlockRepair().Click([](auto&&, auto&&) { Controller::Get().Send({{"type", "unlock.repair"}}); });
+
         BitmapImage icon(winrt::Windows::Foundation::Uri(L"ms-appx:///Assets/MediaDuet.png"));
         AboutIcon().Source(icon);
         BitmapImage avatar;
@@ -193,6 +196,12 @@ namespace winrt::MediaDuetUI::implementation
             std::wstring path(buf, n);
             path = path.substr(0, path.find_last_of(L"\\/") + 1) + L"Assets\\Fonts\\HarmonyOS_Sans_LICENSE.txt";
             ShellExecuteW(nullptr, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        });
+
+        // The column takes the viewport's width (up to its MaxWidth): left to Stretch, the scroller
+        // centres it by each page's own desired width, so narrow pages sat further right.
+        PageScroller().SizeChanged([weak = get_weak()](auto&&, SizeChangedEventArgs const& e) {
+            if (auto self = weak.get()) self->Pages().Width(e.NewSize().Width);
         });
 
         // ---- Navigation
@@ -351,8 +360,6 @@ namespace winrt::MediaDuetUI::implementation
             else Controller::Get().ConnectManual(Narrow(host), p);
         };
         ManualPairButton().Click([manual](auto&&, auto&&) { manual(true); });
-        QrShowButton().Click([this](auto&&, auto&&) { ShowQr(true); });
-        QrHideButton().Click([this](auto&&, auto&&) { ShowQr(false); });
         ManualConnectButton().Click([manual](auto&&, auto&&) { manual(false); });
 
         // Diagnostics rows (labels are static; values filled from "diagnostics" messages).
@@ -385,6 +392,9 @@ namespace winrt::MediaDuetUI::implementation
         UiVersionValue().Text(MDUI_VERSION_WSTRING);
 
         auto weak = get_weak();
+        m_tokens.push_back(c.Subscribe(Event::Lyrics, [weak] {
+            if (auto self = weak.get(); self && self->m_page == L"lyrics") self->UpdateLyricsSource();
+        }));
         m_tokens.push_back(c.Subscribe(Event::State, [weak] {
             if (auto self = weak.get()) self->RefreshAll();
         }));
@@ -401,11 +411,24 @@ namespace winrt::MediaDuetUI::implementation
         }));
         m_tokens.push_back(c.SubscribeResults([weak](bool ok, std::string const& error, std::string const& type) {
             if (auto self = weak.get())
+            {
+                if (type.starts_with("unlock.")) {
+                    self->UpdateUnlock();
+                    if (!ok) {
+                        auto key = L"UnlockErr_" + Widen(error);
+                        auto message = Str(key);
+                        self->ResultBar().Message(message.empty() || message == key ? Str(L"UnlockErr_phone_failed") : message);
+                        self->ResultBar().Severity(InfoBarSeverity::Error);
+                        self->ResultBar().IsOpen(true);
+                    }
+                    return;
+                }
                 // Only failures of actions the user just took on this page; background requests
                 // (discovery, diagnostics) never raise a banner.
                 if (!ok && type != "media.command" && type != "focus.set" && type != "discover" && type != "diagnostics" &&
                     type != "volume.set" && (type != "lyrics.offset" || self->m_active))
                     self->ShowResultError(error);
+            }
         }));
 
         // A pending pairing confirmation needs a XamlRoot, which exists only once the content is loaded.
@@ -686,9 +709,6 @@ namespace winrt::MediaDuetUI::implementation
         if (started) Controller::Get().AcquireDiscovery();
         if (!want && m_discoveryHeld) Controller::Get().ReleaseDiscovery();
         m_discoveryHeld = want;
-        // The pairing QR code lives as long as the page: shown at once while no phone is paired.
-        if (started && Controller::Get().Model().devices.empty()) ShowQr(true);
-        else if (!want && (m_qrShown || !Controller::Get().Model().pairing.qrStatus.empty())) ShowQr(false);
         if (!m_spinnerTimer)
         {
             m_spinnerTimer = DispatcherQueue().CreateTimer();
@@ -732,7 +752,6 @@ namespace winrt::MediaDuetUI::implementation
             c.ReleaseDiscovery();
             m_discoveryHeld = false;
         }
-        if (m_qrShown) c.PairQr(false);
         for (auto& s : m_sliders)
         {
             if (s->debounce.IsRunning())
@@ -762,7 +781,7 @@ namespace winrt::MediaDuetUI::implementation
         UpdateWorkMode();
         ApplySettings();
         UpdatePairingDialog();
-        if (m_page == L"devices") { UpdateDevices(); UpdateDiscovered(); }
+        if (m_page == L"devices") { UpdateDevices(); UpdateDiscovered(); UpdateUnlock(); }
         else if (m_page == L"connection") UpdateConnection();
         else if (m_page == L"arbitration")
         {
@@ -773,6 +792,7 @@ namespace winrt::MediaDuetUI::implementation
         {
             UpdateLyricsPage();
             UpdateProviders();
+            UpdateLyricsSource();
         }
         else if (m_page == L"audio") UpdateAudio();
         else if (m_page == L"diagnostics") UpdateDiagnostics();
@@ -816,7 +836,6 @@ namespace winrt::MediaDuetUI::implementation
             sig += d.id + "|" + d.name + "|" + d.platform + "|" + d.btAddress + "|" + d.lanHost + "|" +
                 (d.connected ? "1" : "0") + d.transport + "|" + std::to_string(d.lastSeen) + "|" + d.app + "|" + d.versionMatch + "\n";
         UpdateDevicesVersionBar();
-        UpdateQr();
         if (sig == m_devicesSignature) return;
         m_devicesSignature = sig;
 
@@ -911,35 +930,6 @@ namespace winrt::MediaDuetUI::implementation
         if (match == "patch") t += L"  \x00B7  " + std::wstring(Str(L"VersionPatchNote"));
         else if (match == "mismatch") t += L"  \x00B7  " + std::wstring(Str(L"VersionMismatchShort"));
         return t;
-    }
-
-    void SettingsPage::ShowQr(bool show)
-    {
-        m_qrShown = show;
-        Controller::Get().PairQr(show);
-    }
-
-    void SettingsPage::UpdateQr()
-    {
-        auto const& p = Controller::Get().Model().pairing;
-        bool waiting = p.qrStatus == "waiting" && !p.qrPayload.empty();
-        if (!waiting) m_qrPayload.clear();
-        else if (p.qrPayload != m_qrPayload)
-        {
-            m_qrPayload = p.qrPayload;
-            QrPath().Data(QrGeometry(m_qrPayload));
-        }
-        if (p.qrStatus == "succeeded" || p.qrStatus == "expired") m_qrShown = false;
-        QrFrame().Visibility(waiting ? Visibility::Visible : Visibility::Collapsed);
-        QrIcon().Visibility(waiting ? Visibility::Collapsed : Visibility::Visible);
-        if (waiting) QrPairText().Text(Str(L"QrPairWaiting"));
-        else if (p.qrStatus == "succeeded") QrPairText().Text(StrF(L"QrPairSucceeded", { Widen(p.qrPeerName) }));
-        else if (p.qrStatus == "expired") QrPairText().Text(Str(L"QrPairExpired"));
-        else QrPairText().Text(Str(L"QrPairIdle"));
-        bool again = p.qrStatus == "succeeded" || p.qrStatus == "expired";
-        QrShowButton().Content(box_value(Str(again ? L"QrShowAgain" : L"QrShowButton")));
-        QrShowButton().Visibility(waiting ? Visibility::Collapsed : Visibility::Visible);
-        QrHideButton().Visibility(waiting ? Visibility::Visible : Visibility::Collapsed);
     }
 
     void SettingsPage::UpdateDevicesVersionBar()
@@ -1717,6 +1707,80 @@ namespace winrt::MediaDuetUI::implementation
         m_pairDialog.CloseButtonText(close);
         // Never make "Codes match" the default button: a stray Enter must not confirm a pairing code.
         m_pairDialog.DefaultButton(primary.empty() ? ContentDialogButton::Close : ContentDialogButton::None);
+    }
+
+    void SettingsPage::UpdateUnlock()
+    {
+        auto const& u = Controller::Get().Model().unlock;
+        bool enabled = JBool(u, "enabled"), stale = JBool(u, "stale");
+        bool busy = !JStr(u, "setup").empty();
+        bool host = Controller::Get().Link() == HostLink::Connected;
+        auto component = JStr(u, "component");
+        std::wstring text;
+        if (busy) text = Str(L"UnlockSetup_" + Widen(JStr(u, "setup")));
+        else if (enabled && stale) text = Str(L"UnlockStale");
+        else if (enabled && (component != "ok" || !JBool(u, "bootEnabled"))) text = Str(L"UnlockComponentMissing");
+        else if (enabled) text = StrF(JBool(u, "phoneConnected") ? L"UnlockConnected" : L"UnlockOffline",
+            { Widen(JStr(JObj(u, "phone"), "name")) });
+        else text = Str(JBool(u, "available") ? L"UnlockReady" : L"UnlockNoPhone");
+        UnlockStatus().Text(text);
+        UnlockEnable().Content(box_value(Str(enabled ? L"UnlockSetupAgain" : L"UnlockEnable")));
+        UnlockEnable().IsEnabled(host && !busy && JBool(u, "available"));
+        UnlockDisable().Visibility(enabled ? Visibility::Visible : Visibility::Collapsed);
+        UnlockDisable().IsEnabled(host && !busy);
+        UnlockRepair().Visibility(enabled && (component != "ok" || !JBool(u, "bootEnabled")) ? Visibility::Visible : Visibility::Collapsed);
+        UnlockRepair().IsEnabled(host && !busy);
+        auto last = JInt(u, "lastUnlockAt");
+        UnlockLast().Visibility(last > 0 ? Visibility::Visible : Visibility::Collapsed);
+        if (last > 0) UnlockLast().Text(StrF(L"UnlockLast", { FormatLocalTime(last) }));
+    }
+
+    void SettingsPage::SetupUnlock()
+    {
+        ContentDialog dialog;
+        dialog.XamlRoot(Root().XamlRoot());
+        dialog.RequestedTheme(Root().ActualTheme());
+        dialog.Style(Application::Current().Resources().Lookup(box_value(L"DefaultContentDialogStyle")).as<Microsoft::UI::Xaml::Style>());
+        dialog.Title(box_value(Str(L"UnlockEnable")));
+        StackPanel content; content.Spacing(12);
+        TextBlock description; description.Text(Str(L"UnlockPasswordHint")); description.TextWrapping(TextWrapping::Wrap);
+        PasswordBox password; password.Header(box_value(Str(L"UnlockPassword"))); password.MaxLength(256);
+        password.PasswordRevealMode(PasswordRevealMode::Hidden);
+        content.Children().Append(description); content.Children().Append(password); dialog.Content(content);
+        dialog.PrimaryButtonText(Str(L"UnlockEnable")); dialog.CloseButtonText(Str(L"Cancel"));
+        dialog.IsPrimaryButtonEnabled(false);
+        password.PasswordChanged([weak = make_weak(dialog)](auto&& sender, auto&&) {
+            if (auto dialog = weak.get()) dialog.IsPrimaryButtonEnabled(!sender.as<PasswordBox>().Password().empty());
+        });
+        dialog.PrimaryButtonClick([password](auto&&, auto&&) {
+            auto value = Narrow(std::wstring_view(password.Password()));
+            password.Password(L"");
+            Controller::Get().Send({{"type", "unlock.enable"}, {"password", value}});
+            SecureZeroMemory(value.data(), value.size());
+        });
+        dialog.Closed([password](auto&&, auto&&) { password.Password(L""); });
+        try { dialog.ShowAsync(); } catch (hresult_error const&) {}
+    }
+
+    // Settings > Lyrics: where the lyrics of the current song come from (the player does not say).
+    // Only names the UI knows (docs/ipc.md), never an internal value.
+    void SettingsPage::UpdateLyricsSource()
+    {
+        auto const& c = Controller::Get();
+        auto const& lyrics = c.CurrentLyrics();
+        auto const* playing = c.Model().FocusedSession();
+        std::wstring text;
+        if (!playing || !lyrics.valid || !lyrics.BelongsTo(playing)) text = Str(L"LyricsStatusNone");
+        else if (lyrics.status == "loading") text = Str(L"LyricsStatusLoading");
+        else if (lyrics.status == "disabled") text = Str(L"LyricsStatusDisabled");
+        else if (lyrics.status != "found" || lyrics.lines.empty()) text = Str(L"LyricsStatusNotFound");
+        else if (lyrics.source == "lrclib" || lyrics.source == "netease" || lyrics.source == "qqmusic")
+            text = Str(L"Provider_" + Widen(lyrics.source));
+        else if (lyrics.source == "local") text = Str(L"LyricsSourceLocal");
+        else if (lyrics.source == "cache") text = Str(L"LyricsSourceCache");
+        else if (lyrics.source == "remote") text = Str(L"LyricsSourcePhone");
+        else text = Str(L"LyricsStatusNotFound");
+        LyricsCurrentSource().Text(text);
     }
 
     void SettingsPage::ConfirmForget(std::string id, std::wstring name)

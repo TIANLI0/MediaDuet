@@ -73,14 +73,6 @@
   <data name="HdrPairNew.Text" xml:space="preserve"><value>Pair a new phone</value></data>
   <data name="PairHowTitle.Text" xml:space="preserve"><value>Nearby phones</value></data>
   <data name="PairHowDesc.Text" xml:space="preserve"><value>Open MediaDuet on your Android phone and tap "Pair with PC". Phones paired over Bluetooth or on the same network appear here.</value></data>
-  <data name="QrPairTitle.Text" xml:space="preserve"><value>Pair by scanning a QR code</value></data>
-  <data name="QrHideButton.Content" xml:space="preserve"><value>Hide</value></data>
-  <data name="QrShowButton" xml:space="preserve"><value>Show QR code</value></data>
-  <data name="QrShowAgain" xml:space="preserve"><value>New code</value></data>
-  <data name="QrPairIdle" xml:space="preserve"><value>Open MediaDuet on the phone, tap "Scan to link a PC" and scan the code. Nothing to compare.</value></data>
-  <data name="QrPairWaiting" xml:space="preserve"><value>Scan this code with MediaDuet on the phone (valid for 5 minutes). The phone must be on the same network as this PC or paired with it over Bluetooth.</value></data>
-  <data name="QrPairSucceeded" xml:space="preserve"><value>Paired with {0}.</value></data>
-  <data name="QrPairExpired" xml:space="preserve"><value>The code expired. Show a new one to try again.</value></data>
   <data name="Searching.Text" xml:space="preserve"><value>Searching…</value></data>
   <data name="DiscoveredEmptyText.Text" xml:space="preserve"><value>No phones found yet. Make sure Bluetooth is on and the phone is paired with this PC in Windows Settings, or that both devices are on the same network.</value></data>
   <data name="ManualTitle.Text" xml:space="preserve"><value>Connect by IP address</value></data>
@@ -140,6 +132,12 @@
   <data name="PriorityAppInput.PlaceholderText" xml:space="preserve"><value>App id, e.g. spotify.exe or com.netease.cloudmusic</value></data>
   <data name="HdrLyricsSources.Text" xml:space="preserve"><value>Sources</value></data>
   <data name="SetOnlineLyricsTitle.Text" xml:space="preserve"><value>Find lyrics online</value></data>
+  <data name="SetLyricsCurrentTitle.Text" xml:space="preserve"><value>Current song</value></data>
+  <data name="SetLyricsCurrentDesc.Text" xml:space="preserve"><value>Where the lyrics shown now come from</value></data>
+  <data name="LyricsStatusNone" xml:space="preserve"><value>Nothing playing</value></data>
+  <data name="LyricsStatusLoading" xml:space="preserve"><value>Searching…</value></data>
+  <data name="LyricsStatusDisabled" xml:space="preserve"><value>Online lyrics are off</value></data>
+  <data name="LyricsStatusNotFound" xml:space="preserve"><value>No lyrics found</value></data>
   <data name="SetOnlineLyricsDesc.Text" xml:space="preserve"><value>Searches the sources below for synced lyrics of the current track.</value></data>
   <data name="PrivacyNoteProviders.Title" xml:space="preserve"><value>Privacy</value></data>
   <data name="PrivacyNoteProviders.Message" xml:space="preserve"><value>Only the title, artist, album and duration of the current track are sent to the enabled sources (NetEase Cloud Music, QQ Music, LRCLIB). Nothing else leaves your PC, and no account is used.</value></data>
@@ -202,9 +200,6 @@
   <data name="WelcomeStandaloneDesc.Text" xml:space="preserve"><value>A player with lyrics, desktop lyrics and taskbar lyrics for what plays on this PC. No phone, no Bluetooth or network connections.</value></data>
   <data name="WelcomeFootnote.Text" xml:space="preserve"><value>You can change this at any time in Settings &gt; General.</value></data>
   <data name="HdrArtwork.Text" xml:space="preserve"><value>Cover art</value></data>
-  <data name="HdrHandoff.Text" xml:space="preserve"><value>Handoff</value></data>
-  <data name="SetTaskbarResumeTitle.Text" xml:space="preserve"><value>Continue from the phone on the taskbar</value></data>
-  <data name="SetTaskbarResumeDesc.Text" xml:space="preserve"><value>While the phone plays in NetEase Cloud Music, QQ Music or Spotify and this PC has the same app, a taskbar button continues the song here at the same position.</value></data>
   <data name="SetArtworkOnlineTitle.Text" xml:space="preserve"><value>Look up high-resolution covers online</value></data>
   <data name="SetArtworkOnlineDesc.Text" xml:space="preserve"><value>When a player only provides a small cover, MediaDuet searches NetEase Cloud Music, QQ Music or iTunes for the song (sends its title, artist and album). Covers found before are still used when this is off.</value></data>
   <data name="HdrDeveloper.Text" xml:space="preserve"><value>Developer</value></data>
@@ -498,6 +493,36 @@
   <data name="TaskbarReason_taskbar_not_ready" xml:space="preserve"><value>waiting for the taskbar (tries again automatically)</value></data>
   <data name="TaskbarReason_no_taskbar" xml:space="preserve"><value>no taskbar found yet (tries again automatically)</value></data>
   <data name="TaskbarReason_unavailable" xml:space="preserve"><value>temporarily unavailable (tries again automatically)</value></data>
+  <data name="UnlockHeader.Text" xml:space="preserve"><value>Unlock this PC with your phone</value></data>
+  <data name="UnlockDescription.Text" xml:space="preserve"><value>Confirm on your phone with biometrics or its screen lock to sign in after startup or restart, or unlock this PC. The installed system service runs before sign-in. Your paired phone and its network or Bluetooth connection must be available.</value></data>
+  <data name="UnlockEnable" xml:space="preserve"><value>Set up phone unlock</value></data>
+  <data name="UnlockSetupAgain" xml:space="preserve"><value>Set up again</value></data>
+  <data name="UnlockDisable.Content" xml:space="preserve"><value>Remove</value></data>
+  <data name="UnlockRepair.Content" xml:space="preserve"><value>Repair component</value></data>
+  <data name="UnlockPassword" xml:space="preserve"><value>Windows account password</value></data>
+  <data name="UnlockPasswordHint" xml:space="preserve"><value>Enter your Windows account password (not the Windows Hello PIN), confirm on your phone, then approve installing the sign-in component and automatic system service. Your password stays on this PC.</value></data>
+  <data name="UnlockReady" xml:space="preserve"><value>Your connected phone supports unlock. You can set it up now.</value></data>
+  <data name="UnlockNoPhone" xml:space="preserve"><value>Connect a paired phone that supports phone unlock to set up.</value></data>
+  <data name="UnlockStale" xml:space="preserve"><value>Your password or phone key changed. Set up phone unlock again.</value></data>
+  <data name="UnlockComponentMissing" xml:space="preserve"><value>The startup sign-in service is unavailable or needs enrollment migration. Choose Repair component to enable sign-in after restart.</value></data>
+  <data name="UnlockConnected" xml:space="preserve"><value>Enabled · {0} is connected</value></data>
+  <data name="UnlockOffline" xml:space="preserve"><value>Enabled · waiting for {0} to connect</value></data>
+  <data name="UnlockLast" xml:space="preserve"><value>Last unlocked: {0}</value></data>
+  <data name="UnlockSetup_verifying" xml:space="preserve"><value>Verifying your Windows password…</value></data>
+  <data name="UnlockSetup_installing" xml:space="preserve"><value>Approve the Windows unlock component installation…</value></data>
+  <data name="UnlockSetup_waiting_phone" xml:space="preserve"><value>Confirm enrollment on your phone…</value></data>
+  <data name="UnlockErr_wrong_password" xml:space="preserve"><value>The Windows password is incorrect. Use your account password, not your PIN.</value></data>
+  <data name="UnlockErr_no_phone" xml:space="preserve"><value>Connect a phone that supports phone unlock.</value></data>
+  <data name="UnlockErr_elevation_cancelled" xml:space="preserve"><value>The component installation was cancelled.</value></data>
+  <data name="UnlockErr_component_failed" xml:space="preserve"><value>Could not install or save the unlock component. Try again.</value></data>
+  <data name="UnlockErr_phone_denied" xml:space="preserve"><value>Enrollment was cancelled on your phone.</value></data>
+  <data name="UnlockErr_phone_timeout" xml:space="preserve"><value>The phone did not confirm in time. Try again.</value></data>
+  <data name="UnlockErr_phone_no_auth" xml:space="preserve"><value>Set a secure screen lock on your phone first.</value></data>
+  <data name="UnlockErr_phone_failed" xml:space="preserve"><value>Phone unlock setup failed. Check your phone and try again.</value></data>
+  <data name="UnlockErr_busy" xml:space="preserve"><value>Another unlock operation is in progress. Try again when it finishes.</value></data>
+  <data name="HdrHandoff.Text" xml:space="preserve"><value>Handoff</value></data>
+  <data name="SetTaskbarResumeTitle.Text" xml:space="preserve"><value>Continue from the phone on the taskbar</value></data>
+  <data name="SetTaskbarResumeDesc.Text" xml:space="preserve"><value>While the phone plays in NetEase Cloud Music, QQ Music or Spotify and this PC has the same app, a taskbar button continues the song here at the same position.</value></data>
   <data name="SetTaskbarAlignTitle.Text" xml:space="preserve"><value>Alignment</value></data>
   <data name="SetTaskbarAlignDesc.Text" xml:space="preserve"><value>Which edge of its free area the widget sticks to; the lyrics are aligned to that side too. Opening and closing apps changes the taskbar: Left and Right stay at the steady end of the area (screen edge, Widgets or the notification area), so the lyrics do not move with the icons; Auto keeps them next to the taskbar icons.</value></data>
   <data name="TaskbarAlignAuto.Content" xml:space="preserve"><value>Auto (next to the taskbar icons)</value></data>

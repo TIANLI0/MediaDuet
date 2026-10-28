@@ -2,7 +2,7 @@
 ; Build the staged folder first:
 ;   powershell -ExecutionPolicy Bypass -File windows\packaging\package.ps1 -Arch x64
 ; then:
-;   makensis /DVERSION=1.9.0 /DARCH=x64 windows\packaging\installer.nsi
+;   makensis /DVERSION=1.10.0 /DARCH=x64 windows\packaging\installer.nsi
 
 Unicode true
 ManifestDPIAware true
@@ -10,7 +10,7 @@ RequestExecutionLevel user
 SetCompressor /SOLID lzma
 
 !ifndef VERSION
-  !define VERSION "1.9.0"
+  !define VERSION "1.10.0"
 !endif
 !ifndef ARCH
   !define ARCH "x64"
@@ -19,7 +19,10 @@ SetCompressor /SOLID lzma
 !define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\MediaDuet"
 
 Name "MediaDuet"
-OutFile "..\..\dist\MediaDuet-${VERSION}-${ARCH}-setup.exe"
+!ifndef OUTPUT_FILE
+  !define OUTPUT_FILE "..\..\dist\MediaDuet-${VERSION}-${ARCH}-setup.exe"
+!endif
+OutFile "${OUTPUT_FILE}"
 InstallDir "$LOCALAPPDATA\Programs\MediaDuet"
 InstallDirRegKey HKCU "Software\MediaDuet" "InstallDir"
 BrandingText "MediaDuet ${VERSION}"
@@ -121,6 +124,11 @@ SectionEnd
 
 Section "Uninstall"
   !insertmacro StopApp
+  ExecWait '"$INSTDIR\MediaDuet.exe" --unlock-remove' $0
+  ${If} $0 != 0
+    MessageBox MB_OK|MB_ICONEXCLAMATION "Could not revoke phone sign-in. Please allow removal of the system component and try again."
+    Abort
+  ${EndIf}
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "MediaDuet"
   RMDir /r "$SMPROGRAMS\MediaDuet"
   RMDir /r "$INSTDIR"

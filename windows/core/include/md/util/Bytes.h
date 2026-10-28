@@ -29,8 +29,6 @@ std::optional<Bytes> hexDecode(std::string_view hex);
 
 std::string base64Encode(ByteView data);
 std::optional<Bytes> base64Decode(std::string_view b64);
-// RFC 4648 §5 alphabet, no padding (URLs, QR codes).
-std::string base64UrlEncode(ByteView data);
 
 inline void putU32BE(uint8_t* p, uint32_t v) {
     p[0] = static_cast<uint8_t>(v >> 24); p[1] = static_cast<uint8_t>(v >> 16);

@@ -4,6 +4,7 @@ import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -16,6 +17,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
@@ -68,6 +70,8 @@ import app.mediaduet.ui.screens.BrandMark
 import app.mediaduet.ui.screens.ArbitrationPage
 import app.mediaduet.ui.screens.AudioPage
 import app.mediaduet.ui.screens.ConnectionPage
+import app.mediaduet.ui.screens.HomeRoot
+import app.mediaduet.ui.screens.UnlockPage
 import app.mediaduet.ui.screens.DiagnosticsPage
 import app.mediaduet.ui.screens.LanguagePage
 import app.mediaduet.ui.screens.LyricsDisplayPage
@@ -84,7 +88,6 @@ import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import app.mediaduet.service.WorkMode
 import app.mediaduet.ui.screens.ModeWelcome
-import app.mediaduet.ui.screens.QrScannerOverlay
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -102,8 +105,6 @@ class UiContext(
     val setNav: (NavState) -> Unit,
     val toast: (String) -> Unit,
     val confirm: (ConfirmRequest) -> Unit,
-    /** Opens the QR scanner that pairs with a PC (§3.5). */
-    val openScanner: () -> Unit = {},
 ) {
     fun openSettings(route: SettingsRoute?) = setNav(nav.open(route))
     fun openPlayer() = setNav(nav.showPlayer())
@@ -118,9 +119,10 @@ private val NavSaver = Saver<MutableState<NavState>, String>(
 const val NAV_KEY_NOW = "now"
 
 /**
- * App shell without tabs: Now Playing is the home screen (full height); Settings is a page pushed
- * on top of it (from the player's action row) with its own sub-pages. The floating glass mini player
- * appears only on the Settings stack. One predictive-back handler drives the whole stack.
+ * App shell: three bottom tabs (Home, where the app opens; Devices; Settings), each with its pages,
+ * the floating glass mini player docked right above the tab bar, and the full player as a layer
+ * over everything (opened from the mini player, closed with back). One predictive-back handler
+ * drives the whole stack.
  */
 @Composable
 fun MediaDuetRoot(engine: Engine, requestedPage: MutableState<String?>) {
@@ -131,8 +133,6 @@ fun MediaDuetRoot(engine: Engine, requestedPage: MutableState<String?>) {
     var nav by navState
     var toast by remember { mutableStateOf<Toast?>(null) }
     var confirm by remember { mutableStateOf<ConfirmRequest?>(null) }
-    var scanner by rememberSaveable { mutableStateOf(false) }
-    var miniHeight by remember { mutableStateOf(0.dp) }
 
     LaunchedEffect(requestedPage.value) {
         when (val key = requestedPage.value) {
@@ -177,7 +177,6 @@ fun MediaDuetRoot(engine: Engine, requestedPage: MutableState<String?>) {
         setNav = { nav = it },
         toast = { text -> if (toast?.text != text) toast = Toast(System.nanoTime(), text) },
         confirm = { confirm = it },
-        openScanner = { scanner = true },
     )
 
     // One back handler for the whole back stack (see NavState.back). Settings pages follow the
@@ -207,126 +206,144 @@ fun MediaDuetRoot(engine: Engine, requestedPage: MutableState<String?>) {
         backProgress = 0f
     }
 
-    // Measured floating inset: the mini player (Settings stack only) plus the navigation bar.
+    // Measured floating inset: mini player + tab bar + navigation bar (just the navigation bar in the player).
     val navBar = with(density) { WindowInsets.navigationBars.getBottom(this).toDp() }
     val tallEnough = with(density) { androidx.compose.ui.platform.LocalWindowInfo.current.containerSize.height.toDp() } >= 480.dp
-    val showMini = nav.settingsOpen && playerView != null && tallEnough
-    val bottomInset = navBar + if (showMini) miniHeight else 8.dp
+    val showChrome = !nav.playerOpen
+    val showMini = showChrome && playerView != null && tallEnough
+    var chromeHeight by remember { mutableStateOf(navBar + TAB_BAR_HEIGHT + 16.dp) }
+    val bottomInset = if (showChrome) chromeHeight else navBar + 8.dp
+    // The tabs fade out under the player (it shares their background, so its glass refracts right).
+    val tabsAlpha by animateFloatAsState(if (nav.playerOpen) 0f else 1f, if (reduced) snap() else tween(280), label = "tabs")
 
     CompositionLocalProvider(LocalBottomInset provides bottomInset) {
         Box(Modifier.fillMaxSize().background(glass.background)) {
-            // Everything inside this box is what the mini player, sheets and dialogs refract.
+            // Everything inside this box is what the mini player, tab bar, sheets and dialogs refract.
             Box(Modifier.fillMaxSize().layerBackdrop(overlayBackdrop)) {
-                // Flows only behind Now Playing while something plays: Settings and dialogs keep a
+                // Flows only behind the player while something plays: the tabs and dialogs keep a
                 // still background (the glass there would otherwise re-render every frame).
-                val flowing = !reduced && nav.section == Section.NOW && playerView?.playing == true
+                val flowing = !reduced && nav.playerOpen && playerView?.playing == true
                 AmbientBackground(background, flowing, Modifier.fillMaxSize().layerBackdrop(pageBackdrop))
-                AnimatedContent(
-                    targetState = nav.section,
-                    transitionSpec = {
-                        when {
-                            reduced -> fadeIn(snap()) togetherWith fadeOut(snap())
-                            // Push Settings: it slides in from the end, the player recedes a little.
-                            targetState == Section.SETTINGS ->
-                                slideInHorizontally(tween(320)) { it } togetherWith
-                                    (slideOutHorizontally(tween(320)) { -it / 4 } + fadeOut(tween(320)))
-                            // Pop back to Now Playing.
-                            else ->
-                                (slideInHorizontally(tween(300)) { -it / 4 } + fadeIn(tween(300))) togetherWith
-                                    slideOutHorizontally(tween(300)) { it }
-                        }
-                    },
-                    label = "section",
-                ) { section ->
-                    when (section) {
-                        Section.NOW -> PlayerScreen(ui)
-                        Section.SETTINGS -> BoxWithConstraints(Modifier.fillMaxSize()) {
-                            // Tablets / wide windows: the list stays on the left, the open page on the right.
-                            val twoPane = maxWidth >= TWO_PANE_MIN_WIDTH
-                            CompositionLocalProvider(LocalTwoPane provides twoPane) {
-                                val pages: @Composable (Boolean) -> Unit = { inPane ->
-                                    AnimatedContent(
-                                        targetState = nav.route,
-                                        transitionSpec = {
-                                            when {
-                                                reduced -> fadeIn(snap()) togetherWith fadeOut(snap())
-                                                inPane -> fadeIn(tween(220)) togetherWith fadeOut(tween(160))
-                                                targetState != null ->
-                                                    slideInHorizontally(tween(300)) { it } togetherWith (slideOutHorizontally(tween(300)) { -it / 4 } + fadeOut(tween(300)))
-                                                else ->
-                                                    (slideInHorizontally(tween(300)) { -it / 4 } + fadeIn(tween(300))) togetherWith slideOutHorizontally(tween(300)) { it }
-                                            }
-                                        },
-                                        label = "settings",
-                                    ) { r ->
-                                        val back = { nav = nav.copy(route = null) }
-                                        Box(
-                                            Modifier.graphicsLayer {
-                                                // The page on top follows the predictive-back gesture.
-                                                if (backProgress > 0f && r == backRoute) {
-                                                    translationX = size.width * 0.3f * backProgress
-                                                    val s = 1f - 0.06f * backProgress
-                                                    scaleX = s
-                                                    scaleY = s
-                                                }
-                                            },
-                                        ) {
-                                            when {
-                                                r == null && inPane -> SettingsPlaceholder()
-                                                r == null -> SettingsRoot(ui) { nav = nav.showPlayer() }
-                                                else -> SettingsPage(ui, r, back)
-                                            }
-                                        }
-                                    }
-                                }
-                                if (twoPane) {
-                                    Row(Modifier.fillMaxSize()) {
-                                        Box(Modifier.width(SETTINGS_LIST_WIDTH).fillMaxHeight()) {
-                                            SettingsRoot(ui) { nav = nav.showPlayer() }
-                                        }
-                                        Box(Modifier.weight(1f).fillMaxHeight()) { pages(true) }
-                                    }
-                                } else {
-                                    pages(false)
-                                }
-                            }
+                if (tabsAlpha > 0f) {
+                    Box(Modifier.fillMaxSize().graphicsLayer { alpha = tabsAlpha }) {
+                        AnimatedContent(
+                            targetState = nav.tab,
+                            transitionSpec = {
+                                if (reduced) fadeIn(snap()) togetherWith fadeOut(snap())
+                                else fadeIn(tween(220)) togetherWith fadeOut(tween(160))
+                            },
+                            label = "tab",
+                        ) { tab ->
+                            TabPages(ui, tab, reduced, backProgress, backRoute) { nav = nav.copy(route = null) }
                         }
                     }
                 }
+                AnimatedVisibility(
+                    visible = nav.playerOpen,
+                    enter = if (reduced) fadeIn(snap()) else slideInVertically(tween(340)) { it } + fadeIn(tween(200)),
+                    exit = if (reduced) fadeOut(snap()) else slideOutVertically(tween(300)) { it } + fadeOut(tween(300)),
+                ) {
+                    PlayerScreen(ui)
+                }
             }
 
-            // Floating glass mini player, docked above the gesture inset (Settings stack only).
+            // Floating glass chrome: the mini player docked right above the tab bar.
             AnimatedVisibility(
-                visible = showMini,
+                visible = showChrome,
                 enter = if (reduced) fadeIn(snap()) else slideInVertically { it } + fadeIn(),
                 exit = if (reduced) fadeOut(snap()) else slideOutVertically { it } + fadeOut(),
                 modifier = Modifier.align(Alignment.BottomCenter),
             ) {
-                Box(
+                Column(
                     Modifier
-                        .onSizeChanged { miniHeight = with(density) { it.height.toDp() } }
+                        .onSizeChanged { chromeHeight = with(density) { it.height.toDp() } }
                         .padding(horizontal = 16.dp)
-                        .padding(top = 8.dp, bottom = navBar + 12.dp)
+                        .padding(top = 8.dp, bottom = navBar + 8.dp)
                         .widthIn(max = 560.dp)
                         .fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    MiniPlayer(ui, overlayBackdrop)
+                    if (showMini) MiniPlayer(ui, overlayBackdrop)
+                    TabBar(nav.tab, overlayBackdrop, onSelect = { nav = nav.select(it) }, onReselect = { nav = nav.select(it) })
                 }
             }
             ToastHost(toast, bottomInset, overlayBackdrop, reduced) { toast = null }
             PairingOverlay(engine, overlayBackdrop) { nav = nav.open(SettingsRoute.CONNECTION) }
             ModeWelcome(ui, ui.backdrop, reduced)
-            QrScannerOverlay(ui, scanner, reduced) { scanner = false }
             ConfirmHost(confirm, overlayBackdrop, reduced) { confirm = null }
         }
     }
 }
 
-/** One Settings sub-page. */
+/**
+ * One tab: its root list and the page pushed on it. On tablets / wide windows the list stays on
+ * the left and the open page shows on the right (the Devices tab is a single page).
+ */
+@Composable
+private fun TabPages(ui: UiContext, tab: Tab, reduced: Boolean, backProgress: Float, backRoute: Any?, back: () -> Unit) {
+    val route = ui.nav.route?.takeIf { it.tab == tab }
+    val root: @Composable () -> Unit = {
+        when (tab) {
+            Tab.HOME -> HomeRoot(ui)
+            Tab.DEVICES -> ConnectionPage(ui)
+            Tab.SETTINGS -> SettingsRoot(ui)
+        }
+    }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val twoPane = maxWidth >= TWO_PANE_MIN_WIDTH && tab != Tab.DEVICES
+        CompositionLocalProvider(LocalTwoPane provides twoPane) {
+            val pages: @Composable (Boolean) -> Unit = { inPane ->
+                AnimatedContent(
+                    targetState = route,
+                    transitionSpec = {
+                        when {
+                            reduced -> fadeIn(snap()) togetherWith fadeOut(snap())
+                            inPane -> fadeIn(tween(220)) togetherWith fadeOut(tween(160))
+                            targetState != null ->
+                                slideInHorizontally(tween(300)) { it } togetherWith (slideOutHorizontally(tween(300)) { -it / 4 } + fadeOut(tween(300)))
+                            else ->
+                                (slideInHorizontally(tween(300)) { -it / 4 } + fadeIn(tween(300))) togetherWith slideOutHorizontally(tween(300)) { it }
+                        }
+                    },
+                    label = "page",
+                ) { r ->
+                    Box(
+                        Modifier.graphicsLayer {
+                            // The page on top follows the predictive-back gesture.
+                            if (backProgress > 0f && r != null && r == backRoute) {
+                                translationX = size.width * 0.3f * backProgress
+                                val sc = 1f - 0.06f * backProgress
+                                scaleX = sc
+                                scaleY = sc
+                            }
+                        },
+                    ) {
+                        when {
+                            r == null && inPane -> SettingsPlaceholder()
+                            r == null -> root()
+                            else -> SettingsPage(ui, r, back)
+                        }
+                    }
+                }
+            }
+            if (twoPane) {
+                Row(Modifier.fillMaxSize()) {
+                    Box(Modifier.width(SETTINGS_LIST_WIDTH).fillMaxHeight()) { root() }
+                    Box(Modifier.weight(1f).fillMaxHeight()) { pages(true) }
+                }
+            } else {
+                pages(false)
+            }
+        }
+    }
+}
+
+/** One page pushed on a tab. */
 @Composable
 private fun SettingsPage(ui: UiContext, route: SettingsRoute, back: () -> Unit) {
     when (route) {
-        SettingsRoute.CONNECTION -> ConnectionPage(ui, back)
+        SettingsRoute.CONNECTION -> ConnectionPage(ui) // the Devices tab itself; never pushed
+        SettingsRoute.UNLOCK -> UnlockPage(ui, back)
         SettingsRoute.PERMISSIONS -> PermissionsPage(ui, back)
         SettingsRoute.ARBITRATION -> ArbitrationPage(ui, back)
         SettingsRoute.LYRICS -> LyricsDisplayPage(ui, back)

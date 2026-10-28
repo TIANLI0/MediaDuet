@@ -42,7 +42,7 @@ fs::path cacheDir() {
     return d;
 }
 
-static std::optional<json> readJson(const fs::path& p) {
+std::optional<json> readJson(const fs::path& p) {
     std::ifstream in(p, std::ios::binary);
     if (!in) return std::nullopt;
     std::stringstream ss;
@@ -52,7 +52,7 @@ static std::optional<json> readJson(const fs::path& p) {
     return j;
 }
 
-static bool writeJson(const fs::path& p, const json& j) {
+bool writeJson(const fs::path& p, const json& j) {
     auto tmp = p;
     tmp += L".tmp";
     {

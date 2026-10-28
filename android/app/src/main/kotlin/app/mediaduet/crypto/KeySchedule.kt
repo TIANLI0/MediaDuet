@@ -25,10 +25,6 @@ object KeySchedule {
     fun confirmMac(pairingKey: ByteArray, role: String, transcript: ByteArray): ByteArray =
         hmacSha256(pairingKey, ascii("confirm"), ascii(role), transcript)
 
-    /** QR pairing (§3.5): keyed with the one-time secret T from the QR code; role is "C" or "S". */
-    fun qrConfirmMac(token: ByteArray, role: String, transcript: ByteArray): ByteArray =
-        hmacSha256(token, ascii("qr confirm"), ascii(role), transcript)
-
     fun serverMac(pairingKey: ByteArray, transcript: ByteArray) = hmacSha256(pairingKey, ascii("server"), transcript)
     fun clientMac(pairingKey: ByteArray, transcript: ByteArray) = hmacSha256(pairingKey, ascii("client"), transcript)
 

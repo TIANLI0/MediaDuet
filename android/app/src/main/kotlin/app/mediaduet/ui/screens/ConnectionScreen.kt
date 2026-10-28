@@ -1,7 +1,13 @@
 package app.mediaduet.ui.screens
 
 import android.app.Activity
+import android.content.Intent
 import android.content.IntentSender
+import android.os.Build
+import android.provider.Settings
+import androidx.core.net.toUri
+import androidx.lifecycle.compose.LifecycleResumeEffect
+import app.mediaduet.service.Notifications
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -10,7 +16,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -53,7 +58,7 @@ import java.text.DateFormat
 import java.util.Date
 
 @Composable
-fun ConnectionPage(ui: UiContext, onBack: () -> Unit) {
+fun ConnectionPage(ui: UiContext) {
     val engine = ui.engine
     val glass = LocalGlass.current
     val link by engine.link.status.collectAsStateWithLifecycle()
@@ -64,19 +69,8 @@ fun ConnectionPage(ui: UiContext, onBack: () -> Unit) {
     val now by rememberTicker(1_000)
     val current = link.current
 
-    ScreenScaffold(stringResource(R.string.connection_title), backdrop = ui.backdrop, onBack = onBack) {
-        // ---- QR pairing (§3.5): the quickest way to add a PC --------------------------------
-        GlassButton(ui.openScanner, ui.backdrop, Modifier.fillMaxWidth(), prominent = true, height = 52.dp) {
-            Icon(AppIcons.QrCode, null, Modifier.size(20.dp))
-            Text(stringResource(R.string.conn_scan), style = MaterialTheme.typography.labelLarge)
-        }
-        Text(
-            stringResource(R.string.conn_scan_hint),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 4.dp),
-        )
-
+    // The Devices tab itself: no back button.
+    ScreenScaffold(stringResource(R.string.tab_devices)) {
         // ---- status ------------------------------------------------------------------------
         GlassCard(ui.backdrop, Modifier.fillMaxWidth()) {
             if (current != null) {
@@ -329,19 +323,114 @@ private fun NearbyDevicesCard(ui: UiContext) {
 
 private const val DISCOVERY_HOLDER = "connection-page"
 
+/** Home › Unlock PCs (docs/unlock.md). */
+@Composable
+fun UnlockPage(ui: UiContext, onBack: () -> Unit) {
+    ScreenScaffold(stringResource(R.string.unlock_header), backdrop = ui.backdrop, onBack = onBack) {
+        UnlockCard(ui)
+    }
+}
+
+/** The PCs this phone can unlock, each removable, and whether the prompt may pop up on the lock screen. */
+@Composable
+private fun UnlockCard(ui: UiContext) {
+    val context = LocalContext.current
+    val glass = LocalGlass.current
+    val engine = ui.engine
+    val pcs by engine.unlock.store.pcs.collectAsStateWithLifecycle()
+    var fullScreen by remember { mutableStateOf(Notifications.canUseFullScreen(context)) }
+    var overlay by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
+    var secure by remember { mutableStateOf(engine.unlock.store.deviceSecure()) }
+    LifecycleResumeEffect(Unit) {
+        fullScreen = Notifications.canUseFullScreen(context)
+        overlay = Settings.canDrawOverlays(context)
+        secure = engine.unlock.store.deviceSecure()
+        onPauseOrDispose { }
+    }
+    val removeTitle = stringResource(R.string.unlock_remove_title)
+    val removeText = stringResource(R.string.unlock_remove_text)
+    val removeLabel = stringResource(R.string.trusted_revoke)
+    val cancelLabel = stringResource(R.string.cancel)
+    GlassCard(ui.backdrop, Modifier.fillMaxWidth()) {
+        if (pcs.isEmpty()) {
+            Text(stringResource(R.string.unlock_empty), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        for (pc in pcs) {
+            InfoRow(
+                pc.pcName,
+                subtitle = if (pc.lastUsedMs > 0) {
+                    stringResource(R.string.unlock_last_used, DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(pc.lastUsedMs)))
+                } else {
+                    stringResource(R.string.unlock_never_used)
+                },
+                leading = { Icon(AppIcons.Computer, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                trailing = {
+                    TextButton({
+                        ui.confirm(
+                            ConfirmRequest(removeTitle.format(pc.pcName), removeText, removeLabel, cancelLabel, destructive = true) {
+                                engine.removeUnlockPc(pc.enrollment)
+                            },
+                        )
+                    }) { Text(removeLabel, color = glass.bad) }
+                },
+            )
+        }
+        if (!secure) {
+            Spacer(Modifier.height(8.dp))
+            Text(stringResource(R.string.unlock_no_screen_lock), color = glass.warn, style = MaterialTheme.typography.bodyMedium)
+        }
+        if (!overlay) {
+            Spacer(Modifier.height(8.dp))
+            InfoRow(
+                stringResource(R.string.unlock_overlay_title),
+                subtitle = stringResource(R.string.unlock_overlay_text),
+                trailing = {
+                    TextButton({
+                        runCatching {
+                            context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, "package:${context.packageName}".toUri()))
+                        }
+                    }) { Text(stringResource(R.string.unlock_fullscreen_allow)) }
+                },
+            )
+        }
+        if (!fullScreen && Build.VERSION.SDK_INT >= 34) {
+            Spacer(Modifier.height(8.dp))
+            InfoRow(
+                stringResource(R.string.unlock_fullscreen_title),
+                subtitle = stringResource(R.string.unlock_fullscreen_text),
+                trailing = {
+                    TextButton({
+                        runCatching {
+                            context.startActivity(
+                                Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, "package:${context.packageName}".toUri()),
+                            )
+                        }
+                    }) { Text(stringResource(R.string.unlock_fullscreen_allow)) }
+                },
+            )
+        }
+    }
+}
+
 @Composable
 private fun CompanionCard(ui: UiContext) {
     val context = LocalContext.current
     val glass = LocalGlass.current
     val helper = remember { CompanionHelper(context.applicationContext) }
     var associations by remember { mutableStateOf(helper.associations()) }
+    var bonded by remember { mutableStateOf(helper.bondedComputers()) }
     var message by remember { mutableStateOf<String?>(null) }
+    LifecycleResumeEffect(Unit) {
+        bonded = helper.bondedComputers()
+        onPauseOrDispose { }
+    }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             helper.observeAll()
             message = null
         }
         associations = helper.associations()
+        bonded = helper.bondedComputers()
         ui.refreshPermissions()
     }
     val failedText = stringResource(R.string.cdm_failed)
@@ -368,6 +457,7 @@ private fun CompanionCard(ui: UiContext) {
                             ConfirmRequest(cdmRemoveTitle.format(a.name), cdmRemoveText, cdmRemoveLabel, cancelLabel, destructive = true) {
                                 helper.disassociate(a)
                                 associations = helper.associations()
+                                bonded = helper.bondedComputers()
                                 ui.refreshPermissions()
                             },
                         )
@@ -378,21 +468,35 @@ private fun CompanionCard(ui: UiContext) {
         if (associations.isNotEmpty() && !helper.canObservePresence) {
             Text(stringResource(R.string.cdm_no_presence), style = MaterialTheme.typography.bodySmall, color = glass.warn)
         }
+        val chooser = object : CompanionHelper.Callback {
+            override fun onChooser(sender: IntentSender) {
+                launcher.launch(IntentSenderRequest.Builder(sender).build())
+            }
+
+            override fun onFailure(error: String?) {
+                message = failedText.format(error ?: unknownText)
+            }
+        }
+        // Bonded PCs: the system's scan does not find them unless they are discoverable.
+        if (bonded.isNotEmpty()) {
+            Spacer(Modifier.height(8.dp))
+            Text(stringResource(R.string.cdm_bonded), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        for (pc in bonded) {
+            InfoRow(
+                pc.name,
+                subtitle = pc.address,
+                leading = { Icon(AppIcons.Computer, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                trailing = {
+                    TextButton({ helper.associate(chooser, pc.address) }) { Text(stringResource(R.string.cdm_associate_bonded)) }
+                },
+            )
+        }
         Spacer(Modifier.height(16.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            GlassButton({
-                helper.associate(object : CompanionHelper.Callback {
-                    override fun onChooser(sender: IntentSender) {
-                        launcher.launch(IntentSenderRequest.Builder(sender).build())
-                    }
-
-                    override fun onFailure(error: String?) {
-                        message = failedText.format(error ?: unknownText)
-                    }
-                })
-            }, ui.backdrop, height = 40.dp) {
+            GlassButton({ helper.associate(chooser) }, ui.backdrop, height = 40.dp) {
                 Icon(AppIcons.Link, null, Modifier.size(18.dp))
-                Text(stringResource(R.string.cdm_associate))
+                Text(stringResource(if (bonded.isEmpty()) R.string.cdm_associate else R.string.cdm_associate_scan))
             }
         }
         message?.let {

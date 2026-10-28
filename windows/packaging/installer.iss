@@ -1,12 +1,12 @@
 ; Inno Setup 6 script for MediaDuet (per-user install, no admin rights).
 ; Build the staged folder first:  windows\packaging\package.ps1 -Arch x64
-; Then:  iscc /DArch=x64 /DVersion=1.9.0 windows\packaging\installer.iss
+; Then:  iscc /DArch=x64 /DVersion=1.10.0 windows\packaging\installer.iss
 
 #ifndef Arch
   #define Arch "x64"
 #endif
 #ifndef Version
-  #define Version "1.9.0"
+  #define Version "1.10.0"
 #endif
 #define Staged "..\..\dist\MediaDuet-" + Version + "-win-" + Arch
 
@@ -48,3 +48,16 @@ Filename: "{sys}\taskkill.exe"; Parameters: "/IM MediaDuetUI.exe"; Flags: runhid
 
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: "MediaDuet"; Flags: uninsdeletevalue dontcreatekey
+
+[Code]
+function InitializeUninstall(): Boolean;
+var
+  Code: Integer;
+begin
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM MediaDuetUI.exe', '', SW_HIDE, ewWaitUntilTerminated, Code);
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM MediaDuet.exe', '', SW_HIDE, ewWaitUntilTerminated, Code);
+  Result := Exec(ExpandConstant('{app}\MediaDuet.exe'), '--unlock-remove', '', SW_HIDE, ewWaitUntilTerminated, Code);
+  Result := Result and (Code = 0);
+  if not Result then
+    MsgBox('Could not revoke phone sign-in. Please allow removal of the system component and try again.', mbError, MB_OK);
+end;

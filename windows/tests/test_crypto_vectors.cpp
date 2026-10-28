@@ -59,10 +59,6 @@ TEST_CASE("protocol v1 key schedule matches the reference vectors") {
         CHECK(hexEncode(sec.pairingKey) == p["pairing_key"].get<std::string>());
         CHECK(hexEncode(link::ks::confirmMac(sec.pairingKey, 'C', th)) == p["confirm_mac_client"].get<std::string>());
         CHECK(hexEncode(link::ks::confirmMac(sec.pairingKey, 'S', th)) == p["confirm_mac_server"].get<std::string>());
-        Bytes qr = hex(p["qr_token"]);
-        CHECK(base64UrlEncode(qr) == p["qr_token_b64url"].get<std::string>());
-        CHECK(hexEncode(link::ks::qrConfirmMac(qr, 'C', th)) == p["qr_confirm_mac_client"].get<std::string>());
-        CHECK(hexEncode(link::ks::qrConfirmMac(qr, 'S', th)) == p["qr_confirm_mac_server"].get<std::string>());
     }
     SUBCASE("session") {
         auto& s = v["session"];

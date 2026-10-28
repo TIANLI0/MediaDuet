@@ -61,6 +61,9 @@ import app.mediaduet.handoff.HandoffOutcome
 import app.mediaduet.handoff.HandoffPlay
 import app.mediaduet.handoff.PlayResult
 import app.mediaduet.update.Updater
+import app.mediaduet.unlock.UnlockController
+import app.mediaduet.unlock.UnlockEnroll
+import app.mediaduet.unlock.UnlockRequest
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.buildJsonObject
@@ -138,6 +141,8 @@ class Engine private constructor(private val app: Context) : LinkHost {
     val volume = VolumeController(app)
     /** Software updates from GitHub (Settings > About). */
     val updater = Updater(app, scope, settings)
+    /** Unlocking paired PCs with this phone's fingerprint (docs/unlock.md). */
+    val unlock = UnlockController(app)
     /** Where the phone's media audio plays; a change re-sends the snapshot (outputLatencyMs). */
     val outputRoute = AudioRouteMonitor(app) { requestSnapshot() }
 
@@ -341,8 +346,14 @@ class Engine private constructor(private val app: Context) : LinkHost {
                 synchronized(routeLock) { if (id != null && id != routedPeer) switchRemoteTo(id) }
             }
         }
-        // Forget the addresses of devices that are no longer paired.
-        scope.launch { trust.peers.collect { peers -> settings.forgetPeerEndpoints(peers.map { it.id }.toSet()) } }
+        // Forget the addresses (and unlock keys) of devices that are no longer paired.
+        scope.launch {
+            trust.peers.collect { peers ->
+                val ids = peers.map { it.id }.toSet()
+                settings.forgetPeerEndpoints(ids)
+                unlock.store.retainPeers(ids)
+            }
+        }
     }
 
     /** Shows [peerId]'s media in the player (null: automatic, a PC first). */
@@ -560,6 +571,7 @@ class Engine private constructor(private val app: Context) : LinkHost {
         add(Caps.HANDOFF)
         add(Caps.POLICY_PEER)
         add(Caps.LYRICS_OFFSET)
+        add(Caps.UNLOCK)
         if (settings.audioReceiveEnabled.value) add(Caps.AUDIO_RECV_PCM)
     }
 
@@ -654,6 +666,17 @@ class Engine private constructor(private val app: Context) : LinkHost {
     override fun onPeerPolicy(peerId: String, policy: PeerPolicy) {
         _peerPolicies.value = _peerPolicies.value + (peerId to policy)
         onArbiter { onPeer(peerId, policy) }
+    }
+
+    override suspend fun onUnlockEnroll(peerId: String, msgId: Long, req: UnlockEnroll): JsonObject = unlock.enroll(peerId, msgId, req)
+    override suspend fun onUnlockRequest(peerId: String, msgId: Long, req: UnlockRequest): JsonObject = unlock.request(peerId, msgId, req)
+    override fun onUnlockCancel(peerId: String, re: Long) = unlock.cancel(peerId, re)
+    override fun onUnlockRevoke(peerId: String, enrollment: String) = unlock.revoke(peerId, enrollment)
+
+    /** Settings: this phone no longer unlocks that PC; tells the PC when it is connected. */
+    fun removeUnlockPc(enrollment: String) {
+        val pc = unlock.store.remove(enrollment) ?: return
+        scope.launch { if (!link.sendUnlockRevoke(pc.peerId, enrollment)) MdLog.i(TAG, "${pc.pcName} not connected: it learns at its next unlock") }
     }
 
     override fun onPeerTransportInfo(peerId: String, endpoints: List<LanEndpoint>) {

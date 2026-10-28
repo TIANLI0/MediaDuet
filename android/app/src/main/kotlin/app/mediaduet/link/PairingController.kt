@@ -14,8 +14,7 @@ import kotlinx.coroutines.launch
 /**
  * Pairing mode (§3.3): pairing is only accepted while the user has opened the time-limited
  * window. At most one pairing attempt runs at a time; the SAS is shown to the user who accepts
- * or rejects it. Scanning a PC's QR code (§3.5) opens the window armed with that PC's one-time
- * secret: its pairing then needs no SAS.
+ * or rejects it.
  */
 class PairingController(private val scope: CoroutineScope, private val clock: MonoClock) {
 
@@ -33,16 +32,11 @@ class PairingController(private val scope: CoroutineScope, private val clock: Mo
 
     data class Outcome(val attemptId: Int, val peerName: String, val success: Boolean, val reason: String?)
 
-    /** The PC whose QR code was scanned (§3.5); [connecting] while it pairs with us. */
-    data class QrTarget(val peerId: String, val peerName: String, val connecting: Boolean = false)
-
     data class State(
         /** Monotonic deadline of the pairing window, or null when pairing mode is off. */
         val windowUntilMs: Long? = null,
         val prompt: Prompt? = null,
         val lastOutcome: Outcome? = null,
-        /** Armed by a scanned QR code; cleared with the window and after a success. */
-        val qr: QrTarget? = null,
     )
 
     private val _state = MutableStateFlow(State())
@@ -51,7 +45,6 @@ class PairingController(private val scope: CoroutineScope, private val clock: Mo
     private var windowJob: Job? = null
     private var attemptCounter = 0
     private var current: Attempt? = null
-    private var qrToken: ByteArray? = null
 
     fun isOpen(): Boolean {
         val until = _state.value.windowUntilMs ?: return false
@@ -73,24 +66,7 @@ class PairingController(private val scope: CoroutineScope, private val clock: Mo
     fun closeWindow() {
         windowJob?.cancel()
         windowJob = null
-        qrToken = null
-        _state.update { it.copy(windowUntilMs = null, qr = null) }
-    }
-
-    /** A PC's QR code was scanned: open pairing mode armed with its id and one-time secret T. */
-    @Synchronized
-    fun armQr(peerId: String, peerName: String, token: ByteArray, durationMs: Long = WINDOW_MS) {
-        open(durationMs)
-        qrToken = token.copyOf()
-        _state.update { it.copy(qr = QrTarget(peerId, peerName)) }
-    }
-
-    /** T for a `qr: true` pair.request from [peerId], or null when not armed for that PC. */
-    @Synchronized
-    internal fun qrTokenFor(peerId: String): ByteArray? {
-        val target = _state.value.qr ?: return null
-        if (!isOpen() || target.peerId != peerId) return null
-        return qrToken?.copyOf()
+        _state.update { it.copy(windowUntilMs = null) }
     }
 
     /** UI: the user accepted the SAS shown for [attemptId]. */
@@ -157,17 +133,6 @@ class PairingController(private val scope: CoroutineScope, private val clock: Mo
         return attempt
     }
 
-    /** Starts a QR pairing attempt (§3.5): no SAS prompt. Null when not armed or busy. */
-    @Synchronized
-    internal fun beginQr(peer: DeviceInfo): Attempt? {
-        val target = _state.value.qr ?: return null
-        if (!isOpen() || current != null || target.peerId != peer.id) return null
-        val attempt = Attempt(++attemptCounter, peer)
-        current = attempt
-        _state.update { it.copy(qr = target.copy(peerName = peer.name, connecting = true), lastOutcome = null) }
-        return attempt
-    }
-
     /** True while an attempt is in progress (used to answer `busy`). */
     @Synchronized
     internal fun isBusy(): Boolean = current != null
@@ -180,7 +145,6 @@ class PairingController(private val scope: CoroutineScope, private val clock: Mo
         if (success) {
             windowJob?.cancel()
             windowJob = null
-            qrToken = null
         }
         // One update: whoever sees the outcome also sees pairing mode closed after a success.
         _state.update {
@@ -188,8 +152,6 @@ class PairingController(private val scope: CoroutineScope, private val clock: Mo
                 prompt = null,
                 lastOutcome = Outcome(attempt.id, attempt.peer.name, success, reason),
                 windowUntilMs = if (success) null else it.windowUntilMs,
-                // A failed QR attempt stays armed: the PC keeps trying while its code is shown.
-                qr = if (success) null else it.qr?.copy(connecting = false),
             )
         }
     }

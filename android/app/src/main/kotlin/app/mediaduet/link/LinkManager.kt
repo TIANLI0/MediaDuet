@@ -36,6 +36,11 @@ import app.mediaduet.protocol.optString
 import app.mediaduet.protocol.requireLong
 import app.mediaduet.protocol.requireString
 import app.mediaduet.remote.LyricsDelay
+import app.mediaduet.unlock.UnlockEnroll
+import app.mediaduet.unlock.UnlockErrors
+import app.mediaduet.unlock.UnlockRequest
+import app.mediaduet.unlock.UnlockResult
+import app.mediaduet.unlock.UnlockRevoke
 import app.mediaduet.util.MdLog
 import app.mediaduet.util.MonoClock
 import kotlinx.coroutines.CancellationException
@@ -119,6 +124,18 @@ interface LinkHost {
     fun onPeerPolicy(peerId: String, policy: PeerPolicy) = Unit
     /** The LAN endpoints of a peer we dialled (`transport.info`), to find it again. */
     fun onPeerTransportInfo(peerId: String, endpoints: List<LanEndpoint>) = Unit
+
+    /**
+     * Unlocking a PC (docs/unlock.md): `unlock.enroll` / `unlock.request` of message [msgId],
+     * answered with the returned `unlock.result` body once the user confirmed on this phone; an
+     * empty body sends nothing (the PC withdrew it with `unlock.cancel`).
+     */
+    suspend fun onUnlockEnroll(peerId: String, msgId: Long, req: UnlockEnroll): JsonObject = UnlockResult.failed(UnlockErrors.UNSUPPORTED)
+    suspend fun onUnlockRequest(peerId: String, msgId: Long, req: UnlockRequest): JsonObject = UnlockResult.failed(UnlockErrors.UNSUPPORTED)
+    /** `unlock.cancel`: the PC no longer waits for its message [re]. */
+    fun onUnlockCancel(peerId: String, re: Long) = Unit
+    /** `unlock.revoke` from the peer. */
+    fun onUnlockRevoke(peerId: String, enrollment: String) = Unit
 }
 
 data class TransportStatus(
@@ -701,6 +718,11 @@ class LinkManager(
             }
             // Only the PC coordinates a handoff.
             MsgType.HANDOFF_START -> send(session, conn, MsgType.HANDOFF_RESULT, unsupportedResult(), env.id)
+            MsgType.UNLOCK_ENROLL, MsgType.UNLOCK_REQUEST -> answerUnlock(session, env)
+            MsgType.UNLOCK_CANCEL -> host.onUnlockCancel(peerId, env.re ?: throw BadMessageException("cancel without re"))
+            MsgType.UNLOCK_REVOKE -> host.onUnlockRevoke(peerId, UnlockRevoke.parse(env.body))
+            // Only a PC asks (docs/unlock.md); we never send unlock.request.
+            MsgType.UNLOCK_RESULT -> Unit
             MsgType.BYE -> {
                 MdLog.i(TAG, "peer said bye: ${env.body.optString("reason", 128)}")
                 session.connections.toList().forEach { it.closeAfterFlush("peer bye") }
@@ -873,6 +895,47 @@ class LinkManager(
     }
 
     private fun handoffAppsBody() = buildJsonObject { put("apps", JsonArray(host.handoffApps().map { kotlinx.serialization.json.JsonPrimitive(it) })) }
+
+    /**
+     * `unlock.enroll` / `unlock.request` (docs/unlock.md): only a PC may ask, and only when we
+     * announced `unlock`. The user's answer may take a minute; it goes out on the primary.
+     */
+    private fun answerUnlock(session: LinkSession, env: Envelope) {
+        val peerId = session.peer.id
+        if (Caps.UNLOCK !in host.capabilities() || session.peer.platform != "windows") {
+            send(session, null, MsgType.UNLOCK_RESULT, UnlockResult.failed(UnlockErrors.UNSUPPORTED), env.id)
+            return
+        }
+        val answer: suspend () -> JsonObject = try {
+            if (env.type == MsgType.UNLOCK_ENROLL) {
+                UnlockEnroll.parse(env.body).let { r -> { host.onUnlockEnroll(peerId, env.id, r) } }
+            } else {
+                UnlockRequest.parse(env.body).let { r -> { host.onUnlockRequest(peerId, env.id, r) } }
+            }
+        } catch (e: BadMessageException) {
+            MdLog.w(TAG, "bad ${env.type}: ${e.message}")
+            send(session, null, MsgType.UNLOCK_RESULT, UnlockResult.failed(UnlockErrors.BAD_MESSAGE), env.id)
+            return
+        }
+        scope.launch(dispatcher) {
+            val result = try {
+                answer()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                MdLog.e(TAG, "unlock failed", e)
+                UnlockResult.failed(ErrorCode.INTERNAL)
+            }
+            if (result.isNotEmpty()) send(session, null, MsgType.UNLOCK_RESULT, result, env.id)
+        }
+    }
+
+    /** Tells PC [peerId] that this phone forgot [enrollment] (Settings); false when it is not connected. */
+    suspend fun sendUnlockRevoke(peerId: String, enrollment: String): Boolean = withContext(dispatcher) {
+        val session = sessions.values.firstOrNull { it.peer.id == peerId && it.isConnected && Caps.UNLOCK in it.peerCaps }
+            ?: return@withContext false
+        send(session, null, MsgType.UNLOCK_REVOKE, UnlockRevoke.toJson(enrollment)) != null
+    }
 
     private fun unsupportedResult() = buildJsonObject {
         put("ok", false)

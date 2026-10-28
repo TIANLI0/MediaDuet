@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(MediaDuet VERSION 1.9.0 LANGUAGES CXX)
+project(MediaDuet VERSION 1.10.0 LANGUAGES CXX)
 
 if(NOT MSVC)
   message(FATAL_ERROR "MediaDuet for Windows requires MSVC (C++/WinRT, Windows SDK).")
@@ -57,10 +57,17 @@ add_library(md_core STATIC
   core/src/lyrics/LyricsClock.cpp
   core/src/overlay/SurfacePolicy.cpp
   core/src/settings/Settings.cpp
+  core/src/unlock/Unlock.cpp
+  core/src/unlock/BootRecord.cpp
 )
 target_include_directories(md_core PUBLIC core/include third_party)
 target_link_libraries(md_core PUBLIC bcrypt)
 md_configure(md_core)
+
+add_library(md_boot STATIC unlock/BootStore.cpp)
+target_include_directories(md_boot PUBLIC unlock)
+target_link_libraries(md_boot PUBLIC md_core advapi32 crypt32 shell32 ole32)
+md_configure(md_boot)
 
 if(NOT MD_CORE_ONLY)
 # ---------------------------------------------------------------------------
@@ -115,9 +122,11 @@ add_executable(MediaDuet WIN32
   app/Diagnostics.cpp
   app/HandoffHost.cpp
   app/ResumeButton.cpp
+  app/UnlockHost.cpp
+  app/UnlockSetup.cpp
   app/resources/MediaDuet.rc
 )
-target_link_libraries(MediaDuet PRIVATE md_platform)
+target_link_libraries(MediaDuet PRIVATE md_platform md_boot wtsapi32)
 md_configure(MediaDuet)
 set_target_properties(MediaDuet PROPERTIES LINK_FLAGS "/MANIFEST:NO")
 # Rebuild the resource script when the generated icons or the manifest change.
@@ -127,6 +136,22 @@ set_source_files_properties(app/resources/MediaDuet.rc PROPERTIES OBJECT_DEPENDS
 add_custom_command(TARGET MediaDuet POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
   ${CMAKE_CURRENT_SOURCE_DIR}/app/resources/app_512.png $<TARGET_FILE_DIR:MediaDuet>/MediaDuet.png)
 endif()
+
+# Loaded by LogonUI; installed separately into the administrator-owned Program Files folder.
+add_library(MediaDuetUnlock SHARED credential/Provider.cpp credential/Provider.def credential/Provider.rc)
+target_include_directories(MediaDuetUnlock PRIVATE core/include third_party)
+target_link_libraries(MediaDuetUnlock PRIVATE md_boot ole32 advapi32 shlwapi credui secur32 user32 gdi32)
+md_configure(MediaDuetUnlock)
+
+add_executable(MediaDuetUnlockService WIN32 unlock/Service.cpp unlock/ServiceTransport.cpp app/IpcServer.cpp platform/Scheduler.cpp)
+target_include_directories(MediaDuetUnlockService PRIVATE app platform unlock)
+target_link_libraries(MediaDuetUnlockService PRIVATE md_boot ws2_32 dnsapi wtsapi32 user32)
+md_configure(MediaDuetUnlockService)
+
+add_executable(MediaDuetUnlockCheck tools/unlock_check.cpp app/IpcServer.cpp)
+target_include_directories(MediaDuetUnlockCheck PRIVATE app)
+target_link_libraries(MediaDuetUnlockCheck PRIVATE md_boot user32)
+md_configure(MediaDuetUnlockCheck)
 
 # Capability probe tool (Phase 0 checks, also useful for users' bug reports).
 add_executable(MediaDuetProbe tools/probe/probe.cpp)
@@ -177,6 +202,7 @@ if(MD_BUILD_TESTS)
     tests/test_surface_policy.cpp
     tests/test_handoff.cpp
     tests/test_update.cpp
+    tests/test_unlock.cpp
   )
   target_link_libraries(md_tests PRIVATE md_core)
   target_compile_definitions(md_tests PRIVATE
@@ -184,4 +210,14 @@ if(MD_BUILD_TESTS)
     DOCTEST_CONFIG_DOUBLE_STRINGIFY)
   md_configure(md_tests)
   add_test(NAME md_tests COMMAND md_tests)
+  add_executable(md_unlock_tests tests/test_main.cpp tests/test_unlock_provider.cpp)
+  target_include_directories(md_unlock_tests PRIVATE core/include third_party)
+  target_link_libraries(md_unlock_tests PRIVATE md_boot ole32 advapi32 shlwapi credui secur32 user32 gdi32)
+  md_configure(md_unlock_tests)
+  add_test(NAME md_unlock_tests COMMAND md_unlock_tests)
+  add_executable(md_boot_tests tests/test_main.cpp tests/test_boot_unlock.cpp app/IpcServer.cpp unlock/ServiceTransport.cpp)
+  target_include_directories(md_boot_tests PRIVATE app platform unlock)
+  target_link_libraries(md_boot_tests PRIVATE md_boot wtsapi32 user32 ws2_32 dnsapi)
+  md_configure(md_boot_tests)
+  add_test(NAME md_boot_tests COMMAND md_boot_tests)
 endif()
