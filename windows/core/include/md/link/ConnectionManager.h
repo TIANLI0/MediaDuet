@@ -81,6 +81,8 @@ public:
         ConnMode mode = ConnMode::Auto;
         int64_t switchBackDelayMs = 10'000;
         int64_t btBackoffBaseMs = 2'000, btBackoffMaxMs = 60'000;
+        // Bluetooth back-off cap while a LAN link is up: each attempt pages the phone.
+        int64_t btStandbyBackoffMaxMs = 10 * 60'000;
         int64_t lanBackoffBaseMs = 1'000, lanBackoffMaxMs = 30'000;
         int64_t pingActiveMs = 15'000, pingIdleMs = 60'000, pingSecondaryMs = 120'000;
         // Extra pings on the primary after it changes and when media starts, for a quick clock estimate.
@@ -228,6 +230,7 @@ private:
     // Pings [s] and closes it unless something arrives within kPongWaitMs.
     void probe(Peer& p, Slot& s, const std::string& why);
     static constexpr int64_t kPongWaitMs = 5'000;
+    // 0: no heartbeat (a Bluetooth standby stays silent, §11).
     int64_t pingInterval(const Peer& p, const Slot& s) const;
     int64_t requiredLanStability(Peer& p);
     bool otherPeerActive(const Peer& p) const;

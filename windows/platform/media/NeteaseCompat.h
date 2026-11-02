@@ -12,6 +12,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 
 namespace md::platform {
 
@@ -86,16 +87,25 @@ private:
     void checkQueueFile();
     void applyQueue(media::MediaSessionInfo& s, int64_t activeId) const;
     int64_t activeSongId(const std::string& key) const;
-    // True when the player reading belongs to the song a session shows: `shownId`, or while that
-    // is not known yet (0) any song but `staleId`, the one the player played when the title
-    // changed (the title may change before the player does).
-    bool memoryShows(int64_t shownId, int64_t staleId) const {
-        if (memId_ <= 0) return true;
-        return shownId > 0 ? memId_ == shownId : memId_ != staleId;
-    }
+    // The song a session shows, to tell whether the player's reading belongs to it.
+    struct Shown {
+        std::string_view title;
+        int64_t id = 0;      // NetEase song id from the play queue (0: not known yet)
+        int64_t staleId = 0; // the player's song when the title changed (it may switch after the title)
+        int64_t at = 0;      // when the title changed
+    };
+    Shown shown(const std::string& key) const;
+    // The player's song a title change leaves behind: the current one, or the previous one when
+    // the player switched just before the title did.
+    int64_t staleMemId() const;
+    // True when the player reading belongs to the song `sh` (its id; by the play queue; or any
+    // song but the stale one, and any at all once the player has had time to switch).
+    bool memoryShows(const Shown& sh) const;
     // Applies the player reading to a session (status, position, duration, id, Seek) unless it
     // belongs to another song (memoryShows).
-    void applyMemory(media::MediaSessionInfo& s, int64_t shownId, int64_t staleId) const;
+    void applyMemory(media::MediaSessionInfo& s, const Shown& sh) const;
+    // Re-evaluates memoryShows once the player has had time to follow a title change.
+    void settleLater();
     struct QueueMatch {
         int64_t id = 0, durationMs = 0;
         std::string album, pic;
@@ -118,12 +128,15 @@ private:
     std::optional<media::ArtworkRef> artwork_;
     int64_t songId_ = 0;
     int64_t titleMemId_ = 0; // the player's song id when the title changed
+    int64_t titleAt_ = 0;
     int64_t posMs_ = 0;   // accumulated audible time at posAt_
     int64_t posAt_ = 0;
     uint64_t gen_ = 0;
     // supplement(): estimator for NetEase's own session.
     std::string supKey_;      // title + artist of the supplemented track
     std::string supSession_;  // its session key
+    std::string supTitle_;
+    int64_t supChangedAt_ = 0;
     bool supPlaying_ = false;
     int64_t supPos_ = 0, supAt_ = 0;
     std::optional<int64_t> supDuration_;
@@ -136,7 +149,9 @@ private:
     ScopedTimer pollTimer_;
     int memFailures_ = 0;
     int memTries_ = 0;   // opens since attach (NetEase just started: its player is not up yet)
+    bool memUnsupported_ = false; // this NetEase build has no player we know: stop trying
     ScopedTimer memRetryTimer_;
+    ScopedTimer settleTimer_;
     // While a web command runs: NetEase's window state before it, restored if the command raised it.
     struct Guard { HWND foreground = nullptr; bool visible = false, iconic = false; int64_t until = 0; bool locked = false; } guard_;
     ScopedTimer guardTimer_;
@@ -144,7 +159,10 @@ private:
     int64_t memPosMs_ = 0, memAt_ = 0; // position at memAt_ (our clock)
     std::optional<int64_t> memDurationMs_;
     int64_t memId_ = 0;
+    int64_t memPrevId_ = 0, memIdAt_ = 0; // the song before memId_, and when the player switched
     int64_t memSeekUntil_ = 0; // after a seek: readings of the old position are ignored until then
+    int64_t memLoadingAt_ = 0; // since when the player has nothing loaded while playing (0: it has)
+    bool memConfirming_ = false; // a jump was read: read again before showing it
     std::shared_ptr<const media::netease::PlayingList> queue_;
     uint64_t queueStamp_ = 0; // last write time ^ size of the file queue_ was read from
     bool queueLoading_ = false;

@@ -83,7 +83,8 @@ std::optional<uint64_t> resolve(HANDLE h, uint64_t text, uint32_t size, const ne
 
 } // namespace
 
-std::unique_ptr<NeteaseMemory> NeteaseMemory::open(DWORD pid, std::string* why) {
+std::unique_ptr<NeteaseMemory> NeteaseMemory::open(DWORD pid, std::string* why, bool* unsupported) {
+    if (unsupported) *unsupported = false;
     auto fail = [&](const char* reason) -> std::unique_ptr<NeteaseMemory> {
         if (why) *why = reason;
         return nullptr;
@@ -98,6 +99,7 @@ std::unique_ptr<NeteaseMemory> NeteaseMemory::open(DWORD pid, std::string* why) 
     auto inModule = [&](std::optional<uint64_t> a) { return a && *a >= mod->base && *a < mod->base + mod->size; };
     if (!inModule(player) || !inModule(schedule)) {
         CloseHandle(h);
+        if (text && unsupported) *unsupported = true;
         return fail("player not found in this NetEase build");
     }
     std::unique_ptr<NeteaseMemory> m(new NeteaseMemory(h, *player, *schedule));

@@ -57,9 +57,24 @@ TEST_CASE("implausible readings are rejected") {
     bad.durationSec = 1e300;
     CHECK_FALSE(plausible(bad));
     bad = ok;
-    bad.positionSec = -1;
+    bad.positionSec = -2;
     CHECK_FALSE(plausible(bad));
-    CHECK(plausible(PlayerReading{0, 0, 0, 0})); // idle, nothing loaded
+    CHECK(plausible(PlayerReading{0, 0, 0, 0}));
+    // NetEase 3.1 right after start and while the next song loads: nothing loaded, position -1.
+    CHECK(plausible(PlayerReading{0, -1, 0, 0}));
+    CHECK(plausible(PlayerReading{1, -1, 253.441, 3340112782}));
+}
+
+TEST_CASE("the play queue tells which song NetEase's player is on") {
+    PlayingList list;
+    list.entries = {{1, "起风了", "", ""}, {2, "晴天", "", ""}, {3, "晴天", "", ""}};
+    CHECK(queuePlaysTitle(list, 1, "起风了") == true);
+    CHECK(queuePlaysTitle(list, 3, "晴天") == true);   // the same title twice: either one
+    CHECK(queuePlaysTitle(list, 1, "晴天") == false);  // the player is still on the previous song
+    CHECK_FALSE(queuePlaysTitle(list, 1, "不在队列里").has_value());
+    CHECK_FALSE(queuePlaysTitle(list, 9, "起风了").has_value());
+    CHECK_FALSE(queuePlaysTitle(list, 0, "起风了").has_value());
+    CHECK_FALSE(queuePlaysTitle(list, 1, "").has_value());
 }
 
 TEST_CASE("NetEase's play queue file is read in display order") {

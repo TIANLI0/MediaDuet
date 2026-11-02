@@ -1025,12 +1025,25 @@ class LinkManager(
 
     private suspend fun heartbeat(session: LinkSession, conn: Connection) {
         var lastPingSent = clock.nowMs()
+        // Liveness counts from here when the transport was a silent standby until now.
+        var watchedSince = clock.nowMs()
         var burstLeft = 0
         var lastEpoch = -1
         var wasPlaying = false
         while (!conn.isClosed) {
             val primary = session.primaryOrAny() === conn
             val playing = anyPlaying.value
+            if (!primary && conn.kind == TransportKind.BT) {
+                // A Bluetooth standby stays silent (§11): every record wakes the ACL out of sniff and
+                // disturbs the PC's other Bluetooth traffic (LE Audio), and RFCOMM reports a lost link
+                // by itself. Nothing to do until it becomes the primary.
+                burstLeft = 0
+                lastEpoch = session.primaryEpoch.value
+                wasPlaying = playing
+                session.primaryEpoch.first { it != lastEpoch }
+                watchedSince = clock.nowMs()
+                continue
+            }
             // A few quick pings for the clock estimate (§11.1) when this becomes the primary and when
             // media starts; liveness below still uses the regular interval.
             if (primary && (session.primaryEpoch.value != lastEpoch || (playing && !wasPlaying))) burstLeft = ClockSync.BURST_PINGS
@@ -1039,11 +1052,12 @@ class LinkManager(
             wasPlaying = playing
             val interval = when {
                 !primary -> SECONDARY_INTERVAL_MS
-                playing -> PLAYING_INTERVAL_MS
+                // The short interval catches silent TCP failures (address changes); RFCOMM has none.
+                playing && conn.kind != TransportKind.BT -> PLAYING_INTERVAL_MS
                 else -> IDLE_INTERVAL_MS
             }
             val now = clock.nowMs()
-            val deadline = conn.lastInboundMs + 3 * interval + 5_000
+            val deadline = maxOf(conn.lastInboundMs, watchedSince) + 3 * interval + 5_000
             if (now >= deadline) {
                 MdLog.w(TAG, "$conn heartbeat timeout")
                 conn.close("heartbeat timeout")

@@ -431,6 +431,73 @@ TEST_CASE("LAN: an unanswered heartbeat is followed up instead of waiting three 
     CHECK(w.rec.downs >= 1);
 }
 
+namespace {
+int sentOver(World& w, TransportKind k, size_t from) {
+    int n = 0;
+    for (size_t i = from; i < w.srv.received.size(); ++i)
+        if (w.srv.received[i].first == k) ++n;
+    return n;
+}
+} // namespace
+
+TEST_CASE("the Bluetooth standby carries nothing; it is probed when it takes over") {
+    World w;
+    w.s.advance(1000);
+    REQUIRE(w.primary() == TransportKind::Lan);
+    REQUIRE(w.cm->status().secondary == TransportKind::Bluetooth);
+    w.cm->setMediaActive(true);
+    w.cm->setMediaActive(false);
+    w.cm->setMediaActive(true);
+    size_t mark = w.srv.received.size();
+    w.s.advance(30 * 60'000);
+    CHECK(sentOver(w, TransportKind::Bluetooth, mark) == 0);
+    CHECK(w.srv.liveConns(TransportKind::Bluetooth) == 1); // no heartbeat timeout either
+
+    w.fac.lanReachable = false;
+    w.srv.kill(TransportKind::Lan);
+    mark = w.srv.received.size();
+    w.s.advance(100);
+    CHECK(w.primary() == TransportKind::Bluetooth);
+    CHECK(sentOver(w, TransportKind::Bluetooth, mark) >= 2); // link.primary + probe
+    w.s.advance(30 * 60'000);
+    CHECK(w.primary() == TransportKind::Bluetooth);
+    CHECK(w.rec.downs == 0);
+}
+
+TEST_CASE("a silent Bluetooth standby that stopped answering is dropped once it takes over") {
+    World w;
+    w.s.advance(1000);
+    for (auto& c : w.srv.conns)
+        if (c->t->kind() == TransportKind::Bluetooth) c->t->setServer(nullptr);
+    w.s.advance(30 * 60'000);
+    REQUIRE(w.cm->status().secondary == TransportKind::Bluetooth); // nothing noticed while idle
+    w.fac.lanReachable = false;
+    w.fac.btReachable = false;
+    w.srv.kill(TransportKind::Lan);
+    w.s.advance(100);
+    CHECK(w.primary() == TransportKind::Bluetooth);
+    w.s.advance(11'000); // 5 s for the probe, 5 s for the follow-up
+    CHECK(w.rec.downs == 1);
+    CHECK_FALSE(w.cm->isUp());
+}
+
+TEST_CASE("Bluetooth retries rarely while LAN carries the link, and at once when LAN is lost") {
+    World w(link::ConnMode::Auto, true, false);
+    w.fac.btReachable = false;
+    w.start();
+    w.s.advance(30 * 60'000);
+    REQUIRE(w.primary() == TransportKind::Lan);
+    // 2, 4, ... 512 s, then every 10 min (about 35 attempts with the 60 s cap).
+    CHECK(w.fac.btAttempts <= 14);
+    int before = w.fac.btAttempts;
+    w.fac.btReachable = true;
+    w.fac.lanReachable = false;
+    w.srv.kill(TransportKind::Lan);
+    w.s.advance(500);
+    CHECK(w.fac.btAttempts == before + 1);
+    CHECK(w.primary() == TransportKind::Bluetooth);
+}
+
 TEST_CASE("clock sync: pongs with the phone's clock map its snapshot times to ours") {
     World w(link::ConnMode::LanOnly);
     w.s.advance(5000); // link up + the sync burst after the primary was chosen

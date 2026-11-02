@@ -477,6 +477,9 @@ void ConnectionManager::scheduleRetry(Peer& p, Slot& s) {
     if (p.revoked || p.userDisconnected || !allowed(s.kind)) return;
     int64_t base = s.kind == TransportKind::Bluetooth ? cfg_.btBackoffBaseMs : cfg_.lanBackoffBaseMs;
     int64_t cap = s.kind == TransportKind::Bluetooth ? cfg_.btBackoffMaxMs : cfg_.lanBackoffMaxMs;
+    // Only a standby while LAN carries the link; losing LAN resets this (onConnClosed).
+    if (s.kind == TransportKind::Bluetooth && p.lan.conn && p.lan.conn->state() == Connection::State::Up)
+        cap = std::max(cap, cfg_.btStandbyBackoffMaxMs);
     if (p.authFailures >= kMaxAuthFailures) base = cap;
     int shift = std::clamp(s.failures - 1, 0, 16);
     int64_t delay = std::min(cap, base << shift);
@@ -599,16 +602,27 @@ void ConnectionManager::setPrimary(Peer& p, Connection* c) {
     }
     for (Slot* s : {&p.bt, &p.lan})
         if (s->conn && s->conn->state() == Connection::State::Up) armHeartbeat(p, *s);
+    // A Bluetooth standby was silent (§11): make sure the phone still answers on it.
+    if (c && c->kind() == TransportKind::Bluetooth) probe(p, p.bt, "now the primary");
     listener_.onStatusChanged();
 }
 
 int64_t ConnectionManager::pingInterval(const Peer& p, const Slot& s) const {
-    if (s.conn.get() != p.primary) return cfg_.pingSecondaryMs;
-    return mediaActive_ ? cfg_.pingActiveMs : cfg_.pingIdleMs;
+    bool bt = s.kind == TransportKind::Bluetooth;
+    // Every record wakes the ACL out of sniff and disturbs the PC's other Bluetooth traffic
+    // (LE Audio); RFCOMM reports a lost link by itself, so a standby needs no pings.
+    if (s.conn.get() != p.primary) return bt ? 0 : cfg_.pingSecondaryMs;
+    // The short interval catches silent TCP failures (address changes), which RFCOMM does not have.
+    return mediaActive_ && !bt ? cfg_.pingActiveMs : cfg_.pingIdleMs;
 }
 
 void ConnectionManager::armHeartbeat(Peer& p, Slot& s) {
     int64_t interval = pingInterval(p, s);
+    if (interval <= 0) {
+        s.heartbeat.cancel();
+        s.pongCheck.cancel();
+        return;
+    }
     std::string peerId = p.rec.id;
     TransportKind k = s.kind;
     uint64_t connId = s.conn->id();
@@ -842,6 +856,11 @@ void ConnectionManager::onConnClosed(const std::string& peerId, TransportKind k,
     if (code == "auth_failed") ++p->authFailures;
     if (!reason.empty() && reason != "disconnected by user") p->lastError = reason;
     if (k == TransportKind::Lan && wasUp) p->lanDrops.push_back(sched_.nowMs());
+    if (k == TransportKind::Lan && !p->bt.conn && p->bt.retry.active()) {
+        // Bluetooth may be in its long standby back-off: it is needed now.
+        p->bt.retry.cancel();
+        p->bt.failures = 0;
+    }
     if (s.peerAskedBackoff) {
         // The phone user disconnected on purpose: retry rarely (presence events still reset this).
         s.failures = 8;

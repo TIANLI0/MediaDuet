@@ -94,7 +94,11 @@ compiled into the product.
   the phone) is demoted for 5 min. Handshakes race ("happy eyeballs": the next
   candidate starts 300 ms later, the first authenticated link wins) and a hanging
   handshake never blocks the next candidate or cycle.
-* Heartbeats: 15 s while media plays, 60 s idle, 120 s on the secondary.
+* Heartbeats: 15 s while media plays (LAN primary), 60 s idle and on a
+  Bluetooth primary, 120 s on a LAN secondary. A Bluetooth standby carries no
+  traffic at all (no sniff-mode exits that disturb LE Audio on the PC); it is
+  probed when it takes over. While LAN is up, Bluetooth reconnects back off up
+  to 10 min (each attempt pages the phone); losing LAN resets that.
 
 ## Desktop lyrics and taskbar widget (host)
 

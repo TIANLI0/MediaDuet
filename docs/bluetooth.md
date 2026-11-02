@@ -47,6 +47,16 @@ the Android app on a physical device (the emulator has no Bluetooth) — see
 | `error {not_paired}` | protocol | pairing removed, no more attempts |
 
 Otherwise exponential back-off with ±20 % jitter (BT 2 s → 60 s, LAN 1 s → 30 s).
+While a LAN link is up, the Bluetooth cap is 10 min; losing LAN resets it.
+
+## Quiet standby
+
+An idle RFCOMM link sits in sniff mode. Any record makes Windows take the ACL out
+of sniff for several seconds, which disturbs the controller's other scheduling
+(LE Audio / LC3 on the same Intel radio). So a Bluetooth standby carries nothing:
+no heartbeats on either side (protocol §11). A lost link still closes the socket
+(supervision timeout, app killed); a hung phone app is caught by the probe sent
+when Bluetooth becomes the primary.
 
 ## Transport selection
 

@@ -78,7 +78,8 @@ int64_t parseSongId(std::string_view raw) {
 bool plausible(const PlayerReading& r) {
     constexpr double kMaxSec = 24 * 3600.0;
     if (r.status < 0 || r.status > 4) return false;
-    if (!std::isfinite(r.positionSec) || r.positionSec < 0 || r.positionSec > kMaxSec) return false;
+    // -1 is NetEase's "nothing loaded", not a broken layout.
+    if (!std::isfinite(r.positionSec) || r.positionSec < -1 || r.positionSec > kMaxSec) return false;
     if (!std::isfinite(r.durationSec) || r.durationSec < 0 || r.durationSec > kMaxSec) return false;
     return r.songId >= 0;
 }
@@ -126,6 +127,20 @@ std::optional<PlayingList> parsePlayingList(std::string_view text) {
     std::snprintf(rev, sizeof rev, "%08x", h);
     list.rev = rev;
     return list;
+}
+
+std::optional<bool> queuePlaysTitle(const PlayingList& list, int64_t playerId, std::string_view title) {
+    if (playerId <= 0 || title.empty()) return std::nullopt;
+    const PlayingList::Entry* playing = nullptr;
+    bool titled = false;
+    for (const auto& e : list.entries) {
+        if (!playing && e.id == playerId) playing = &e;
+        titled |= e.title == title;
+    }
+    if (!playing) return std::nullopt;
+    if (playing->title == title) return true;
+    if (titled) return false;
+    return std::nullopt;
 }
 
 MediaQueue queueWindow(const PlayingList& list, const std::string& key, std::optional<int64_t> activeId, size_t max) {

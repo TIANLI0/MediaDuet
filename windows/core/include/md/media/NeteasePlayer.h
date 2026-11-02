@@ -54,7 +54,7 @@ enum class PlayerStatus { Idle = 0, Playing = 1, Paused = 2 };
 
 struct PlayerReading {
     int status = 0;
-    double positionSec = 0;
+    double positionSec = 0; // -1: nothing loaded (NetEase just started, or the next song is loading)
     double durationSec = 0;
     int64_t songId = 0; // 0 for local files and when unknown
 };
@@ -75,6 +75,10 @@ struct PlayingList {
     std::string rev;            // changes whenever the list does
 };
 std::optional<PlayingList> parsePlayingList(std::string_view text);
+// Whether the player, on song `playerId`, plays the song titled `title` by the play queue: true when
+// that entry has the title, false when it has another and the title belongs to another entry,
+// nullopt when the queue cannot tell (either is not in it).
+std::optional<bool> queuePlaysTitle(const PlayingList& list, int64_t playerId, std::string_view title);
 // media.queue of session `key`: the whole list, or `max` entries around `activeId` (spec §8.3).
 MediaQueue queueWindow(const PlayingList& list, const std::string& key, std::optional<int64_t> activeId, size_t max = 300);
 

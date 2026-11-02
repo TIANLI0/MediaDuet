@@ -15,8 +15,9 @@ namespace md::platform {
 class NeteaseMemory {
 public:
     // Locates the player in cloudmusic.dll of process `pid` (blocking, ~50 ms: worker thread only).
-    // nullptr with the reason in *why when this NetEase build is not recognised.
-    static std::unique_ptr<NeteaseMemory> open(DWORD pid, std::string* why);
+    // nullptr with the reason in *why when this NetEase build is not recognised (*unsupported: its
+    // code has no player; trying again will not help) or not ready yet.
+    static std::unique_ptr<NeteaseMemory> open(DWORD pid, std::string* why, bool* unsupported = nullptr);
     ~NeteaseMemory();
     NeteaseMemory(const NeteaseMemory&) = delete;
     NeteaseMemory& operator=(const NeteaseMemory&) = delete;

@@ -558,8 +558,16 @@ Key rules that the protocol supports:
 
 ## 11. Heartbeat and liveness
 
-* `ping` every 15 s on the primary while any media is playing on either side,
-  every 60 s otherwise; every 120 s on secondary transports.
+* `ping` every 15 s on a LAN primary while any media is playing on either side,
+  every 60 s otherwise (a Bluetooth primary always uses 60 s: RFCOMM has no
+  silent failures like a TCP connection whose address went away); every 120 s
+  on a LAN secondary.
+* A Bluetooth secondary is silent: neither side pings on it. Every record wakes
+  the ACL out of sniff mode for several seconds and disturbs the PC's other
+  Bluetooth traffic (LE Audio), while RFCOMM reports a lost link by itself.
+  Peers still answer a `ping` on it (older versions send them). When it becomes
+  the primary, the client pings it at once and closes it unless something
+  arrives within 2 × 5 s; liveness timing on it starts at that moment.
 * A transport with no inbound record for 3 × interval + 5 s is considered dead.
 * Transport-level errors (socket closed, RFCOMM link loss) are handled
   immediately; heartbeats only cover silent failures.
