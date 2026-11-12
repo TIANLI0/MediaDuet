@@ -52,7 +52,7 @@ std::wstring lower(std::wstring s) {
     return s;
 }
 
-// Installed by setup.exe (installer.nsi writes this key) into the folder we run from.
+// Installed by setup.exe (the installer registers this key) into the folder we run from.
 bool installedHere(const fs::path& dir) {
     wchar_t buf[MAX_PATH * 2];
     DWORD size = sizeof(buf);
@@ -309,7 +309,8 @@ void Updater::apply(const fs::path& file) {
     if (cb_.apply) return cb_.apply(file);
     bool ok = false;
     if (!portable_) {
-        // installer.nsi: silent, stops MediaDuet, installs in place, /UPDATE starts it again.
+        // setup.exe (FluentSetup; NSIS up to 1.10.2): silent, closes MediaDuet, installs in place,
+        // /UPDATE starts it again. Every version must keep accepting exactly this command line.
         auto h = ShellExecuteW(nullptr, L"open", file.c_str(), L"/S /UPDATE", file.parent_path().c_str(), SW_HIDE);
         ok = reinterpret_cast<INT_PTR>(h) > 32;
     } else {

@@ -196,8 +196,8 @@ Removal deletes the service record before optional component-removal UAC, so can
 that UAC cannot restore usable boot credentials. If the service cannot acknowledge
 revocation, elevated removal must succeed before the UI reports disabled.
 
-`MediaDuet.exe --unlock-remove` is the unelevated cleanup entry used by both Windows
-uninstallers. It revokes the current user's boot enrollment and offers elevated
+`MediaDuet.exe --unlock-remove` is the unelevated cleanup entry used by the Windows
+uninstaller (FluentSetup's `beforeUninstall` action in `windows/packaging/fluentsetup.json`). It revokes the current user's boot enrollment and offers elevated
 component removal. Uninstall aborts if neither service revocation nor elevated removal
 succeeds. Other users' enrollments are retained.
 Revocation also records a protected per-user `Revoked` marker in the component's

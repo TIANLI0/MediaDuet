@@ -104,9 +104,9 @@ Windows 使用 C++20 / WinUI 3，Android 使用 Kotlin / Jetpack Compose。普�
 
 ### Windows
 
-需要 Visual Studio 2022 / 2026 的 C++ 和 WinUI 开发工具、Windows SDK、CMake 3.24+、Ninja。生成安装包还需 NSIS 3。
+需要 Visual Studio 2022 / 2026 的 C++ 和 WinUI 开发工具、Windows SDK、CMake 3.24+、Ninja。生成安装包还需 [FluentSetup](https://github.com/TIANLI0/FluentSetup/releases) 的 `fluentsetup` 命令行（在 PATH 中，或用环境变量 `FLUENTSETUP` 指向它）。
 
-在仓库根目录运行，构建主程序和界面、运行核心测试，并生成 `dist/` 下的免安装包；已安装 NSIS 时还会生成安装程序：
+在仓库根目录运行，构建主程序和界面、运行核心测试，并生成 `dist/` 下的免安装包；找到 `fluentsetup` 时还会生成安装程序：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File windows\packaging\package.ps1 -Arch x64

@@ -7,14 +7,16 @@
   2. MSBuild of the WinUI 3 UI (self-contained Windows App SDK, unpackaged).
   3. Runs the unit tests.
   4. Copies everything into dist\MediaDuet-<version>-win-<arch>\ and zips it.
-  An Inno Setup script (installer.iss) can turn the staged folder into a setup.exe.
+  5. Builds dist\MediaDuet-<version>-<arch>-setup.exe from the staged folder with FluentSetup
+     (fluentsetup.json; the fluentsetup CLI from $env:FLUENTSETUP or PATH, see
+     https://github.com/TIANLI0/FluentSetup/releases; CI uses the TIANLI0/FluentSetup action).
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File windows\packaging\package.ps1 -Arch x64
 #>
 param(
     [ValidateSet('x64', 'ARM64')] [string]$Arch = 'x64',
-    [string]$Version = '1.10.2',
+    [string]$Version = '1.10.3',
     [switch]$SkipTests
 )
 $ErrorActionPreference = 'Stop'
@@ -102,13 +104,13 @@ Compress-Archive -Path (Join-Path $dist '*') -DestinationPath $zip
 "Staged: $dist"
 "Zip:    $zip ({0:N1} MB)" -f ((Get-Item $zip).Length / 1MB)
 
-# Installer (NSIS 3), if available.
-$nsis = (Get-Command makensis.exe -ErrorAction SilentlyContinue).Source
-if (-not $nsis -and (Test-Path "${env:ProgramFiles(x86)}\NSIS\Bin\makensis.exe")) { $nsis = "${env:ProgramFiles(x86)}\NSIS\Bin\makensis.exe" }
-if ($nsis) {
-    & $nsis /V2 /INPUTCHARSET UTF8 "/DVERSION=$Version" "/DARCH=$Arch" (Join-Path $PSScriptRoot 'installer.nsi')
-    if ($LASTEXITCODE) { throw 'NSIS failed' }
-    "Setup:  " + (Join-Path $root "dist\MediaDuet-$Version-$Arch-setup.exe")
+# Installer (FluentSetup), if the CLI is available.
+$fluentsetup = if ($env:FLUENTSETUP) { $env:FLUENTSETUP } else { (Get-Command fluentsetup -ErrorAction SilentlyContinue).Source }
+if ($fluentsetup) {
+    $fsArch = $Arch.ToLowerInvariant()
+    & $fluentsetup build (Join-Path $PSScriptRoot 'fluentsetup.json') -D "Version=$Version" -D "Arch=$Arch" --arch $fsArch -o (Join-Path $root 'dist')
+    if ($LASTEXITCODE) { throw 'FluentSetup failed' }
+    "Setup:  " + (Join-Path $root "dist\MediaDuet-$Version-$fsArch-setup.exe")
 } else {
-    'NSIS not found: skipped setup.exe (install NSIS 3 or use installer.iss with Inno Setup).'
+    'fluentsetup not found: skipped setup.exe (install FluentSetup from https://github.com/TIANLI0/FluentSetup/releases or set FLUENTSETUP).'
 }

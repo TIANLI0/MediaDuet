@@ -54,13 +54,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.version.outputs.tag }}
-      - name: NSIS
-        shell: pwsh
-        run: |
-          if (-not (Get-Command makensis.exe -ErrorAction SilentlyContinue) -and
-              -not (Test-Path "${env:ProgramFiles(x86)}\NSIS\Bin\makensis.exe")) {
-            choco install nsis -y --no-progress
-          }
+      # fluentsetup CLI + installer runtime (verified download of the pinned release), on PATH.
+      - uses: TIANLI0/FluentSetup@v1.0.0
       - name: Build, test and package
         shell: pwsh
         run: windows/packaging/package.ps1 -Arch x64 -Version ${{ needs.version.outputs.version }}
