@@ -379,6 +379,8 @@
   <data name="BtOff" xml:space="preserve"><value>已关闭（请在 Windows 设置中打开蓝牙）</value></data>
   <data name="PolicySuspended" xml:space="preserve"><value>播放仲裁已暂时暂停</value></data>
   <data name="DiscoveredNotReady" xml:space="preserve"><value>未就绪：请在这台手机上打开 MediaDuet</value></data>
+  <data name="DiscoveredUnreachable" xml:space="preserve"><value>已发现，但连不上：请检查路由器的 AP 隔离或访客网络</value></data>
+  <data name="DiscoveredPairing" xml:space="preserve"><value>手机正在等待配对</value></data>
   <data name="PairErr_connect_failed" xml:space="preserve"><value>无法连接到手机。请确认手机在附近并已打开 MediaDuet。</value></data>
   <data name="PairErr_unknown_device" xml:space="preserve"><value>找不到这台手机了，请刷新列表后重试。</value></data>
   <data name="PairErr_invalid_address" xml:space="preserve"><value>地址无效，请检查 IP 地址和端口。</value></data>

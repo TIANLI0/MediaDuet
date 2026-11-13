@@ -472,6 +472,8 @@ namespace mdui
             item.detail = JStr(d, "detail");
             item.paired = JBool(d, "paired", false);
             item.ready = JBool(d, "ready", true);
+            item.reach = JStr(d, "reach", "ok");
+            item.pairing = JBool(d, "pairing", false);
             s.discovered.push_back(std::move(item));
         }
 

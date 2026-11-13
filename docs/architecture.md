@@ -81,8 +81,15 @@ compiled into the product.
   changed, user). A link that lived ≥ 30 s reconnects after ~1 s.
 * LAN candidates are ranked: the addresses the phone currently reports in
   `transport.info` (its complete list; anything it no longer reports is dropped
-  at once), the endpoint that last reached Up, DNS-SD results, manual
-  endpoints, then reported addresses that worked recently. A report with a new
+  at once), the endpoint that last reached Up (this run, then the last three
+  from earlier runs, kept in `devices.json` as `recent` so a restarted PC
+  reconnects without waiting for DNS-SD), DNS-SD and subnet-scan results, manual
+  endpoints, then reported addresses that worked recently. Candidates race: the
+  next one is dialled 300 ms after the previous TCP connect started if it has not
+  been answered (an address that went dark only fails after the 3 s connect
+  timeout), or 300 ms after its handshake started; the first handshake wins. An
+  address learned while a cycle runs (DNS-SD, a scan, `transport.info`) is dialled
+  at once. A report with a new
   address connects at once (no back-off) — on networks without multicast that
   is how a phone that changed its IP is found again, usually over the
   Bluetooth standby link. A LAN link whose address the phone stopped reporting
@@ -168,6 +175,34 @@ playback or call makes it yield according to its mode (off / latest wins / by
 priority); automatic resumes never do. When every peer is idle the device that
 paused last resumes first. Expectations, intents and "never undo a user pause"
 work as on Windows. Pure Kotlin with an injected timer (`PeerArbiterTest`).
+
+### LAN discovery (Windows)
+
+`app/LanDiscovery` finds MediaDuet phones on the network; only outgoing connections, so no
+firewall rule is needed.
+
+* **DNS-SD** (`platform/network/DnssdBrowser`, system `DeviceWatcher`): runs while a paired
+  phone may use LAN or the devices page is open. A watcher that dies by itself (sleep /
+  resume) is restarted with a back-off and checked every 30 s. `refresh()` starts a new
+  watcher (a fresh query) without reporting known phones as lost; what it does not report
+  again is dropped after its enumeration. Refreshed every 30 s while the devices page is
+  open and every 2 min while a paired phone is missing; all announced addresses are kept.
+* **Probe** (`platform/network/LanProbe`, protocol §3.5): every phone on the devices page
+  is probed at once and every 5 s: answered → *ok* (with the live pairing state), no
+  answer twice → *unreachable* ("found, but not reachable": the phone left, AP isolation,
+  a VPN on the phone). Only an answer in our framing counts.
+* **Subnet scan**: probes the PC's private /24 networks (physical Wi-Fi / Ethernet with a
+  gateway; VPN, TUN, Hyper-V, ZeroTier … skipped; at most two networks, 253 hosts each,
+  128 sockets at a time, ~2.5 s) 1.5 s after the devices page opens and every minute while
+  it stays open. In the background only for a paired phone that has had no link for 30 s,
+  only on the /24 it was last reached on, 5 → 10 → 20 → 30 min apart (reset by a link or
+  a network change). Hits of paired phones go to the ConnectionManager like DNS-SD results.
+* The phone advertises `pair=1` while its pairing window is open, and holds a Wi-Fi
+  MulticastLock (so it answers DNS-SD queries) only while that window or its connection
+  page is open and for 3 min after it (re-)announced itself.
+
+`MediaDuetLanScan` (developer tool) runs the same probe, scan and DNS-SD browse from the
+command line.
 
 Of two Android devices the one with the smaller device id dials
 (`service/PeerDialer`, DNS-SD via `transport/PeerDiscovery`); the other listens.

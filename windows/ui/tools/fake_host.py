@@ -454,7 +454,10 @@ class FakeHost:
                 discovered = [
                     {"kind": "bt", "id": "Bluetooth#Bluetooth00:aa:bb:cc:dd:ee-66:77:88:99:aa:bb", "name": "Test Tablet (fake)",
                      "detail": "66:77:88:99:AA:BB", "paired": False},
-                    {"kind": "lan", "id": "192.168.1.31:47321", "name": "Another Test Phone", "detail": "192.168.1.31:47321", "paired": False, "ready": True},
+                    {"kind": "lan", "id": "192.168.1.31:47321", "name": "Another Test Phone", "detail": "192.168.1.31:47321", "paired": False, "ready": True,
+                     "reach": "ok", "pairing": True},
+                    {"kind": "lan", "id": "192.168.1.44:47321", "name": "Gone Test Phone", "detail": "192.168.1.44:47321", "paired": False, "ready": False,
+                     "reach": "unreachable", "pairing": False},
                     {"kind": "bt", "id": "Bluetooth#Bluetooth00:aa:bb:cc:dd:ee-12:34:56:78:9a:bc", "name": "Sleeping Test Phone",
                      "detail": "12:34:56:78:9A:BC", "paired": False, "ready": False},
                     {"kind": "lan", "id": "192.168.1.20:47321", "name": self.peer["name"] or "Test Phone",

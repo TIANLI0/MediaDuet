@@ -11,6 +11,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -93,6 +94,30 @@ class HandshakeTest {
             assertEquals("pair.result", c.readHandshake().type)
         }
         assertEquals(32, waitFor { trust.key(peer.id) }.size)
+    }
+
+    @Test
+    fun probeTellsWhoWeAreAndWhetherPairingIsOpen() {
+        // §3.5: an unpaired PC asks; the answer carries the DNS-SD facts plus the pairing window.
+        for (open in listOf(false, true)) {
+            if (open) pairing.open()
+            server.connect().use { c ->
+                c.sendHandshake(peer.id, "probe", buildJsonObject {})
+                val r = c.readHandshake()
+                assertEquals("probe.result", r.type)
+                assertEquals(serverDevice.id, r.src)
+                assertEquals("", r.sid)
+                val device = r.body["device"] as JsonObject
+                assertEquals(serverDevice.id, (device["id"] as JsonPrimitive).content)
+                assertEquals(serverDevice.name, (device["name"] as JsonPrimitive).content)
+                assertEquals("android", (device["platform"] as JsonPrimitive).content)
+                assertNull(device["model"]) // nothing beyond what DNS-SD announces
+                assertEquals(open.toString(), r.str("pairing"))
+                assertTrue(c.isClosedByPeer())
+            }
+        }
+        assertNull(trust.key(peer.id))
+        assertNull(pairing.state.value.prompt)
     }
 
     @Test

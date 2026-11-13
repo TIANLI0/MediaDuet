@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(MediaDuet VERSION 1.10.3 LANGUAGES CXX)
+project(MediaDuet VERSION 1.11.0 LANGUAGES CXX)
 
 if(NOT MSVC)
   message(FATAL_ERROR "MediaDuet for Windows requires MSVC (C++/WinRT, Windows SDK).")
@@ -46,6 +46,7 @@ add_library(md_core STATIC
   core/src/link/ClockSync.cpp
   core/src/link/ConnectionManager.cpp
   core/src/link/DedupWindow.cpp
+  core/src/link/Probe.cpp
   core/src/policy/PlaybackArbiter.cpp
   core/src/handoff/Handoff.cpp
   core/src/update/Update.cpp
@@ -84,6 +85,7 @@ add_library(md_platform STATIC
   platform/network/StreamTransport.cpp
   platform/network/LanTransport.cpp
   platform/network/DnssdBrowser.cpp
+  platform/network/LanProbe.cpp
   platform/media/GsmtcSource.cpp
   platform/media/SmtcBridge.cpp
   platform/media/Artwork.cpp
@@ -104,7 +106,7 @@ add_library(md_platform STATIC
 )
 target_include_directories(md_platform PUBLIC platform)
 target_link_libraries(md_platform PUBLIC md_core windowsapp ole32 oleaut32 user32 gdi32 propsys
-  shell32 shlwapi crypt32 advapi32 d2d1 dwrite d3d11 dxgi dcomp windowscodecs ws2_32 psapi
+  shell32 shlwapi crypt32 advapi32 d2d1 dwrite d3d11 dxgi dcomp windowscodecs ws2_32 iphlpapi psapi
   dwmapi uxtheme mmdevapi uiautomationcore comctl32)
 md_configure(md_platform)
 
@@ -115,6 +117,7 @@ if(MD_BUILD_APP)
 add_executable(MediaDuet WIN32
   app/main.cpp
   app/HostApp.cpp
+  app/LanDiscovery.cpp
   app/TrayIcon.cpp
   app/IpcServer.cpp
   app/Autostart.cpp
@@ -173,6 +176,11 @@ add_executable(MediaDuetUpdateCheck tools/update_check/update_check.cpp)
 target_link_libraries(MediaDuetUpdateCheck PRIVATE md_platform)
 md_configure(MediaDuetUpdateCheck)
 
+# Developer tool: LAN discovery from the command line (probe, subnet scan, DNS-SD; not shipped).
+add_executable(MediaDuetLanScan tools/lan_scan/lan_scan.cpp)
+target_link_libraries(MediaDuetLanScan PRIVATE md_platform)
+md_configure(MediaDuetLanScan)
+
 # Developer tool: measures lyrics hit rate (not shipped).
 add_executable(MediaDuetLyricsTest tools/lyrics_test/lyrics_test.cpp)
 target_link_libraries(MediaDuetLyricsTest PRIVATE md_platform)
@@ -189,6 +197,7 @@ if(MD_BUILD_TESTS)
     tests/test_handshake.cpp
     tests/test_link_session.cpp
     tests/test_connection_manager.cpp
+    tests/test_probe.cpp
     tests/test_clock_sync.cpp
     tests/test_arbiter.cpp
     tests/test_lrc.cpp

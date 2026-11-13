@@ -380,6 +380,67 @@ TEST_CASE("LAN: unconfirmed peer-reported addresses expire") {
     CHECK(w.fac.attemptsTo(kGood) > 1);         // the address that worked is kept
 }
 
+TEST_CASE("LAN: an address that never answers the TCP connect does not delay the next one") {
+    World w(link::ConnMode::LanOnly, false, false);
+    w.fac.lanHostMode[kBad] = "blackhole"; // fails only after the 3 s connect timeout
+    w.peer.manualEndpoints = {{kBad, 47321, "manual"}, {kGood, 47321, "manual"}};
+    w.start();
+    w.s.advance(600); // the good address is dialled 300 ms later and wins
+    CHECK(w.cm->isUp());
+    CHECK(w.fac.attemptsTo(kBad) == 1);
+    CHECK(w.fac.attemptsTo(kGood) == 1);
+    REQUIRE(w.cm->upLanEndpoint(w.srv.info.id));
+    CHECK(w.cm->upLanEndpoint(w.srv.info.id)->host == kGood);
+    w.s.advance(5'000); // the late timeout of the stale address changes nothing
+    CHECK(w.cm->isUp());
+    CHECK(w.srv.liveConns(TransportKind::Lan) == 1);
+}
+
+TEST_CASE("LAN: a newly found address is dialled at once while a stale one is still connecting") {
+    World w(link::ConnMode::LanOnly, false, false);
+    w.fac.lanHostMode[kBad] = "blackhole";
+    w.peer.manualEndpoints = {{kBad, 47321, "manual"}};
+    w.start();
+    w.s.advance(100);
+    REQUIRE(w.fac.attemptsTo(kBad) == 1);
+    announce(w, kGood); // DNS-SD (or a subnet scan) finds the phone's new address
+    w.s.advance(200);
+    CHECK(w.cm->isUp());
+    CHECK(w.fac.attemptsTo(kGood) == 1);
+}
+
+TEST_CASE("LAN: endpoints remembered from an earlier run are dialled first at start-up") {
+    World w(link::ConnMode::LanOnly, false, false);
+    w.fac.lanHostMode[kBad] = "blackhole"; // the pairing address went stale
+    w.peer.manualEndpoints = {{kBad, 47321, "manual"}};
+    w.peer.recentEndpoints = {{kGood, 47321, "recent"}};
+    w.start();
+    w.s.advance(200);
+    CHECK(w.cm->isUp());
+    REQUIRE_FALSE(w.fac.lanHosts.empty());
+    CHECK(w.fac.lanHosts.front() == kGood);
+    CHECK(w.fac.attemptsTo(kBad) == 0); // never needed
+}
+
+TEST_CASE("LAN: every address of a cycle is dialled even when all of them are dark") {
+    World w(link::ConnMode::LanOnly, false, false);
+    w.fac.lanHostMode[kBad] = "blackhole";
+    w.fac.lanHostMode[kGood] = "blackhole";
+    w.peer.manualEndpoints = {{kBad, 47321, "manual"}, {kGood, 47321, "manual"}};
+    w.start();
+    w.s.advance(400);
+    CHECK(w.fac.attemptsTo(kBad) == 1);
+    CHECK(w.fac.attemptsTo(kGood) == 1);
+    CHECK(w.cm->status().state == link::LinkStatus::State::Connecting);
+    // Both time out; the next cycle comes after the back-off, not in a tight loop.
+    w.s.advance(3'500);
+    CHECK_FALSE(w.cm->isUp());
+    CHECK(w.fac.lanAttempts <= 4);
+    w.fac.lanHostMode[kGood] = "ok";
+    w.s.advance(30'000);
+    CHECK(w.cm->isUp());
+}
+
 TEST_CASE("the peer's app version is reported; no peers means no link (standalone)") {
     World w(link::ConnMode::Auto, true, false);
     w.srv.info.app = "1.1.0-beta";

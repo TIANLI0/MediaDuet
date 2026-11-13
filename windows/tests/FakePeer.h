@@ -352,7 +352,9 @@ public:
         });
     }
     // Per-host LAN behaviour (default: lanReachable ? "ok" : "refuse"). "silent" accepts
-    // the TCP connection but never answers (another interface / service on that address).
+    // the TCP connection but never answers (another interface / service on that address);
+    // "blackhole" never answers the TCP connect, which fails after the 3 s connect timeout
+    // (the phone left that address).
     std::map<std::string, std::string> lanHostMode;
     std::vector<std::string> lanHosts; // every LAN attempt, in order
 
@@ -361,7 +363,7 @@ public:
         lanHosts.push_back(ep.host);
         auto it = lanHostMode.find(ep.host);
         std::string mode = it != lanHostMode.end() ? it->second : (lanReachable ? "ok" : "refuse");
-        s_.schedule(lanDelayMs, [this, mode, done] {
+        s_.schedule(mode == "blackhole" ? 3'000 : lanDelayMs, [this, mode, done] {
             if (mode == "ok") done(srv_.accept(link::TransportKind::Lan), "");
             else if (mode == "silent") done(std::make_shared<FakeTransport>(s_, link::TransportKind::Lan, nullptr), "");
             else done(nullptr, "lan unreachable");

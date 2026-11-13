@@ -970,7 +970,8 @@ namespace winrt::MediaDuetUI::implementation
         auto const& st = Controller::Get().Model();
         std::string sig;
         for (auto const& d : st.discovered)
-            sig += d.kind + "|" + d.id + "|" + d.name + "|" + d.detail + (d.paired ? "1" : "0") + (d.ready ? "1" : "0") + "\n";
+            sig += d.kind + "|" + d.id + "|" + d.name + "|" + d.detail + "|" + d.reach + (d.paired ? "1" : "0") +
+                (d.ready ? "1" : "0") + (d.pairing ? "1" : "0") + "\n";
         if (sig == m_discoveredSignature) return;
         m_discoveredSignature = sig;
 
@@ -1001,7 +1002,8 @@ namespace winrt::MediaDuetUI::implementation
             TextBlock detail;
             detail.Style(descStyle);
             detail.Text((d.kind == "bt" ? std::wstring(Str(L"TransportBluetooth")) : std::wstring(Str(L"TransportLan"))) +
-                (d.detail.empty() ? L"" : L"  \x00B7  " + Widen(d.detail)));
+                (d.detail.empty() ? L"" : L"  \x00B7  " + Widen(d.detail)) +
+                (d.pairing && !d.paired ? L"  \x00B7  " + std::wstring(Str(L"DiscoveredPairing")) : L""));
             text.Children().Append(detail);
             Grid::SetColumn(text, 1);
             grid.Children().Append(text);
@@ -1010,7 +1012,8 @@ namespace winrt::MediaDuetUI::implementation
             {
                 TextBlock notReady;
                 notReady.Style(descStyle);
-                notReady.Text(Str(L"DiscoveredNotReady"));
+                // LAN: announced, but our probe gets no answer (the phone left, AP isolation, a VPN on the phone).
+                notReady.Text(Str(d.kind == "lan" ? L"DiscoveredUnreachable" : L"DiscoveredNotReady"));
                 notReady.VerticalAlignment(VerticalAlignment::Center);
                 notReady.TextWrapping(TextWrapping::Wrap);
                 notReady.MaxWidth(220);

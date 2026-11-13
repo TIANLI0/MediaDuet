@@ -13,6 +13,7 @@ import android.net.LinkProperties
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
+import android.net.wifi.WifiManager
 import android.os.Build
 import androidx.core.content.ContextCompat
 import app.mediaduet.link.TransportStream
@@ -43,6 +44,11 @@ data class TransportState(
 /**
  * Owns the listeners. Restarts RFCOMM on Bluetooth on/off, re-advertises NSD and re-announces
  * LAN endpoints on network changes. Every failure degrades to a status, never a crash.
+ *
+ * Wi-Fi drops multicast addressed to the phone unless some app holds a MulticastLock, so a PC's
+ * DNS-SD query may go unanswered. The lock is held only when a PC is likely to look: while the
+ * pairing window is open, while the connection page is shown, and for a few minutes after this
+ * device (re-)announced itself (it joined a network, the app started).
  */
 class TransportController(
     private val context: Context,
@@ -57,6 +63,17 @@ class TransportController(
     private val nsd = NsdAdvertiser(context)
     private val cm = context.getSystemService(ConnectivityManager::class.java)
     private val btManager = context.getSystemService(BluetoothManager::class.java)
+    private val multicastLock: WifiManager.MulticastLock? = try {
+        context.applicationContext.getSystemService(WifiManager::class.java)
+            ?.createMulticastLock("MediaDuet:discovery")
+            ?.apply { setReferenceCounted(false) }
+    } catch (e: Exception) {
+        MdLog.w(TAG, "no multicast lock", e)
+        null
+    }
+    private val multicastReasons = HashSet<String>()
+    private var announceHoldJob: Job? = null
+    private var pairingOpen = false
 
     private val _state = MutableStateFlow(TransportState())
     val state: StateFlow<TransportState> = _state
@@ -111,6 +128,51 @@ class TransportController(
         tcp.stop()
         rfcomm.stop()
         _state.value = TransportState()
+        announceHoldJob?.cancel()
+        multicastReasons.remove(REASON_ANNOUNCE)
+        applyMulticast()
+    }
+
+    /** The pairing window opened / closed: re-advertised with TXT `pair` (§1.2). */
+    @Synchronized
+    fun setPairingOpen(open: Boolean) {
+        if (pairingOpen == open) return
+        pairingOpen = open
+        holdMulticast(REASON_PAIRING, open)
+        if (started) refreshLan()
+    }
+
+    /** Keeps multicast reception on for [reason] (see the class comment). */
+    @Synchronized
+    fun holdMulticast(reason: String, on: Boolean) {
+        val changed = if (on) multicastReasons.add(reason) else multicastReasons.remove(reason)
+        if (changed) applyMulticast()
+    }
+
+    private fun holdMulticastAfterAnnounce() {
+        holdMulticast(REASON_ANNOUNCE, true)
+        announceHoldJob?.cancel()
+        announceHoldJob = scope.launch {
+            delay(ANNOUNCE_HOLD_MS)
+            holdMulticast(REASON_ANNOUNCE, false)
+        }
+    }
+
+    @Synchronized
+    private fun applyMulticast() {
+        val lock = multicastLock ?: return
+        val want = started && multicastReasons.isNotEmpty() && _state.value.lanAddresses.isNotEmpty()
+        try {
+            if (want && !lock.isHeld) {
+                lock.acquire()
+                MdLog.i(TAG, "multicast reception on (${multicastReasons.joinToString()})")
+            } else if (!want && lock.isHeld) {
+                lock.release()
+                MdLog.i(TAG, "multicast reception off")
+            }
+        } catch (e: Exception) {
+            MdLog.w(TAG, "multicast lock failed", e)
+        }
     }
 
     /** Re-evaluates permissions (called when the UI resumes or a permission was granted). */
@@ -200,16 +262,18 @@ class TransportController(
         val port = tcp.port
         val previous = _state.value
         _state.update { it.copy(lanAddresses = addresses, localNetworkAllowed = allowed, lanPort = port) }
-        val key = "$port|$allowed|${addresses.joinToString()}|${deviceName()}"
+        val key = "$port|$allowed|${addresses.joinToString()}|${deviceName()}|$pairingOpen"
         if (port != null && allowed && addresses.isNotEmpty()) {
             if (forceNsd || key != advertisedKey) {
-                nsd.register(port, deviceId, deviceName())
+                nsd.register(port, deviceId, deviceName(), pairingOpen)
                 advertisedKey = key
+                holdMulticastAfterAnnounce()
             }
         } else {
             nsd.unregister()
             advertisedKey = null
         }
+        applyMulticast()
         if (previous.lanAddresses != addresses) onLanChanged()
     }
 
@@ -223,6 +287,11 @@ class TransportController(
     companion object {
         private const val TAG = "MD/Transports"
         const val PERMISSION_LOCAL_NETWORK = "android.permission.ACCESS_LOCAL_NETWORK"
+        const val REASON_PAIRING = "pairing"
+        const val REASON_ANNOUNCE = "announce"
+        const val REASON_CONNECTION_PAGE = "connection-page"
+        /** A PC that missed the announcement (asleep, its page closed) usually asks within minutes. */
+        private const val ANNOUNCE_HOLD_MS = 3 * 60_000L
 
         /** Interface addresses of the phone's hotspot (soft-AP interfaces are not CM networks). */
         private fun hotspotAddresses(): List<String> = try {

@@ -437,6 +437,8 @@ S += [
     ("BtOff", "Off (turn Bluetooth on in Windows Settings)", "已关闭（请在 Windows 设置中打开蓝牙）"),
     ("PolicySuspended", "Playback arbitration is temporarily suspended", "播放仲裁已暂时暂停"),
     ("DiscoveredNotReady", "Not ready: open MediaDuet on this phone", "未就绪：请在这台手机上打开 MediaDuet"),
+    ("DiscoveredUnreachable", "Found, but not reachable: check the router's AP isolation or guest network", "已发现，但连不上：请检查路由器的 AP 隔离或访客网络"),
+    ("DiscoveredPairing", "waiting to pair", "手机正在等待配对"),
     ("PairErr_connect_failed", "Could not connect to the phone. Make sure it is nearby and MediaDuet is open on it.", "无法连接到手机。请确认手机在附近并已打开 MediaDuet。"),
     ("PairErr_unknown_device", "That phone could not be found any more. Refresh the list and try again.", "找不到这台手机了，请刷新列表后重试。"),
     ("PairErr_invalid_address", "The address is not valid. Check the IP address and port.", "地址无效，请检查 IP 地址和端口。"),

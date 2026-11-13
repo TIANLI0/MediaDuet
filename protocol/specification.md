@@ -40,9 +40,12 @@ Two Android devices can also be linked; one of them then takes the client role
 
 * DNS-SD service type: `_mediaduet._tcp`, domain `local`.
 * TXT record: `v=1`, `id=<deviceId>` (§3.1), `n=<urlencoded device name, ≤ 40 bytes>`,
-  `p=android` (optional: the advertiser's platform).
+  `p=android` (optional: the advertiser's platform), `pair=1` while the pairing window
+  (§3.3) is open, else `pair=0` (optional; the server re-advertises when it changes).
 * Default port **47321**; if busy the server binds an ephemeral port and advertises it.
 * Manual connection uses `host:port` entered by the user (default port 47321).
+* A client MAY check announced addresses and look for servers on networks that drop
+  multicast with the discovery probe (§3.5).
 * LAN traffic is always encrypted (§5). TLS is not used; see §4.4 for the rationale.
 
 A logical **link session** (§7) can span several transport connections.
@@ -156,6 +159,31 @@ bond; the application layer never trusts the Bluetooth bond alone.
 A device that removes a peer deletes `K`. The next `hello` from that peer receives
 `error {code:"not_paired"}` and the connection is closed. A peer that receives
 `not_paired` MUST mark the pairing as revoked and stop reconnecting.
+
+### 3.5 Discovery probe (LAN)
+
+A client MAY ask who listens on a LAN address before pairing or connecting:
+
+```
+C → S  HANDSHAKE probe        {}
+S → C  HANDSHAKE probe.result {device: {id, name, platform}, pairing: bool}
+       -- S closes the connection --
+```
+
+* `probe` is only valid as the first message of a connection; `probe.result.src` equals
+  `device.id`, `re` is the probe's `id`.
+* The answer reveals nothing beyond the DNS-SD TXT record (§1.2): no keys, no model,
+  OS or app version. `pairing` tells whether the pairing window is open right now.
+* Servers before 1.11 abort with `error {code:"bad_message"}` (an unknown handshake
+  type, §6). A client treats any answer in this framing as "a MediaDuet server is
+  reachable here, identity unknown"; a connection that is accepted but never answers
+  proves nothing (VPN and TUN-mode proxies on the client accept TCP connections to any
+  address themselves).
+* Clients use it (informative): to verify DNS-SD results before offering them for
+  pairing; to scan their own private /24 network (never wider, never public addresses)
+  while the user looks for devices to pair; and, rarely (minutes apart, backing off),
+  to find a paired server whose address changed while multicast does not get through,
+  limited to the /24 it was last reached on.
 
 ---
 
@@ -309,6 +337,8 @@ HANDSHAKE frames; everything else in SECURE/CONTROL records.
 | `hello.ack` | S→C | `{device, protocol:int, caps:[string], epk, nonce, sid, resumed, mac}` |
 | `auth` | C→S | `{mac}` |
 | `error` | both | `{code, message?}` — also valid during handshake |
+| `probe` | C→S | `{}` — first and only client message of a discovery connection (§3.5) |
+| `probe.result` | S→C | `{device: {id, name, platform}, pairing: bool}`, then S closes |
 
 ### 8.2 Session messages
 

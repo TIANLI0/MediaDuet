@@ -139,6 +139,12 @@ void DeviceStore::load() {
                 if (e.is_object())
                     r.manualEndpoints.push_back(
                         {e.value("host", std::string()), static_cast<uint16_t>(e.value("port", 0)), "manual"});
+        if (d.contains("recent") && d["recent"].is_array())
+            for (auto& e : d["recent"])
+                if (e.is_object() && r.recentEndpoints.size() < kMaxRecentEndpoints) {
+                    link::LanEndpoint ep{e.value("host", std::string()), static_cast<uint16_t>(e.value("port", 0)), "recent"};
+                    if (!ep.host.empty() && ep.port) r.recentEndpoints.push_back(std::move(ep));
+                }
         auto blob = base64Decode(d.value("key", std::string()));
         if (!blob) continue;
         auto key = unprotect(*blob);
@@ -159,13 +165,15 @@ bool DeviceStore::save() const {
             log::error("store", "DPAPI protect failed");
             return false;
         }
-        json manual = json::array();
+        json manual = json::array(), recent = json::array();
         for (auto& e : r.manualEndpoints) manual.push_back({{"host", e.host}, {"port", e.port}});
+        for (auto& e : r.recentEndpoints) recent.push_back({{"host", e.host}, {"port", e.port}});
         arr.push_back({{"id", r.id},
                        {"name", r.name},
                        {"platform", r.platform},
                        {"btAddress", r.btAddress ? formatBtAddress(r.btAddress) : ""},
                        {"manual", manual},
+                       {"recent", recent},
                        {"pairedAt", r.pairedAt},
                        {"lastSeen", r.lastSeen},
                        {"app", r.app},
@@ -204,6 +212,7 @@ std::vector<link::PeerRecord> DeviceStore::peers() const {
         p.platform = d.platform;
         p.btAddress = d.btAddress;
         p.manualEndpoints = d.manualEndpoints;
+        p.recentEndpoints = d.recentEndpoints;
         p.key = d.key;
         out.push_back(std::move(p));
     }

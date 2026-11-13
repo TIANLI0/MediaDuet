@@ -307,9 +307,15 @@ void HostApp::init() {
             auto* d = devices_.find(peerId); if (!d || d->key.size() != 32) return {};
             unlock::BootRecord r;
             r.self = {identity_.id, identity_.name, "windows", "PC", "Windows", MD_VERSION};
-            r.peer = {d->id, d->name, "android", d->btAddress, d->manualEndpoints, d->key};
-            if (dnssd_) for (const auto& service : dnssd_->current()) if (service.deviceId == peerId && r.peer.manualEndpoints.size() < 16)
-                r.peer.manualEndpoints.push_back(service.endpoint);
+            r.peer = {d->id, d->name, "android", d->btAddress, d->manualEndpoints, {}, d->key};
+            auto addEndpoint = [&](const link::LanEndpoint& e) {
+                if (r.peer.manualEndpoints.size() < 16 &&
+                    std::find(r.peer.manualEndpoints.begin(), r.peer.manualEndpoints.end(), e) == r.peer.manualEndpoints.end())
+                    r.peer.manualEndpoints.push_back(e);
+            };
+            for (const auto& e : d->recentEndpoints) addEndpoint(e);
+            if (lan_) for (const auto& service : lan_->dnssdServices()) if (service.deviceId == peerId)
+                for (const auto& e : service.endpoints) addEndpoint(e);
             if (cm_->activePeer() == peerId && r.peer.manualEndpoints.size() < 16) {
                 auto host = cm_->remoteLanHost();
                 if (!host.empty()) r.peer.manualEndpoints.push_back({host, platform::kDefaultLanPort, "last"});
@@ -396,10 +402,22 @@ void HostApp::init() {
                     }});
     bt_->start();
 
-    dnssd_ = std::make_unique<platform::DnssdBrowser>(sched_, [this](const platform::DnssdService& s, bool available) {
-        if (devices_.find(s.deviceId)) cm_->onLanEndpoint(s.deviceId, s.endpoint, available);
-        markDirty();
-    });
+    lan_ = std::make_unique<LanDiscovery>(sched_, identity_.id, LanDiscovery::Callbacks{
+        [this](const std::string& deviceId, const link::LanEndpoint& ep, bool available) {
+            if (devices_.find(deviceId)) cm_->onLanEndpoint(deviceId, ep, available);
+        },
+        [this] { markDirty(); },
+        [this] {
+            // Paired phones without any link, and where they were reachable over LAN before.
+            std::vector<std::pair<std::string, std::vector<link::LanEndpoint>>> out;
+            if (standalone_ || cm_->isUp()) return out;
+            for (auto& d : devices_.devices()) {
+                std::vector<link::LanEndpoint> eps = d.recentEndpoints;
+                eps.insert(eps.end(), d.manualEndpoints.begin(), d.manualEndpoints.end());
+                out.emplace_back(d.id, std::move(eps));
+            }
+            return out;
+        }});
 
     try {
         netToken_ = winrt::Windows::Networking::Connectivity::NetworkInformation::NetworkStatusChanged([this](auto&&) {
@@ -407,7 +425,7 @@ void HostApp::init() {
                 if (exiting_) return;
                 log::info("host", "network changed");
                 cm_->onNetworkChanged();
-                if (dnssd_->running()) dnssd_->restart();
+                lan_->onNetworkChanged();
             });
         });
     } catch (...) {
@@ -435,7 +453,7 @@ void HostApp::shutdown() {
     overlay_.reset();
     taskbar_.reset();
     smtc_.reset();
-    dnssd_.reset();
+    lan_.reset();
     bt_.reset();
     handoff_.reset();
     unlock_.reset();
@@ -558,9 +576,24 @@ void HostApp::reloadPeers() {
 
 void HostApp::updateDiscoveryWatchers() {
     bool lanAllowed = settings_.get<std::string>("connection.mode", "auto") != "bt_only";
-    bool want = !standalone_ && (discovering_ || (lanAllowed && !devices_.devices().empty()));
-    if (want && !dnssd_->running()) dnssd_->start();
-    if (!want && dnssd_->running()) dnssd_->stop();
+    bool search = !standalone_ && discovering_;
+    bool browse = !standalone_ && lanAllowed && !devices_.devices().empty();
+    lan_->configure(browse, search);
+}
+
+void HostApp::rememberLanEndpoint() {
+    auto id = cm_->activePeer();
+    if (!id) return;
+    auto ep = cm_->upLanEndpoint(*id);
+    auto* d = devices_.find(*id);
+    if (!ep || !d) return;
+    if (!d->recentEndpoints.empty() && d->recentEndpoints.front() == *ep) return;
+    auto& r = d->recentEndpoints;
+    r.erase(std::remove(r.begin(), r.end(), *ep), r.end());
+    r.insert(r.begin(), link::LanEndpoint{ep->host, ep->port, "recent"});
+    if (r.size() > platform::kMaxRecentEndpoints) r.resize(platform::kMaxRecentEndpoints);
+    devices_.save();
+    log::info("host", "remembered LAN endpoint {} for {}", ep->str(), d->name);
 }
 
 // ======================================================================= link events
@@ -590,6 +623,8 @@ void HostApp::onLinkUp(const std::string& peerId, bool resumed) {
     sendSinkState();
     if (handoff_) handoff_->onLinkUp();
     if (unlock_) unlock_->onLinkUp();
+    if (lan_) lan_->onLinkUp();
+    rememberLanEndpoint();
     updateTray();
     markDirty();
 }
@@ -632,6 +667,7 @@ void HostApp::rememberPeerApp(platform::DeviceRecord& d, const std::string& app)
 }
 
 void HostApp::onStatusChanged() {
+    rememberLanEndpoint();
     updateTray();
     markDirty();
 }
@@ -2013,12 +2049,19 @@ json HostApp::buildState() const {
                               {"detail", platform::formatBtAddress(c.address)}, {"paired", paired},
                               {"ready", c.hasService}});
     }
-    for (auto& s : dnssd_->current()) {
-        discovered.push_back({{"kind", "lan"}, {"id", s.endpoint.str()}, {"name", s.name}, {"detail", s.endpoint.str()},
-                              {"paired", devices_.devices().end() !=
-                                             std::find_if(devices_.devices().begin(), devices_.devices().end(),
-                                                          [&](auto& d) { return d.id == s.deviceId; })},
-                              {"ready", true}});
+    for (auto& d : lan_->devices()) {
+        const char* reach = d.reach == LanDevice::Reach::Ok            ? "ok"
+                            : d.reach == LanDevice::Reach::Unreachable ? "unreachable"
+                                                                       : "checking";
+        discovered.push_back({{"kind", "lan"},
+                              {"id", d.endpoint.str()},
+                              {"name", d.name},
+                              {"detail", d.endpoint.str()},
+                              {"paired", std::any_of(devices_.devices().begin(), devices_.devices().end(),
+                                                     [&](auto& p) { return p.id == d.id; })},
+                              {"ready", d.reach != LanDevice::Reach::Unreachable},
+                              {"reach", reach},
+                              {"pairing", d.pairing}});
     }
     return {{"type", "state"},
             {"tick", sched_.nowMs()},

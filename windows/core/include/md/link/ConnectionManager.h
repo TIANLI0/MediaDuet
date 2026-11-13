@@ -30,6 +30,9 @@ struct PeerRecord {
     std::string platform;
     uint64_t btAddress = 0; // 0 = unknown
     std::vector<LanEndpoint> manualEndpoints;
+    // LAN endpoints that reached Up in earlier runs (newest first): tried right after the
+    // phone's own report, so a restarted PC reconnects without waiting for DNS-SD.
+    std::vector<LanEndpoint> recentEndpoints;
     Bytes key;              // pairing key (in memory only)
 };
 
@@ -91,6 +94,9 @@ public:
         int64_t resendMaxAgeMs = 5'000;
         int64_t nextEndpointDelayMs = 250;        // next LAN candidate after a connect failure
         int64_t raceDelayMs = 300;                // head start of a LAN handshake before the next candidate races it
+        // Head start of a TCP connect that has not been answered yet: a vanished address only
+        // fails after the connect timeout (seconds), a live phone answers within milliseconds.
+        int64_t connectStaggerMs = 300;
         int64_t endpointCooldownMs = 5 * 60'000;  // after a handshake failure on an endpoint
         int64_t peerEndpointTtlMs = 10 * 60'000;  // unconfirmed transport.info endpoints
     };
@@ -128,6 +134,8 @@ public:
     std::optional<std::string> activePeer() const;
     LinkStatus status() const;
     std::string remoteLanHost() const; // host of an up LAN connection, if any
+    // The endpoint of [peerId]'s LAN connection while it is Up (to remember for the next run).
+    std::optional<LanEndpoint> upLanEndpoint(const std::string& peerId) const;
 
     // Where to stream audio (spec §9): prefers an up LAN connection; otherwise the
     // primary plus a known LAN address. keyC2S is that connection's client->server key.
@@ -161,8 +169,8 @@ private:
             ConnectionPtr conn;
             LanEndpoint ep;
         };
-        std::vector<Pending> pending; // in handshake
-        int inFlight = 0;             // TCP connects not answered yet
+        std::vector<Pending> pending;      // in handshake
+        std::vector<LanEndpoint> dialing;  // TCP connects not answered yet (several race, see connectStaggerMs)
         std::optional<LanEndpoint> currentEp; // endpoint of the Up connection
         int64_t upSince = 0;
         bool peerAskedBackoff = false;
@@ -204,14 +212,20 @@ private:
     const Peer* activePeerPtr() const;
     Slot& slot(Peer& p, TransportKind k) { return k == TransportKind::Bluetooth ? p.bt : p.lan; }
     bool allowed(TransportKind k) const;
-    // Ranked LAN candidates: last endpoint that reached Up, DNS-SD, manual, then
-    // peer-reported (expired after peerEndpointTtlMs unless confirmed); endpoints
-    // in handshake cool-down are skipped unless nothing else is left.
+    // Ranked LAN candidates: the phone's fresh report, last endpoint that reached Up (this
+    // run, then earlier runs), DNS-SD / scan, manual, then confirmed peer-reported ones
+    // (expired after peerEndpointTtlMs); endpoints in handshake cool-down are skipped
+    // unless nothing else is left.
     std::vector<LanEndpoint> lanCandidates(const Peer& p) const;
     void attemptLan(Peer& p);
     // Continues the LAN cycle after `delay` (next candidate) or ends it (back-off).
     void lanAdvance(Peer& p, Slot& s, int64_t delay);
-    bool lanBusy(const Slot& s) const { return s.inFlight > 0 || !s.pending.empty(); }
+    // Newly learned addresses while LAN is down: dialled now, even while a cycle still
+    // waits for a stale address to time out.
+    void lanFound(Peer& p, const std::vector<LanEndpoint>& found);
+    bool mayDialLan(const Peer& p) const;
+    bool lanBusy(const Slot& s) const { return !s.dialing.empty() || !s.pending.empty(); }
+    static bool lanInProgress(const Slot& s, const LanEndpoint& e);
     void closePending(Slot& s, const std::string& why);
     void evaluateAll();
     void evaluate(Peer& p);

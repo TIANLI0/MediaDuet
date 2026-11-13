@@ -68,7 +68,8 @@ Every message has a `"type"` field. Messages from the UI to the host may carry a
   "pairing": {"state":"idle","sas":null,"peerName":null,"error":null},
   "discovered": [
     {"kind":"bt","id":"Bluetooth#Bluetooth…","name":"OPPO Find X8 Ultra","detail":"AA:BB:…","paired":false},
-    {"kind":"lan","id":"192.168.1.20:47321","name":"Pixel 9","detail":"192.168.1.20:47321","paired":true}
+    {"kind":"lan","id":"192.168.1.20:47321","name":"Pixel 9","detail":"192.168.1.20:47321","paired":true,
+     "ready":true,"reach":"ok","pairing":false}
   ],
   "lyricsOverlay": {"visible": false, "shown": false},
   "volume": {
@@ -159,6 +160,12 @@ Every message has a `"type"` field. Messages from the UI to the host may carry a
   `taskbar_not_ready` / `no_taskbar` / `unavailable` (the host is still measuring
   or recovering, e.g. right after sign-in or an Explorer restart; it retries by
   itself).
+* `discovered[]`: phones to pair. `ready` (Bluetooth: the MediaDuet service is
+  visible; LAN: not unreachable). LAN entries also carry `reach` ∈ `checking`,
+  `ok` (answered the discovery probe, protocol §3.5), `unreachable` (announced
+  but no answer: the phone left, AP isolation, a VPN on the phone) and `pairing`
+  (the phone's pairing window is open; such phones come first). `id` / `detail`
+  are the address to pair with (`pair.start {kind:"lan", target:id}`).
 * `standalone`: the work mode is "This PC only" (`settings.mode`): no transports,
   discovery, pairing, arbitration or audio sending; commands that need the phone
   answer `result` with `error: "standalone"`. Local sessions, in-app lyrics, the

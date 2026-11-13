@@ -248,6 +248,8 @@ namespace mdui
         std::string detail;
         bool paired{ false };
         bool ready{ true };   // absent = ready
+        std::string reach;    // lan: checking, ok, unreachable (absent = ok)
+        bool pairing{ false }; // lan: the phone's pairing window is open
     };
 
     // Handoff (docs/ipc.md state.handoff): music apps that can take a song on this PC

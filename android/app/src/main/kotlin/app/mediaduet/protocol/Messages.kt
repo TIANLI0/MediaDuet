@@ -18,6 +18,8 @@ object MsgType {
     const val HELLO_ACK = "hello.ack"
     const val AUTH = "auth"
     const val ERROR = "error"
+    const val PROBE = "probe"
+    const val PROBE_RESULT = "probe.result"
     const val SESSION_READY = "session.ready"
     const val LINK_PRIMARY = "link.primary"
     const val PING = "ping"

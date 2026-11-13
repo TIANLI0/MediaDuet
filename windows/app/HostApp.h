@@ -3,6 +3,7 @@
 #include "Diagnostics.h"
 #include "HandoffHost.h"
 #include "IpcServer.h"
+#include "LanDiscovery.h"
 #include "ResumeButton.h"
 #include "TrayIcon.h"
 #include "UnlockHost.h"
@@ -20,7 +21,6 @@
 #include "media/GsmtcSource.h"
 #include "media/NeteaseCompat.h"
 #include "media/SmtcBridge.h"
-#include "network/DnssdBrowser.h"
 #include "network/LanTransport.h"
 #include "overlay/LyricsOverlay.h"
 #include "overlay/TaskbarWidget.h"
@@ -67,6 +67,8 @@ private:
     void applySettings();
     void reloadPeers();
     void updateDiscoveryWatchers();
+    // Keeps the LAN endpoint of an up link in devices.json for the next start.
+    void rememberLanEndpoint();
 
     // media
     void onLocalSnapshot(const media::MediaSnapshot& snap);
@@ -146,7 +148,7 @@ private:
     std::unique_ptr<platform::TransportFactory> factory_;
     std::unique_ptr<link::ConnectionManager> cm_;
     std::unique_ptr<platform::BluetoothWatcher> bt_;
-    std::unique_ptr<platform::DnssdBrowser> dnssd_;
+    std::unique_ptr<LanDiscovery> lan_;
     std::unique_ptr<platform::GsmtcSource> gsmtc_;
     std::unique_ptr<platform::NeteaseCompat> netease_;
     media::MediaSnapshot gsmtcSnap_;

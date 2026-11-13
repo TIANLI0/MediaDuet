@@ -105,6 +105,7 @@ std::vector<LanEndpoint> ConnectionManager::lanCandidates(const Peer& p) const {
     for (auto& e : p.reported)
         if (fresh(e)) add(e);
     if (p.lastGood) add(*p.lastGood);
+    for (auto& e : p.rec.recentEndpoints) add(e);
     for (auto& e : p.mdns) add(e);
     for (auto& e : p.rec.manualEndpoints) add(e);
     for (auto& e : p.reported)
@@ -125,16 +126,62 @@ void ConnectionManager::closePending(Slot& s, const std::string& why) {
     for (auto& l : losers) l.conn->close(why);
 }
 
+bool ConnectionManager::lanInProgress(const Slot& s, const LanEndpoint& e) {
+    return std::find(s.dialing.begin(), s.dialing.end(), e) != s.dialing.end() ||
+           std::any_of(s.pending.begin(), s.pending.end(), [&](const Slot::Pending& x) { return x.ep == e; });
+}
+
+bool ConnectionManager::mayDialLan(const Peer& p) const {
+    return !p.revoked && !p.userDisconnected && !p.rec.key.empty() && allowed(TransportKind::Lan) && !p.lan.conn &&
+           !otherPeerActive(p);
+}
+
+void ConnectionManager::lanFound(Peer& p, const std::vector<LanEndpoint>& found) {
+    Slot& s = p.lan;
+    if (s.conn) return;
+    s.retry.cancel();
+    s.failures = 0;
+    if (!s.dialing.empty() && mayDialLan(p)) {
+        // A cycle is under way, typically waiting for a stale address to time out: dial the
+        // new addresses next, now, instead of after that cycle.
+        if (s.endpointCursor == 0 || s.endpointCursor >= s.cycle.size()) {
+            s.endpointCursor = 0;
+            s.cycle.clear(); // attemptLan starts a new one (it skips what is in progress)
+        } else {
+            for (auto it = found.rbegin(); it != found.rend(); ++it) {
+                if (lanInProgress(s, *it)) continue;
+                auto from = s.cycle.begin() + static_cast<std::ptrdiff_t>(s.endpointCursor);
+                s.cycle.erase(std::remove(from, s.cycle.end(), *it), s.cycle.end());
+                s.cycle.insert(s.cycle.begin() + static_cast<std::ptrdiff_t>(s.endpointCursor), *it);
+            }
+        }
+        attemptLan(p);
+        return;
+    }
+    s.endpointCursor = 0;
+    s.cycle.clear();
+    evaluate(p);
+}
+
 void ConnectionManager::lanAdvance(Peer& p, Slot& s, int64_t delay) {
     if (s.conn || p.revoked || p.userDisconnected || !allowed(s.kind) || s.retry.active()) return;
     std::string peerId = p.rec.id;
     if (s.endpointCursor < s.cycle.size()) {
         s.retry.start(delay, [this, peerId] {
-            if (Peer* q = find(peerId)) evaluate(*q);
+            Peer* q = find(peerId);
+            if (!q) return;
+            Slot& s = q->lan;
+            // Connects of this cycle may still be running (connectStaggerMs): continue it
+            // directly, evaluate() would wait for them.
+            if (s.endpointCursor > 0 && s.endpointCursor < s.cycle.size()) {
+                if (mayDialLan(*q)) attemptLan(*q);
+            } else {
+                evaluate(*q);
+            }
         });
         return;
     }
-    if (s.inFlight > 0) return; // the last connect of this cycle decides
+    if (!s.dialing.empty()) return; // the last connects of this cycle decide
     // Cycle exhausted. Handshakes that are still running do not count as failures
     // yet, but they do not hold back the next cycle either.
     s.endpointCursor = 0;
@@ -149,12 +196,11 @@ void ConnectionManager::attemptLan(Peer& p) {
         s.cycle.clear();
         s.endpointCursor = 0;
         for (auto& e : lanCandidates(p))
-            if (std::none_of(s.pending.begin(), s.pending.end(), [&](const Slot::Pending& x) { return x.ep == e; }))
-                s.cycle.push_back(e);
-        if (s.cycle.empty()) return; // everything is already in a handshake
+            if (!lanInProgress(s, e)) s.cycle.push_back(e);
+        if (s.cycle.empty()) return; // everything is already being dialled or in a handshake
     }
     LanEndpoint ep = s.cycle[s.endpointCursor++];
-    ++s.inFlight;
+    s.dialing.push_back(ep);
     log::info("link", "connecting to {} over LAN {} ({}, attempt {}, candidate {}/{})", p.rec.name, ep.str(), ep.source,
               s.failures + 1, s.endpointCursor, s.cycle.size());
     std::weak_ptr<bool> alive = alive_;
@@ -170,7 +216,7 @@ void ConnectionManager::attemptLan(Peer& p) {
             return;
         }
         Slot& s = p->lan;
-        s.inFlight = std::max(0, s.inFlight - 1);
+        if (auto d = std::find(s.dialing.begin(), s.dialing.end(), ep); d != s.dialing.end()) s.dialing.erase(d);
         if (!t) {
             log::info("link", "lan connect to {} ({}) failed: {}", p->rec.name, ep.str(), err);
             p->lastError = err;
@@ -207,6 +253,10 @@ void ConnectionManager::attemptLan(Peer& p) {
         lanAdvance(*p, s, cfg_.raceDelayMs);
         listener_.onStatusChanged();
     });
+    // Do not wait for this connect either: an address that went dark only fails after the
+    // connect timeout. The next candidate races it shortly (no-op if the connect already
+    // finished and scheduled the next step).
+    lanAdvance(p, s, cfg_.connectStaggerMs);
     listener_.onStatusChanged();
 }
 
@@ -325,25 +375,25 @@ void ConnectionManager::onLanEndpoint(const std::string& peerId, const LanEndpoi
     Peer* p = find(peerId);
     if (!p) return;
     auto it = std::find(p->mdns.begin(), p->mdns.end(), ep);
-    if (available) {
-        if (it == p->mdns.end()) p->mdns.insert(p->mdns.begin(), ep);
-        // A (re-)announcement means the phone app is (back) up: an announced address is
-        // not in handshake cool-down, and a pending back-off restarts from the best
-        // candidate (a restarted app re-advertises).
-        p->eps[ep.str()].coolUntil = -1;
-        Slot& s = p->lan;
-        int64_t now = sched_.nowMs();
-        if (!s.conn && s.inFlight == 0 && (p->announceResetAt < 0 || now - p->announceResetAt >= 5'000)) {
-            p->announceResetAt = now;
-            s.retry.cancel();
-            s.failures = 0;
-            s.endpointCursor = 0;
-            s.cycle.clear();
-            evaluate(*p);
-        }
-    } else if (it != p->mdns.end()) {
-        p->mdns.erase(it);
+    if (!available) {
+        if (it != p->mdns.end()) p->mdns.erase(it);
+        return;
     }
+    bool fresh = it == p->mdns.end();
+    if (fresh) p->mdns.insert(p->mdns.begin(), ep);
+    // A (re-)announcement means the phone app is (back) up: an announced address is not in
+    // handshake cool-down, and a pending back-off restarts from the best candidate (a
+    // restarted app re-advertises).
+    p->eps[ep.str()].coolUntil = -1;
+    if (p->lan.conn) return;
+    int64_t now = sched_.nowMs();
+    if (!fresh) {
+        // Repeated announcements of a known address: rate limited, and they do not interrupt
+        // connects that are still running.
+        if (!p->lan.dialing.empty() || (p->announceResetAt >= 0 && now - p->announceResetAt < 5'000)) return;
+    }
+    p->announceResetAt = now;
+    lanFound(*p, {ep});
 }
 
 void ConnectionManager::onNetworkChanged() {
@@ -405,7 +455,7 @@ void ConnectionManager::evaluate(Peer& p) {
             if (!btRadio_ || p.rec.btAddress == 0) continue;
             attempt(p, s->kind);
         } else {
-            if (s->inFlight > 0 || lanCandidates(p).empty()) continue;
+            if (!s->dialing.empty() || lanCandidates(p).empty()) continue;
             attemptLan(p);
         }
     }
@@ -758,9 +808,9 @@ void ConnectionManager::onConnEnvelope(Peer& p, Connection& c, proto::Envelope e
                 eps.push_back(ep);
             }
             int64_t now = sched_.nowMs();
-            bool anyNew = false;
+            std::vector<LanEndpoint> added;
             for (auto& ep : eps) {
-                anyNew |= std::find(p.reported.begin(), p.reported.end(), ep) == p.reported.end();
+                if (std::find(p.reported.begin(), p.reported.end(), ep) == p.reported.end()) added.push_back(ep);
                 auto& info = p.eps[ep.str()];
                 info.reportedAt = now;
                 info.coolUntil = -1; // the phone says it has this address right now
@@ -778,13 +828,10 @@ void ConnectionManager::onConnEnvelope(Peer& p, Connection& c, proto::Envelope e
                 // find out now instead of waiting for heartbeats.
                 probe(p, ls, "the phone's address changed");
             }
-            if (!ls.conn && anyNew && ls.inFlight == 0) {
+            if (!ls.conn && !added.empty()) {
                 // A new address: no back-off, start from the best candidate (= the report).
                 log::info("link", "{} reports new LAN address(es); connecting now", p.rec.name);
-                ls.retry.cancel();
-                ls.failures = 0;
-                ls.endpointCursor = 0;
-                ls.cycle.clear();
+                lanFound(p, added);
             }
             evaluate(p);
         }
@@ -967,6 +1014,14 @@ std::string ConnectionManager::remoteLanHost() const {
     for (auto& [id, p] : peers_)
         if (p->lan.conn && p->lan.conn->state() == Connection::State::Up) return p->lan.conn->remoteHost();
     return {};
+}
+
+std::optional<LanEndpoint> ConnectionManager::upLanEndpoint(const std::string& peerId) const {
+    auto it = peers_.find(peerId);
+    if (it == peers_.end()) return std::nullopt;
+    const Slot& s = it->second->lan;
+    if (!s.conn || s.conn->state() != Connection::State::Up || !s.currentEp) return std::nullopt;
+    return s.currentEp;
 }
 
 std::optional<ConnectionManager::AudioRoute> ConnectionManager::audioRoute() const {

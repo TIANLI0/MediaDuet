@@ -16,12 +16,14 @@ import app.mediaduet.protocol.FrameType
 import app.mediaduet.protocol.Hex
 import app.mediaduet.protocol.Limits
 import app.mediaduet.protocol.MsgType
+import app.mediaduet.protocol.StrLimit
 import app.mediaduet.protocol.optBool
 import app.mediaduet.protocol.optString
 import app.mediaduet.protocol.optStringList
 import app.mediaduet.protocol.requireBase64
 import app.mediaduet.protocol.requireLong
 import app.mediaduet.protocol.requireObject
+import app.mediaduet.protocol.truncateCodePoints
 import app.mediaduet.util.MdLog
 import app.mediaduet.util.MonoClock
 import kotlinx.coroutines.CancellationException
@@ -87,6 +89,7 @@ class ServerHandshake(
             return when (first.type) {
                 MsgType.PAIR_REQUEST -> pair(conn, first)
                 MsgType.HELLO -> session(conn, first)
+                MsgType.PROBE -> probe(conn, first)
                 MsgType.ERROR -> throw Abort("peer error before handshake")
                 else -> throw Abort("unexpected ${first.type}", ErrorCode.BAD_MESSAGE, first.id)
             }
@@ -111,6 +114,30 @@ class ServerHandshake(
             conn.close("closed during handshake")
             return HandshakeResult.Failed("connection closed")
         }
+    }
+
+    // --------------------------------------------------------------------------------------
+    // Discovery probe (§3.5)
+    // --------------------------------------------------------------------------------------
+
+    /**
+     * Answers who we are and whether the pairing window is open, then closes. Nothing beyond the
+     * DNS-SD TXT record (§1.2) is revealed; PCs use it to check announced addresses and to find
+     * this device on networks that drop multicast.
+     */
+    private fun probe(conn: Connection, req: Envelope): HandshakeResult {
+        val me = localDevice()
+        conn.sendHandshake(envelope(conn, MsgType.PROBE_RESULT, buildJsonObject {
+            put("device", buildJsonObject {
+                put("id", me.id)
+                put("name", me.name.truncateCodePoints(StrLimit.DEVICE_NAME))
+                put("platform", me.platform)
+            })
+            put("pairing", pairing.isOpen())
+        }, req.id))
+        conn.closeAfterFlush("probe answered")
+        MdLog.d(TAG, "$conn answered a discovery probe")
+        return HandshakeResult.Failed(PROBED)
     }
 
     // --------------------------------------------------------------------------------------
@@ -355,6 +382,8 @@ class ServerHandshake(
     companion object {
         private const val TAG = "MD/Handshake"
         const val HANDSHAKE_TIMEOUT_MS = 10_000L
+        /** [HandshakeResult.Failed.reason] of a connection that only asked who we are. */
+        const val PROBED = "probed"
         val SUPPORTED_VERSIONS = listOf(1)
     }
 }

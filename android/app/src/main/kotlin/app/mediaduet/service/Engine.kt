@@ -483,6 +483,12 @@ class Engine private constructor(private val app: Context) : LinkHost {
             }.distinctUntilChanged().collect { link.anyPlaying.value = it }
         }
         scope.launch {
+            // PCs see the open pairing window in DNS-SD (TXT pair=1) and in probe answers.
+            pairing.state.map { it.windowUntilMs != null }.distinctUntilChanged().collect { open ->
+                transports.setPairingOpen(open)
+            }
+        }
+        scope.launch {
             pairing.state.map { it.prompt }.distinctUntilChanged().collect { prompt ->
                 if (prompt != null && !prompt.localAccepted) {
                     Notifications.showPairingRequest(app, prompt.peerName, prompt.sas)

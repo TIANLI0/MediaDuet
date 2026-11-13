@@ -379,6 +379,8 @@
   <data name="BtOff" xml:space="preserve"><value>Off (turn Bluetooth on in Windows Settings)</value></data>
   <data name="PolicySuspended" xml:space="preserve"><value>Playback arbitration is temporarily suspended</value></data>
   <data name="DiscoveredNotReady" xml:space="preserve"><value>Not ready: open MediaDuet on this phone</value></data>
+  <data name="DiscoveredUnreachable" xml:space="preserve"><value>Found, but not reachable: check the router's AP isolation or guest network</value></data>
+  <data name="DiscoveredPairing" xml:space="preserve"><value>waiting to pair</value></data>
   <data name="PairErr_connect_failed" xml:space="preserve"><value>Could not connect to the phone. Make sure it is nearby and MediaDuet is open on it.</value></data>
   <data name="PairErr_unknown_device" xml:space="preserve"><value>That phone could not be found any more. Refresh the list and try again.</value></data>
   <data name="PairErr_invalid_address" xml:space="preserve"><value>The address is not valid. Check the IP address and port.</value></data>

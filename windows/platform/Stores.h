@@ -23,12 +23,17 @@ struct Identity {
 Identity loadOrCreateIdentity();
 void saveIdentityName(const std::string& name);
 
+inline constexpr size_t kMaxRecentEndpoints = 3;
+
 struct DeviceRecord {
     std::string id;
     std::string name;
     std::string platform;
     uint64_t btAddress = 0;
     std::vector<link::LanEndpoint> manualEndpoints;
+    // LAN endpoints the link last reached Up on (newest first), so the next start reconnects
+    // without waiting for DNS-SD.
+    std::vector<link::LanEndpoint> recentEndpoints;
     Bytes key; // decrypted pairing key, memory only
     int64_t pairedAt = 0;
     int64_t lastSeen = 0;

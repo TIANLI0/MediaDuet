@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.net.URLEncoder
 
-/** DNS-SD advertisement `_mediaduet._tcp` with TXT v, id, n (§1.2). */
+/** DNS-SD advertisement `_mediaduet._tcp` with TXT v, id, p, n, pair (§1.2). */
 class NsdAdvertiser(context: Context) {
     enum class State { OFF, REGISTERING, REGISTERED, FAILED }
 
@@ -21,7 +21,7 @@ class NsdAdvertiser(context: Context) {
         private set
 
     @Synchronized
-    fun register(port: Int, deviceId: String, deviceName: String) {
+    fun register(port: Int, deviceId: String, deviceName: String, pairing: Boolean = false) {
         unregister()
         val info = NsdServiceInfo().apply {
             serviceName = instanceName(deviceName)
@@ -31,6 +31,8 @@ class NsdAdvertiser(context: Context) {
             setAttribute("id", deviceId)
             setAttribute("p", "android")
             setAttribute("n", encodeTxtName(deviceName))
+            // The pairing window is open: PCs list this device first and say it waits to pair.
+            setAttribute("pair", if (pairing) "1" else "0")
         }
         val l = object : NsdManager.RegistrationListener {
             override fun onServiceRegistered(serviceInfo: NsdServiceInfo) {

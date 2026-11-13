@@ -346,7 +346,8 @@ class LinkManager(
             HandshakeResult.Failed("internal")
         }
         when (result) {
-            is HandshakeResult.Failed -> counters.handshakesFailed.incrementAndGet()
+            // A discovery probe (§3.5) is not a failed handshake.
+            is HandshakeResult.Failed -> if (result.reason != ServerHandshake.PROBED) counters.handshakesFailed.incrementAndGet()
             is HandshakeResult.Paired -> counters.handshakesOk.incrementAndGet()
             is HandshakeResult.Session -> {
                 counters.handshakesOk.incrementAndGet()

@@ -5,7 +5,7 @@
 | | Android | Windows |
 |-|-|-|
 | RFCOMM | **server**: `BluetoothAdapter.listenUsingRfcommWithServiceRecord("MediaDuet", 5f3a8c2e-7d41-4b9a-9c61-2e8d0f6b4a17)` (secure, needs a system bond) | **client**: `BluetoothDevice.FromBluetoothAddressAsync` → `GetRfcommServicesForIdAsync` (cached, then uncached SDP) → `StreamSocket.ConnectAsync(..., BluetoothEncryptionAllowNullAuthentication)` |
-| TCP | **server** on port 47321 (ephemeral fallback) + NSD `_mediaduet._tcp` | **client**; DNS-SD via `DeviceWatcher` (AssociationEndpointService, Dnssd protocol), manual `host:port` |
+| TCP | **server** on port 47321 (ephemeral fallback) + NSD `_mediaduet._tcp` (TXT `pair=1` while pairing); answers the discovery probe (§3.5) | **client**; DNS-SD via `DeviceWatcher` (AssociationEndpointService, Dnssd protocol), probe + subnet scan of its own /24, remembered endpoints, manual `host:port` |
 
 The phone keeps one cheap blocking `accept()` per transport inside an already
 system-bound process; Windows, which has no background limits, owns the
@@ -41,7 +41,8 @@ the Android app on a physical device (the emulator has no Bluetooth) — see
 |-------|--------|--------|
 | Adapter radio on/off | `Windows.Devices.Radios.Radio.StateChanged` | BT attempts start/stop; BT links closed when off |
 | Phone ACL connected | `BluetoothDevice.ConnectionStatusChanged` | immediate RFCOMM attempt, back-off reset |
-| DNS-SD service found/removed | `DeviceWatcher` | immediate LAN attempt |
+| DNS-SD service found/removed | `DeviceWatcher` | immediate LAN attempt (also while other addresses are still connecting) |
+| Subnet scan found a paired phone | `LanDiscovery` (devices page open, or the phone missing ≥ 30 s) | immediate LAN attempt |
 | Network changed | `NetworkInformation.NetworkStatusChanged` | LAN probe + DNS-SD restart |
 | Phone said `bye {user_disconnect}` | protocol | long back-off (≈ 60 s) |
 | `error {not_paired}` | protocol | pairing removed, no more attempts |

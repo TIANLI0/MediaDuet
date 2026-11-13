@@ -42,6 +42,7 @@ import app.mediaduet.link.TrustedPeer
 import app.mediaduet.service.CompanionHelper
 import app.mediaduet.transport.BluetoothListenState
 import app.mediaduet.transport.NsdAdvertiser
+import app.mediaduet.transport.TransportController
 import app.mediaduet.ui.ConfirmRequest
 import app.mediaduet.ui.SettingsRoute
 import androidx.compose.ui.semantics.Role
@@ -284,7 +285,12 @@ private fun NearbyDevicesCard(ui: UiContext) {
     var pairingWith by remember { mutableStateOf<String?>(null) }
     DisposableEffect(Unit) {
         engine.discovery.acquire(DISCOVERY_HOLDER)
-        onDispose { engine.discovery.release(DISCOVERY_HOLDER) }
+        // Someone is connecting devices: answer PCs' DNS-SD queries promptly.
+        engine.transports.holdMulticast(TransportController.REASON_CONNECTION_PAGE, true)
+        onDispose {
+            engine.discovery.release(DISCOVERY_HOLDER)
+            engine.transports.holdMulticast(TransportController.REASON_CONNECTION_PAGE, false)
+        }
     }
     val unpaired = nearby.filter { d -> peers.none { it.id == d.id } }.sortedBy { it.name }
     GlassCard(ui.backdrop, Modifier.fillMaxWidth()) {
