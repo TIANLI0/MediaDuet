@@ -584,7 +584,9 @@ private fun ArtworkImage(p: PlayerParts, m: Morph, side: androidx.compose.ui.uni
         view.artFrame,
         Modifier
             .shared(m, "artwork")
-            .size(side)
+            .size(width = side, height = side / (view.artFrame.art?.let {
+                (it.width.toFloat() / it.height.coerceAtLeast(1)).coerceAtLeast(1f)
+            } ?: 1f))
             .graphicsLayer {
                 scaleX = artScale
                 scaleY = artScale
@@ -1519,7 +1521,7 @@ private fun Artwork(frame: ArtFrame, modifier: Modifier) {
         updateTransition(frame, label = "art").Crossfade(animationSpec = tween(300), contentKey = { it.contentKey }) { f ->
             val a = f.art
             if (a != null) {
-                Image(remember(a) { a.asImageBitmap() }, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                Image(remember(a) { a.asImageBitmap() }, null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
             } else {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Icon(AppIcons.Music, null, Modifier.fillMaxSize(0.4f), tint = MaterialTheme.colorScheme.onSurfaceVariant)

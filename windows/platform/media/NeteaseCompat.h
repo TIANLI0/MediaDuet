@@ -82,6 +82,7 @@ private:
     /** Runs NetEase's web command without NetEase coming to the front (see the .cpp). */
     bool runQuietly(const std::wstring& uri);
     void guardWindow();
+    void stopGuard();
     void poll();
     // Re-reads the play queue when the file changed (cheap stat; parsing on a worker thread).
     void checkQueueFile();
@@ -155,6 +156,7 @@ private:
     // While a web command runs: NetEase's window state before it, restored if the command raised it.
     struct Guard { HWND foreground = nullptr; bool visible = false, iconic = false; int64_t until = 0; bool locked = false; } guard_;
     ScopedTimer guardTimer_;
+    HWINEVENTHOOK showHook_ = nullptr, foregroundHook_ = nullptr;
     media::PlaybackStatus memStatus_ = media::PlaybackStatus::Unknown;
     int64_t memPosMs_ = 0, memAt_ = 0; // position at memAt_ (our clock)
     std::optional<int64_t> memDurationMs_;

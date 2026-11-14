@@ -109,6 +109,7 @@ namespace winrt::MediaDuetUI::implementation
         bool m_a2dpRequested{ false };   // the quick toggle asked for it: report a failure once
         bool m_settingsShown{ false };
         bool m_cardCompact{ false };   // short window: optional card rows collapsed
+        double m_artAspect{ 1.0 };   // landscape video covers keep their full width
         SettingsPage* m_settings{ nullptr };   // implementation of m_settingsView (owned by the XAML tree)
         MediaDuetUI::SettingsPage m_settingsView{ nullptr };
         VolumeUi m_inlineVolume;

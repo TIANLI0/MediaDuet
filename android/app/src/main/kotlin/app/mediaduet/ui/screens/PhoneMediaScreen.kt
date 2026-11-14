@@ -109,7 +109,7 @@ private fun SessionCard(ui: UiContext, s: LocalSessionState, isActive: Boolean, 
                 contentAlignment = Alignment.Center,
             ) {
                 if (thumb != null) {
-                    Image(thumb, null, Modifier.size(64.dp), contentScale = ContentScale.Crop)
+                    Image(thumb, null, Modifier.size(64.dp), contentScale = ContentScale.Fit)
                 } else {
                     Icon(AppIcons.Music, null, Modifier.size(28.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }

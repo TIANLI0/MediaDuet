@@ -234,6 +234,7 @@ python tools\fake_host.py --pipe MediaDuetTest --launch compact
 ```
 
 Options: `--volume-restricted` (phone volume changes fail with `background_restricted`),
+`--landscape-artwork` (16:9 covers with a white border for checking that all edges remain visible),
 `--lyrics-loading-ms N` (answer `loading` first, the lyrics N ms later),
 `--scenario playing|idle|nopeer|firstrun|standalone|pairing|stale-pairing|compat` (`stale-pairing`: the host
 still reports an old pairing result; `compat`: a NetEase desktop session in compatibility mode;

@@ -133,7 +133,7 @@ def make_showcase_artwork(folder: Path):
     return str(path)
 
 
-def make_artwork(folder: Path):
+def make_artwork(folder: Path, landscape=False):
     """Creates two invented album covers (PNG) if Pillow is available; returns paths or Nones."""
     try:
         from PIL import Image, ImageDraw, ImageFont
@@ -144,20 +144,24 @@ def make_artwork(folder: Path):
     for name, c1, c2, label in [("art_a.png", (255, 120, 80), (120, 40, 200), "TEST A"),
                                 ("art_b.png", (30, 170, 160), (20, 50, 120), "TEST B")]:
         size = 512
-        img = Image.new("RGB", (size, size))
+        height = 288 if landscape else size
+        img = Image.new("RGB", (size, height))
         px = img.load()
-        for y in range(size):
+        for y in range(height):
             for x in range(size):
                 t = (x * 0.4 + y * 0.6) / size
                 px[x, y] = tuple(int(c1[i] + (c2[i] - c1[i]) * t) for i in range(3))
         d = ImageDraw.Draw(img)
         for r in range(40, 260, 36):
-            d.ellipse((size / 2 - r, size / 2 - r, size / 2 + r, size / 2 + r), outline=(255, 255, 255), width=3)
+            d.ellipse((size / 2 - r, height / 2 - r, size / 2 + r, height / 2 + r), outline=(255, 255, 255), width=3)
         try:
             font = ImageFont.truetype("segoeuib.ttf", 44)
         except OSError:
             font = ImageFont.load_default()
-        d.text((32, size - 80), label, fill=(255, 255, 255), font=font)
+        d.text((32, height - 80), label, fill=(255, 255, 255), font=font)
+        if landscape:
+            d.rectangle((0, 0, size - 1, height - 1), outline="white", width=5)
+            name = "landscape_" + name
         path = folder / name
         img.save(path)
         out.append(str(path))
@@ -300,7 +304,7 @@ class FakeHost:
         self.connected = False
         self.log_file = open(args.log, "a", encoding="utf-8") if args.log else None
         art_dir = Path(tempfile.gettempdir()) / "MediaDuetFakeHost"
-        self.art_a, self.art_b = make_artwork(art_dir)
+        self.art_a, self.art_b = make_artwork(art_dir, args.landscape_artwork)
         self.lyrics_enabled = not args.no_lyrics
         self.volume_restricted = args.volume_restricted
         self.diag_enabled = args.diagnostics
@@ -893,6 +897,7 @@ def main():
                    help='phone volume changes fail with "background_restricted" (Android 17 background restriction)')
     p.add_argument("--no-translation", action="store_true", help="lyrics without translations (hasTranslation=false)")
     p.add_argument("--long-names", action="store_true", help="very long titles/names (layout clipping test)")
+    p.add_argument("--landscape-artwork", action="store_true", help="16:9 covers with a border to detect cropping")
     p.add_argument("--showcase", action="store_true",
                    help="clean demo data for screenshots: invented song, original lyrics, neutral device names")
     p.add_argument("--diagnostics", action="store_true")

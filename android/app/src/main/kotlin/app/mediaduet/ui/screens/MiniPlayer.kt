@@ -139,7 +139,7 @@ fun MiniPlayer(ui: UiContext, backdrop: Backdrop, modifier: Modifier = Modifier)
     ) {
         Box(Modifier.size(48.dp).clip(RoundedCornerShape(10.dp)).background(glass.fill), contentAlignment = Alignment.Center) {
             if (art != null) {
-                Image(art.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                Image(art.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
             } else {
                 Icon(AppIcons.Music, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }

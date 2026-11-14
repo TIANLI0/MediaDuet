@@ -85,7 +85,7 @@
                     </Border>
                     <Border x:Name="ArtImageBorder" CornerRadius="14" Opacity="0">
                         <Border.Background>
-                            <ImageBrush x:Name="ArtBrush" Stretch="UniformToFill" />
+                            <ImageBrush x:Name="ArtBrush" Stretch="Uniform" />
                         </Border.Background>
                     </Border>
                 </Grid>

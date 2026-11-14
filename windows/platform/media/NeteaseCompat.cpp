@@ -91,7 +91,7 @@ DWORD windowPid(HWND h) {
 } // namespace
 
 struct NeteaseCompat::Hook {
-    static void CALLBACK proc(HWINEVENTHOOK h, DWORD, HWND hwnd, LONG obj, LONG, DWORD, DWORD) {
+    static void CALLBACK proc(HWINEVENTHOOK h, DWORD event, HWND hwnd, LONG obj, LONG, DWORD, DWORD) {
         if (obj != OBJID_WINDOW) return;
         NeteaseCompat* self = nullptr;
         {
@@ -99,7 +99,10 @@ struct NeteaseCompat::Hook {
             auto it = g_hooks.find(h);
             if (it != g_hooks.end()) self = it->second;
         }
-        if (self && hwnd == self->hwnd_) self->onTitle();
+        if (!self) return;
+        if (event == EVENT_OBJECT_NAMECHANGE && hwnd == self->hwnd_) self->onTitle();
+        else if (self->guard_.until && (event == EVENT_OBJECT_SHOW || event == EVENT_SYSTEM_FOREGROUND))
+            self->guardWindow();
     }
 };
 
@@ -407,9 +410,7 @@ void NeteaseCompat::detach() {
     titleMemId_ = supMemId_ = 0;
     memDurationMs_.reset();
     hook_ = nullptr;
-    guardTimer_.cancel();
-    if (guard_.locked) LockSetForegroundWindow(LSFW_UNLOCK);
-    guard_ = {};
+    stopGuard();
     hwnd_ = nullptr;
     pid_ = 0;
     title_.clear();
@@ -617,6 +618,8 @@ bool NeteaseCompat::seek(const std::string& key, int64_t positionMs) {
 }
 
 bool NeteaseCompat::runQuietly(const std::wstring& uri) {
+    // A stale session must never start a closed client just to adjust its position.
+    if (!hwnd_ || !IsWindow(hwnd_) || windowPid(hwnd_) != pid_) return false;
     // `cloudmusic.exe --webcmd` hands the command to the running instance, which then shows and
     // activates its window. Remember how the window was and put it back if the command raised it;
     // while we hold the foreground (the PC window), nobody else may take it meanwhile.
@@ -631,10 +634,23 @@ bool NeteaseCompat::runQuietly(const std::wstring& uri) {
         if (!guard_.locked && fg && windowPid(fg) == GetCurrentProcessId())
             guard_.locked = LockSetForegroundWindow(LSFW_LOCK) != FALSE;
         guard_.until = sched_.nowMs() + kGuardMs;
+        // React as soon as the running instance shows/activates its window; the timer remains
+        // a fallback for clients that change their window state without emitting these events.
+        auto watch = [this](DWORD event, HWINEVENTHOOK& hook) {
+            if (hook) return;
+            hook = SetWinEventHook(event, event, nullptr, Hook::proc, pid_, 0, WINEVENT_OUTOFCONTEXT);
+            if (hook) {
+                std::lock_guard lock(g_hookMutex);
+                g_hooks[hook] = this;
+            }
+        };
+        watch(EVENT_OBJECT_SHOW, showHook_);
+        watch(EVENT_SYSTEM_FOREGROUND, foregroundHook_);
     }
     auto h = ShellExecuteW(nullptr, L"open", uri.c_str(), nullptr, nullptr, SW_SHOWNOACTIVATE);
     if (reinterpret_cast<INT_PTR>(h) <= 32) {
         log::warn("netease", "web command failed ({})", reinterpret_cast<INT_PTR>(h));
+        stopGuard();
         return false;
     }
     if (guard_.until) guardWindow();
@@ -642,20 +658,36 @@ bool NeteaseCompat::runQuietly(const std::wstring& uri) {
 }
 
 void NeteaseCompat::guardWindow() {
+    if (!guard_.until) return;
     if (hwnd_ && IsWindow(hwnd_)) {
+        // Remember newer user focus changes too. Capture before hiding/minimising NetEase,
+        // since ShowWindow may itself hand focus to a different window.
+        HWND fg = GetForegroundWindow();
+        if (fg && windowPid(fg) != pid_) guard_.foreground = fg;
         if (!guard_.visible && IsWindowVisible(hwnd_)) {
             ShowWindow(hwnd_, SW_HIDE);   // it was in the tray
         } else if (guard_.visible && guard_.iconic && !IsIconic(hwnd_)) {
             ShowWindow(hwnd_, SW_SHOWMINNOACTIVE);
         }
         // The window the user was in gets the focus back.
-        HWND fg = GetForegroundWindow();
         if (guard_.foreground && fg != guard_.foreground && windowPid(fg) == pid_ && IsWindow(guard_.foreground))
             SetForegroundWindow(guard_.foreground);
     }
     if (hwnd_ && sched_.nowMs() < guard_.until) {
         guardTimer_.start(kGuardPollMs, [this] { guardWindow(); });
         return;
+    }
+    stopGuard();
+}
+
+void NeteaseCompat::stopGuard() {
+    guardTimer_.cancel();
+    for (HWINEVENTHOOK* hook : {&showHook_, &foregroundHook_}) {
+        if (!*hook) continue;
+        UnhookWinEvent(*hook);
+        std::lock_guard lock(g_hookMutex);
+        g_hooks.erase(*hook);
+        *hook = nullptr;
     }
     if (guard_.locked) LockSetForegroundWindow(LSFW_UNLOCK);
     guard_ = {};

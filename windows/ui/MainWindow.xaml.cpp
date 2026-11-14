@@ -554,11 +554,12 @@ namespace winrt::MediaDuetUI::implementation
         }
         double nonArt = Card().ActualHeight() - ArtFrame().ActualHeight();
         if (nonArt <= 0) return;
-        double art = std::clamp(viewport - nonArt, 120.0, cardWidth);
-        if (std::abs(ArtFrame().Width() - art) > 1.0)
+        double artHeight = std::clamp(viewport - nonArt, 120.0 / m_artAspect, cardWidth / m_artAspect);
+        double artWidth = artHeight * m_artAspect;
+        if (std::abs(ArtFrame().Width() - artWidth) > 1.0 || std::abs(ArtFrame().Height() - artHeight) > 1.0)
         {
-            ArtFrame().Width(art);
-            ArtFrame().Height(art);
+            ArtFrame().Width(artWidth);
+            ArtFrame().Height(artHeight);
         }
     }
 
@@ -938,6 +939,7 @@ namespace winrt::MediaDuetUI::implementation
             EmptyPairButton().Visibility(noPeer ? Visibility::Visible : Visibility::Collapsed);
             EmptyStandaloneButton().Visibility(noPeer ? Visibility::Visible : Visibility::Collapsed);
             m_art.Request(DispatcherQueue(), {}, 0, nullptr, nullptr);
+            m_artAspect = 1.0;
             ArtBrush().ImageSource(nullptr);
             m_ambient.SetArtwork(nullptr);
             return;
@@ -1031,7 +1033,7 @@ namespace winrt::MediaDuetUI::implementation
         if (trackChanged) m_lyricsView.ResumeFollow();
 
         // Artwork: decoded once per path at the displayed size.
-        int decode = static_cast<int>(300 * m_host.Scale());
+        int decode = static_cast<int>(680 * m_host.Scale());
         auto weak = get_weak();
         m_art.Request(DispatcherQueue(), s->artworkPath, decode,
             [weak](BitmapImage const& image) {
@@ -1039,6 +1041,9 @@ namespace winrt::MediaDuetUI::implementation
                 {
                     self->ArtBrush().ImageSource(image);
                     self->ArtImageBorder().Opacity(image ? 1.0 : 0.0);
+                    self->m_artAspect = image && image.PixelWidth() > 0 && image.PixelHeight() > 0
+                        ? std::max(1.0, static_cast<double>(image.PixelWidth()) / image.PixelHeight()) : 1.0;
+                    self->UpdateLayout();
                 }
             },
             [weak](std::shared_ptr<ambient::Artwork const> const& art) {
