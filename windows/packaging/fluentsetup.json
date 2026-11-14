@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/TIANLI0/FluentSetup/v1.0.0/shared/schemas/fluentsetup.project.schema.json",
+  "$schema": "https://raw.githubusercontent.com/TIANLI0/FluentSetup/v1.2.0/shared/schemas/fluentsetup.project.schema.json",
   "schemaVersion": 1,
   // MediaDuet installer, built with FluentSetup by package.ps1 (-D Version=<version> -D Arch=<x64|ARM64>) from the
   // staged folder dist\MediaDuet-<version>-win-<arch>.
@@ -7,7 +7,13 @@
   // Per-user install into %LOCALAPPDATA%\Programs\MediaDuet, no administrator rights, registered under the uninstall
   // key "MediaDuet" (the in-app updater compares its InstallLocation with its own folder to tell an installed copy
   // from a portable one). The NSIS install of 1.10.2 and earlier uses the same key and is adopted in place.
-  // Start menu: MediaDuet\MediaDuet.lnk, as before (the app stamps its notification identity on that shortcut).
+  // Start menu: MediaDuet\MediaDuet.lnk, as before. It carries the app's AppUserModelID "MediaDuet.Host"
+  // (platform/AppIdentity.h), which names the media session and notifications; the app still checks it at start-up
+  // (and registers HKCU\Software\Classes\AppUserModelId\MediaDuet.Host itself), finding it already set.
+  // MediaDuetUI.exe links the Visual C++ runtime dynamically (MediaDuet.exe statically) and the runtime is not
+  // shipped: on a PC without the v14 runtime setup downloads Microsoft's vc_redist (accepted by its Microsoft
+  // signature) and runs it (asks for administrator rights; declined or failed = installed anyway, with a warning).
+  // PCs where MediaDuet's window opens today have it, so updates skip this.
   // In-app update: the app runs "<setup> /S /UPDATE" and exits; /UPDATE starts MediaDuet again afterwards. The asset
   // must stay MediaDuet-<version>-x64-setup.exe, listed in SHA256SUMS.txt.
   // Uninstall: phone sign-in is revoked first (MediaDuet.exe --unlock-remove, may ask for administrator rights);
@@ -21,7 +27,8 @@
     "description": "MediaDuet",
     "website": "https://github.com/TIANLI0/MediaDuet",
     "icon": "../app/resources/app.ico",
-    "mainExecutable": "MediaDuet.exe"
+    "mainExecutable": "MediaDuet.exe",
+    "appUserModelId": "MediaDuet.Host"
   },
   "files": {
     "source": "../../dist/MediaDuet-$(Version)-win-$(Arch)",
@@ -42,6 +49,10 @@
       "removeShortcuts": ["MediaDuet\\Uninstall MediaDuet.lnk"]
     }
   },
+  "requirements": {
+    "vcRedist": { "required": true, "auto": "download",
+                  "helpUrl": "https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist" }
+  },
   "actions": [
     {
       "id": "unlockRemove",
@@ -52,7 +63,8 @@
       "onFailure": "fail",
       "name": {
         "en-US": "Revoke phone sign-in (allow removing the system component)",
-        "zh-CN": "撤销手机登录（请允许移除系统组件）"
+        "zh-CN": "撤销手机登录（请允许移除系统组件）",
+        "zh-TW": "撤銷手機登入（請允許移除系統元件）"
       }
     }
   ],

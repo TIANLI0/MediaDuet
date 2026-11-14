@@ -55,7 +55,7 @@ jobs:
         with:
           ref: ${{ needs.version.outputs.tag }}
       # fluentsetup CLI + installer runtime (verified download of the pinned release), on PATH.
-      - uses: TIANLI0/FluentSetup@v1.0.1
+      - uses: TIANLI0/FluentSetup@v1.2.0
       - name: Build, test and package
         shell: pwsh
         run: windows/packaging/package.ps1 -Arch x64 -Version ${{ needs.version.outputs.version }}
