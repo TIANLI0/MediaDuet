@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/TIANLI0/FluentSetup/v1.2.0/shared/schemas/fluentsetup.project.schema.json",
+  "$schema": "https://raw.githubusercontent.com/TIANLI0/FluentSetup/latest/shared/schemas/fluentsetup.project.schema.json",
   "schemaVersion": 1,
   // MediaDuet installer, built with FluentSetup by package.ps1 (-D Version=<version> -D Arch=<x64|ARM64>) from the
   // staged folder dist\MediaDuet-<version>-win-<arch>.
