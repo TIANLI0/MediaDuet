@@ -15,6 +15,10 @@
   // use the Universal CRT that is part of Windows ("hybrid CRT").
   // In-app update: the app runs "<setup> /S /UPDATE" and exits; /UPDATE starts MediaDuet again afterwards. The asset
   // must stay MediaDuet-<version>-x64-setup.exe, listed in SHA256SUMS.txt.
+  // Installer updates too ("update"): the GitHub releases (asset MediaDuet-<version>-<arch>-setup.exe, checked against
+  // SHA256SUMS.txt) are FluentSetup's update source, so Apps & features > Modify offers a newer version with an
+  // Update button, uninstall.exe /check-update | /install-update work, and Repair can download the installed version
+  // when its setup is gone (the in-app updater deletes it after updating).
   // Uninstall: phone sign-in is revoked first (MediaDuet.exe --unlock-remove, may ask for administrator rights);
   // if that fails nothing is removed. Pairings, settings and cache are deleted only if the user agrees.
   "variables": { "Version": "0.0.0-dev", "Arch": "x64" },
@@ -72,6 +76,7 @@
     "license": "../../LICENSE",
     "defaultLanguage": "auto"
   },
+  "update": { "github": "TIANLI0/MediaDuet", "checksums": "SHA256SUMS.txt" },
   "output": {
     "fileName": "MediaDuet-{Version}-{Architecture}-setup.exe",
     "architecture": "x64",
