@@ -10,10 +10,9 @@
   // Start menu: MediaDuet\MediaDuet.lnk, as before. It carries the app's AppUserModelID "MediaDuet.Host"
   // (platform/AppIdentity.h), which names the media session and notifications; the app still checks it at start-up
   // (and registers HKCU\Software\Classes\AppUserModelId\MediaDuet.Host itself), finding it already set.
-  // MediaDuetUI.exe links the Visual C++ runtime dynamically (MediaDuet.exe statically) and the runtime is not
-  // shipped: on a PC without the v14 runtime setup downloads Microsoft's vc_redist (accepted by its Microsoft
-  // signature) and runs it (asks for administrator rights; declined or failed = installed anyway, with a warning).
-  // PCs where MediaDuet's window opens today have it, so updates skip this.
+  // No prerequisites: nothing needs the Visual C++ Redistributable. MediaDuet.exe links the Visual C++ runtime
+  // statically; MediaDuetUI.exe (ui/MediaDuetUI.vcxproj) and the Windows App SDK's DLLs link it statically too and
+  // use the Universal CRT that is part of Windows ("hybrid CRT").
   // In-app update: the app runs "<setup> /S /UPDATE" and exits; /UPDATE starts MediaDuet again afterwards. The asset
   // must stay MediaDuet-<version>-x64-setup.exe, listed in SHA256SUMS.txt.
   // Uninstall: phone sign-in is revoked first (MediaDuet.exe --unlock-remove, may ask for administrator rights);
@@ -48,10 +47,6 @@
     "cleanup": {
       "removeShortcuts": ["MediaDuet\\Uninstall MediaDuet.lnk"]
     }
-  },
-  "requirements": {
-    "vcRedist": { "required": true, "auto": "download",
-                  "helpUrl": "https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist" }
   },
   "actions": [
     {
