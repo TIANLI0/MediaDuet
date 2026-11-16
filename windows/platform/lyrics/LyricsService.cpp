@@ -289,6 +289,21 @@ void LyricsService::configure(bool online, fs::path localFolder, std::vector<std
     providers_ = std::move(providers);
 }
 
+bool LyricsService::wipeCacheOnce(const std::string& name) {
+    auto marker = cacheDir_ / text::toWide("wipe-" + name + ".done");
+    std::error_code ec;
+    if (fs::exists(marker, ec)) return false;
+    int removed = 0;
+    for (auto& e : fs::directory_iterator(cacheDir_, ec)) {
+        auto ext = e.path().extension().wstring();
+        if (e.is_regular_file(ec) && (ext == L".lrc" || ext == L".yrc" || ext == L".tlrc" || ext == L".rlrc" || ext == L".none"))
+            removed += fs::remove(e.path(), ec) ? 1 : 0;
+    }
+    writeText(marker, "");
+    log::info("lyrics", "lyrics cache cleared once for '{}' ({} files)", name, removed);
+    return true;
+}
+
 void LyricsService::clear() {
     ++gen_;
     cur_ = Result{};

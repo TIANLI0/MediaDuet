@@ -521,6 +521,13 @@ void HostApp::applySettings() {
     lyrics_->configure(settings_.get<bool>("lyrics.online", true),
                        text::toWide(settings_.get<std::string>("lyrics.localFolder", "")),
                        settings_.get<std::vector<std::string>>("lyrics.providers", {"netease", "qqmusic", "lrclib"}));
+    // Songs cached before romaji existed have none, and a cache hit never asks the provider again:
+    // the first time romaji is switched on, drop the cache and look the current song up again.
+    if (settings_.get<bool>("lyrics.romaji", false) && lyrics_->wipeCacheOnce("romaji") && !lyricsTrack_.empty()) {
+        lyricsTrack_.clear();
+        lyrics_->clear();
+        updateFocus();
+    }
     platform::LyricsOverlay::Strings os;
     os.lock = tr("overlay.lock");
     os.unlock = tr("overlay.unlock");

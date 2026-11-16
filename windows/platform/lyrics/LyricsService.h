@@ -38,6 +38,10 @@ public:
     // neteaseId: exact NetEase song id when known (NetEase desktop), skips searching.
     void request(const media::MediaSessionInfo& track, int64_t neteaseId = 0);
     void clear();
+    // Deletes every cached lyric file, once ever per `name` (a marker file remembers it). True if it
+    // did; the caller then re-requests the current track. Used when a feature needs data that
+    // older cache entries lack (romaji).
+    bool wipeCacheOnce(const std::string& name);
     // The current track got a new trackId for the same song (a player re-reporting its
     // duration, see lyrics::sameSong): relabels the current result without a "loading"
     // phase (also a lookup still in flight) and caches found lyrics under the new id.
