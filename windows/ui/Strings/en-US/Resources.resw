@@ -144,6 +144,8 @@
   <data name="SetLocalFolderTitle.Text" xml:space="preserve"><value>Local LRC folder</value></data>
   <data name="SetTranslationTitle.Text" xml:space="preserve"><value>Show lyric translation</value></data>
   <data name="SetTranslationDesc.Text" xml:space="preserve"><value>When the lyrics include a translation, show it under each line. Also applies to desktop lyrics and the taskbar.</value></data>
+  <data name="SetRomajiTitle.Text" xml:space="preserve"><value>Show romaji</value></data>
+  <data name="SetRomajiDesc.Text" xml:space="preserve"><value>Show the Japanese romanisation under each line of desktop lyrics. Uses the provider's romaji when it has one, otherwise romanises kana lines itself (kanji lines need the provider).</value></data>
   <data name="BrowseButton.Content" xml:space="preserve"><value>Browse…</value></data>
   <data name="ClearButton.Content" xml:space="preserve"><value>Clear</value></data>
   <data name="HdrOverlay.Text" xml:space="preserve"><value>Desktop lyrics</value></data>

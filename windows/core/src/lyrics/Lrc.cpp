@@ -375,7 +375,7 @@ Line* nearest(Lyrics& l, int64_t t, int64_t tol) {
 }
 } // namespace
 
-size_t mergeTranslation(Lyrics& base, const Lyrics& tr, int64_t tol, const Lyrics* timedLike) {
+static size_t mergeInto(std::string Line::*field, Lyrics& base, const Lyrics& tr, int64_t tol, const Lyrics* timedLike) {
     if (!base.synced || !tr.synced) return 0;
     size_t n = 0;
     for (auto& t : tr.lines) {
@@ -408,10 +408,24 @@ size_t mergeTranslation(Lyrics& base, const Lyrics& tr, int64_t tol, const Lyric
         }
         if (!best) best = nearest(base, t.t, tol);
         if (!best || best->text.empty() || text == best->text) continue;
-        if (best->translation.empty()) ++n;
-        best->translation = text;
+        if ((best->*field).empty()) ++n;
+        best->*field = text;
     }
     return n;
+}
+
+size_t mergeTranslation(Lyrics& base, const Lyrics& tr, int64_t tol, const Lyrics* timedLike) {
+    return mergeInto(&Line::translation, base, tr, tol, timedLike);
+}
+
+size_t mergeRomaji(Lyrics& base, const Lyrics& ro, int64_t tol, const Lyrics* timedLike) {
+    return mergeInto(&Line::romaji, base, ro, tol, timedLike);
+}
+
+bool hasRomaji(const Lyrics& l) {
+    for (auto& x : l.lines)
+        if (!x.romaji.empty()) return true;
+    return false;
 }
 
 bool hasTranslation(const Lyrics& l) {
@@ -421,6 +435,13 @@ bool hasTranslation(const Lyrics& l) {
 }
 
 static std::string stamp(int64_t ms);
+
+std::string romajiLrc(const Lyrics& l) {
+    std::string out;
+    for (auto& line : l.lines)
+        if (!line.romaji.empty()) out += "[" + stamp(line.t) + "]" + line.romaji + "\n";
+    return out;
+}
 
 std::string translationLrc(const Lyrics& l) {
     std::string out;
@@ -465,6 +486,7 @@ nlohmann::json toJson(const Lyrics& l) {
     for (auto& x : l.lines) {
         nlohmann::json j = {{"t", x.t}, {"d", x.d}, {"text", x.text}};
         if (!x.translation.empty()) j["tr"] = x.translation;
+        if (!x.romaji.empty()) j["ro"] = x.romaji;
         if (!x.words.empty()) {
             auto& w = j["words"] = nlohmann::json::array();
             for (auto& y : x.words) w.push_back({{"t", y.t}, {"d", y.d}, {"text", y.text}});

@@ -144,6 +144,8 @@
   <data name="SetLocalFolderTitle.Text" xml:space="preserve"><value>本地 LRC 文件夹</value></data>
   <data name="SetTranslationTitle.Text" xml:space="preserve"><value>显示歌词翻译</value></data>
   <data name="SetTranslationDesc.Text" xml:space="preserve"><value>歌词带有翻译时，在每行原文下方显示。同样作用于桌面歌词和任务栏歌词。</value></data>
+  <data name="SetRomajiTitle.Text" xml:space="preserve"><value>显示罗马音</value></data>
+  <data name="SetRomajiDesc.Text" xml:space="preserve"><value>在桌面歌词每行下方显示日语罗马音。优先使用歌词源提供的罗马音，没有时自行转写假名行（含汉字的行需要歌词源提供）。</value></data>
   <data name="BrowseButton.Content" xml:space="preserve"><value>浏览…</value></data>
   <data name="ClearButton.Content" xml:space="preserve"><value>清除</value></data>
   <data name="HdrOverlay.Text" xml:space="preserve"><value>桌面歌词</value></data>

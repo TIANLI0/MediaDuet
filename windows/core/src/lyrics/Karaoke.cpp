@@ -200,7 +200,7 @@ float fitScale(float textWidth, float viewWidth, float minScale) {
 namespace {
 
 DesktopRows layoutRows(const Lyrics& l, int main, int next, bool active, int parity, RowLayout layout, bool twoLines,
-                       bool showTranslation) {
+                       bool showTranslation, bool showRomaji) {
     DesktopRows r;
     int n = static_cast<int>(l.lines.size());
     auto lineRow = [&](int i, bool act) {
@@ -209,11 +209,18 @@ DesktopRows layoutRows(const Lyrics& l, int main, int next, bool active, int par
     // A translated song stays centred for its whole length (no flipping between
     // layouts on the odd untranslated line; that line simply has no second row).
     bool trSong = showTranslation && hasTranslation(l);
-    if (trSong || layout == RowLayout::Center || !twoLines) {
+    bool roSong = showRomaji && hasRomaji(l);
+    if (trSong || roSong || layout == RowLayout::Center || !twoLines) {
         r.centered = true;
         r.row[0] = lineRow(main, active);
-        if (trSong && !l.lines[main].translation.empty()) r.row[1] = {RowKind::Translation, main, false};
-        else if (!trSong && twoLines) r.row[1] = lineRow(next, false);
+        if (roSong) {
+            if (!l.lines[main].romaji.empty()) r.row[1] = {RowKind::Romaji, main, false};
+            if (trSong && !l.lines[main].translation.empty()) r.row[2] = {RowKind::Translation, main, false};
+        } else if (trSong && !l.lines[main].translation.empty()) {
+            r.row[1] = {RowKind::Translation, main, false};
+        } else if (!trSong && twoLines) {
+            r.row[1] = lineRow(next, false);
+        }
         return r;
     }
     // Alternate: line i in row i % 2; the other row previews the upcoming line.
@@ -226,15 +233,16 @@ DesktopRows layoutRows(const Lyrics& l, int main, int next, bool active, int par
 
 } // namespace
 
-DesktopRows desktopRows(const Lyrics& l, int cur, RowLayout layout, bool twoLines, bool showTranslation) {
+DesktopRows desktopRows(const Lyrics& l, int cur, RowLayout layout, bool twoLines, bool showTranslation,
+                        bool showRomaji) {
     int n = static_cast<int>(l.lines.size());
     if (n == 0) return {};
     int main = cur >= 0 ? std::min(cur, n - 1) : 0; // before the first line: preview it
-    return layoutRows(l, main, main + 1, cur >= 0, main, layout, twoLines, showTranslation);
+    return layoutRows(l, main, main + 1, cur >= 0, main, layout, twoLines, showTranslation, showRomaji);
 }
 
 DesktopRows desktopRows(const Lyrics& l, const LyricRows& rows, int64_t posMs, RowLayout layout, bool twoLines,
-                        bool showTranslation, int* mainLine) {
+                        bool showTranslation, int* mainLine, bool showRomaji) {
     if (mainLine) *mainLine = -1;
     int nr = static_cast<int>(rows.rows.size());
     if (nr == 0) return {};
@@ -261,7 +269,7 @@ DesktopRows desktopRows(const Lyrics& l, const LyricRows& rows, int64_t posMs, R
         if (rows.rows[i].kind == LyricRow::Kind::Line) next = rows.rows[i].line;
     int main = rows.rows[ri].line;
     if (mainLine) *mainLine = main;
-    return layoutRows(l, main, next, active, parity, layout, twoLines, showTranslation);
+    return layoutRows(l, main, next, active, parity, layout, twoLines, showTranslation, showRomaji);
 }
 
 } // namespace md::lyrics

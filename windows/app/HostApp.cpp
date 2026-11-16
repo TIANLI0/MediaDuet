@@ -5,6 +5,7 @@
 #include "Strings.h"
 
 #include "md/crypto/Crypto.h"
+#include "md/lyrics/Romaji.h"
 #include "md/util/AppVersion.h"
 #include "md/util/Log.h"
 #include "md/util/Text.h"
@@ -540,6 +541,7 @@ void HostApp::applySettings() {
     bool showTr = settings_.get<bool>("lyrics.translation", true);
     json overlayCfg = settings_.data()["lyrics"]["overlay"], taskbarCfg = settings_.data()["taskbar"];
     overlayCfg["translation"] = showTr;
+    overlayCfg["romaji"] = settings_.get<bool>("lyrics.romaji", false);
     taskbarCfg["translation"] = showTr;
     overlay_->configure(overlayCfg, settings_.get<bool>("ui.animations", true),
                         settings_.get<bool>("ui.lowPower", false), os);
@@ -1386,6 +1388,7 @@ void HostApp::onLyrics(const platform::LyricsService::Result& r) {
     if (r.status == "loading") lyricsAskedAt_ = sched_.nowMs();
     if (r.status == "found") {
         lyricsData_ = std::make_shared<lyrics::Lyrics>(r.lyrics);
+        lyrics::fillLocalRomaji(*lyricsData_); // kana lines the provider gave no romaji for
         overlay_->setLyrics(lyricsData_, r.trackId);
         taskbar_->setLyrics(lyricsData_, r.trackId);
         log::info("lyrics", "lyrics for {} from {}{} ({} lines{}) after {} ms", r.trackId, r.source, r.cached ? " (cached)" : "",

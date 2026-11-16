@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(MediaDuet VERSION 1.11.1 LANGUAGES CXX)
+project(MediaDuet VERSION 1.12.0 LANGUAGES CXX)
 
 if(NOT MSVC)
   message(FATAL_ERROR "MediaDuet for Windows requires MSVC (C++/WinRT, Windows SDK).")
@@ -55,6 +55,7 @@ add_library(md_core STATIC
   core/src/media/NeteasePlayer.cpp
   core/src/lyrics/Lrc.cpp
   core/src/lyrics/Karaoke.cpp
+  core/src/lyrics/Romaji.cpp
   core/src/lyrics/LyricsClock.cpp
   core/src/overlay/SurfacePolicy.cpp
   core/src/settings/Settings.cpp
@@ -207,6 +208,7 @@ if(MD_BUILD_TESTS)
     tests/test_netease_player.cpp
     tests/test_artwork_policy.cpp
     tests/test_karaoke.cpp
+    tests/test_romaji.cpp
     tests/test_lyrics_clock.cpp
     tests/test_surface_policy.cpp
     tests/test_handoff.cpp

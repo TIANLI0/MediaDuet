@@ -233,6 +233,7 @@ namespace winrt::MediaDuetUI::implementation
         Bind(PauseForCallsToggle(), "policy.pauseForCalls", true);
         Bind(OnlineLyricsToggle(), "lyrics.online", true);
         Bind(TranslationToggle(), "lyrics.translation", true);
+        Bind(RomajiToggle(), "lyrics.romaji", false);
         Bind(OverlayLockToggle(), "lyrics.overlay.locked", false);
         Bind(OverlayClickThroughToggle(), "lyrics.overlay.clickThrough", false);
         Bind(OverlayAutoHideToggle(), "lyrics.overlay.autoHide", true);
@@ -264,7 +265,7 @@ namespace winrt::MediaDuetUI::implementation
                  AutostartToggle(), AutoResumeToggle(), PauseForCallsToggle(), OnlineLyricsToggle(), OverlayShowToggle(),
                  OverlayLockToggle(), OverlayClickThroughToggle(), OverlayAutoHideToggle(), OverlayKaraokeToggle(),
                  OverlayTwoLinesToggle(), SmtcToggle(), A2dpToggle(), LanSendToggle(), DiagnosticsToggle(),
-                 HeadsetAssistToggle(), TaskbarEnabledToggle(), NeteaseDesktopToggle(), TranslationToggle(), OverlayTopmostToggle(),
+                 HeadsetAssistToggle(), TaskbarEnabledToggle(), NeteaseDesktopToggle(), TranslationToggle(), RomajiToggle(), OverlayTopmostToggle(),
                  OverlayHideFullscreenToggle(), LatencyAutoToggle(), ArtworkOnlineToggle(), UpdateAutoToggle(), TaskbarResumeToggle() };
 
         // ---- Commands that are not settings

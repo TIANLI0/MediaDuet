@@ -527,6 +527,17 @@
                                     <ToggleSwitch x:Name="TranslationToggle" Grid.Column="2" />
                                 </Grid>
                             </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource CardIconStyle}" Glyph="&#xE8D2;" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="SetRomajiTitle" Style="{StaticResource CardTitleStyle}" />
+                                        <TextBlock x:Uid="SetRomajiDesc" Style="{StaticResource CardDescriptionStyle}" />
+                                    </StackPanel>
+                                    <ToggleSwitch x:Name="RomajiToggle" Grid.Column="2" />
+                                </Grid>
+                            </Border>
 
                             <TextBlock x:Uid="HdrLyricsTiming" Style="{StaticResource SectionHeaderStyle}" />
                             <Border Style="{StaticResource CardStyle}">

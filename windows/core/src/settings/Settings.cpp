@@ -41,6 +41,7 @@ json defaults() {
     "online": true,
     "providers": ["netease", "qqmusic", "lrclib"],
     "translation": true,
+    "romaji": false,
     "localFolder": "",
     "latency": {"auto": true, "bluetoothMs": 180},
     "offsets": {},

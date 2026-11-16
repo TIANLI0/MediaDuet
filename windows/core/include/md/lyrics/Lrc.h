@@ -23,6 +23,7 @@ struct Line {
     std::string text;
     std::vector<Word> words; // only for word-timed (enhanced) LRC
     std::string translation; // optional translated line
+    std::string romaji;      // optional romanised line (Japanese romaji)
 };
 
 struct Lyrics {
@@ -55,6 +56,11 @@ size_t mergeTranslation(Lyrics& base, const Lyrics& translation, int64_t toleran
 // cached translations of word-timed lyrics without it may be incomplete (re-fetched).
 inline constexpr const char* kTranslationMark = "[md:tr2]";
 bool hasTranslation(const Lyrics& l);
+// Same as mergeTranslation, for romanised lines (NetEase romalrc) into Line::romaji.
+size_t mergeRomaji(Lyrics& base, const Lyrics& romaji, int64_t toleranceMs = 600, const Lyrics* timedLike = nullptr);
+bool hasRomaji(const Lyrics& l);
+// The romaji as an LRC (line timestamps of the base lyrics).
+std::string romajiLrc(const Lyrics& l);
 // The translations as an LRC (line timestamps of the base lyrics).
 std::string translationLrc(const Lyrics& l);
 

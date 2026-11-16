@@ -107,7 +107,7 @@ float fitScale(float textWidth, float viewWidth, float minScale = 0.85f);
 
 // Which line each of the two desktop-lyrics rows shows.
 enum class RowLayout { Alternate, Center };
-enum class RowKind { None, Line, Translation };
+enum class RowKind { None, Line, Translation, Romaji };
 struct RowContent {
     RowKind kind = RowKind::None;
     int line = -1;
@@ -115,8 +115,8 @@ struct RowContent {
     bool operator==(const RowContent&) const = default;
 };
 struct DesktopRows {
-    RowContent row[2];
-    bool alignRight[2] = {false, false}; // Alternate: row 2 is right aligned
+    RowContent row[3];                   // row[2] only when both romaji and translation are shown
+    bool alignRight[3] = {false, false, false}; // Alternate: row 2 is right aligned
     bool centered = false;
 };
 // cur = lineAt() result (-1 before the first line). Alternate (classic two-line
@@ -124,14 +124,17 @@ struct DesktopRows {
 // row shows the upcoming line, so a line change only replaces one row. Center:
 // row 1 = current line, row 2 = the next line (twoLines). When translations are
 // shown and the lyrics have any, Center is used for the whole song and row 2 is
-// the current line's translation (empty for untranslated lines). twoLines=false
+// the current line's translation (empty for untranslated lines). Romaji (showRomaji, and the lyrics
+// have any) works the same way: Center for the whole song, row 2 = the line's romaji; with a
+// translation too the romaji is row 2 and the translation row 3. twoLines=false
 // keeps a single row.
-DesktopRows desktopRows(const Lyrics& l, int cur, RowLayout layout, bool twoLines, bool showTranslation);
+DesktopRows desktopRows(const Lyrics& l, int cur, RowLayout layout, bool twoLines, bool showTranslation,
+                        bool showRomaji = false);
 // The same from the shared rows at posMs: the line being sung is active; before the lyrics and in
 // an instrumental gap the next sung line is previewed (not active); once the lyrics are over the
 // last line stays, not active. Blank lines are never shown (the next sung line is previewed).
 // *mainLine (if given) receives the line in the main row (-1 when there is none).
 DesktopRows desktopRows(const Lyrics& l, const LyricRows& rows, int64_t posMs, RowLayout layout, bool twoLines,
-                        bool showTranslation, int* mainLine = nullptr);
+                        bool showTranslation, int* mainLine = nullptr, bool showRomaji = false);
 
 } // namespace md::lyrics

@@ -35,6 +35,8 @@ constexpr int64_t kLockPollMs = 200;    // cursor poll while locked
 constexpr int64_t kDwellMs = 600;       // rest over locked lyrics before the unlock button shows
 constexpr int64_t kUnlockLingerMs = 1500;
 constexpr int64_t kHoverPollMs = 120;
+constexpr int64_t kWatchdogMs = 400;    // while playing, never wait longer than this for the next frame
+constexpr int64_t kRetryMs = 1000;      // after a failed frame / window creation
 constexpr float kPad = 12.f;
 constexpr float kToolbarH = 44.f;       // reserved strip at the top (toolbar / unlock button)
 constexpr float kRowGap = 2.f;
@@ -42,7 +44,8 @@ constexpr float kLineH = 1.42f;         // row height / font size
 constexpr int kFontStep = 2;            // toolbar A- / A+ and the menu (DIP)
 constexpr int kMinFontSize = 12, kMaxFontSize = 96;   // settings lyrics.overlay.fontSize range
 constexpr int kFontSizePresets[] = {24, 28, 32, 40, 48, 56, 64};
-constexpr float kSecondaryTr = 0.72f;   // translation row size
+constexpr float kSecondaryTr = 0.72f;   // translation / romaji row size
+constexpr float kSecondaryBoth = 0.62f; // ... when both are shown
 constexpr float kSecondaryNext = 0.8f;  // "next line" row size (center layout)
 constexpr float kUnlockDip = 36.f;
 
@@ -90,7 +93,7 @@ struct LyricsOverlay::Impl {
     bool karaoke = true, twoLines = true, locked = false, clickThrough = false, autoHide = true;
     bool topmost = true, hideInFullscreen = false;
     lyrics::RowLayout layout = lyrics::RowLayout::Alternate;
-    bool translation = true;
+    bool translation = true, romaji = false;
     D2D1_COLOR_F active{1, 1, 1, 1}, inactive{1, 1, 1, 0.7f};
     std::optional<int> posX, posY;
     float widthDip = 900.f;
@@ -102,6 +105,7 @@ struct LyricsOverlay::Impl {
     lyrics::LyricRows lyrRows; // of lyr (shared row model: gaps, end of lyrics)
     int mainLine = -1;         // the line in the main row (updateRows)
     bool trSong = false; // translations shown for this song
+    bool roSong = false; // romaji shown for this song
     std::string trackId;
     std::shared_ptr<const lyrics::LyricsClock> clock;
     int64_t delayMs = 0, manualOffset = 0;
@@ -111,9 +115,9 @@ struct LyricsOverlay::Impl {
     std::map<int, lyrics::KaraokeLine> karas;
 
     // rows (what each row shows, what it showed before, when it changed)
-    RowContent rowNow[2], rowPrev[2];
-    bool centeredNow = false, centeredPrev[2] = {false, false};
-    double rowChangedAt[2] = {-1e9, -1e9};
+    RowContent rowNow[3], rowPrev[3];
+    bool centeredNow = false, centeredPrev[3] = {false, false, false};
+    double rowChangedAt[3] = {-1e9, -1e9, -1e9};
 
     // window state
     bool hover = false;
@@ -252,16 +256,20 @@ struct LyricsOverlay::Impl {
     }
 
     bool hasSecondRow() const {
-        if (trSong) return true;
+        if (trSong || roSong) return true;
         return twoLines;
     }
+    bool hasThirdRow() const { return trSong && roSong; } // romaji, then the translation
     float secondaryScale() const {
-        if (trSong) return kSecondaryTr;
+        if (trSong || roSong) return hasThirdRow() ? kSecondaryBoth : kSecondaryTr;
         return layout == lyrics::RowLayout::Alternate ? 1.f : kSecondaryNext;
     }
     float row0H() const { return fontSize * kLineH; }
     float row1H() const { return fontSize * secondaryScale() * kLineH; }
-    float heightDip() const { return kToolbarH + kPad + row0H() + (hasSecondRow() ? kRowGap + row1H() : 0.f) + kPad; }
+    float heightDip() const {
+        return kToolbarH + kPad + row0H() + (hasSecondRow() ? kRowGap + row1H() : 0.f) +
+               (hasThirdRow() ? kRowGap + row1H() : 0.f) + kPad;
+    }
 
     void computePlacement(POINT& pt, SIZE& sz) {
         if (test.offscreen) {
@@ -321,10 +329,10 @@ struct LyricsOverlay::Impl {
     // Updates which content each row shows; a changed row starts a cross-fade.
     void updateRows() {
         if (!lyr) return;
-        auto d = lyrics::desktopRows(*lyr, lyrRows, rowPosition(), layout, twoLines, translation, &mainLine);
+        auto d = lyrics::desktopRows(*lyr, lyrRows, rowPosition(), layout, twoLines, translation, &mainLine, romaji);
         double t = now();
         bool layoutChanged = d.centered != centeredNow;
-        for (int r = 0; r < 2; ++r) {
+        for (int r = 0; r < 3; ++r) {
             RowContent want = d.row[r];
             bool same = want.kind == rowNow[r].kind && want.line == rowNow[r].line;
             if (same && !layoutChanged) {
@@ -345,7 +353,27 @@ struct LyricsOverlay::Impl {
         return easeOut(static_cast<float>(std::clamp(el / kFadeMs, 0.0, 1.0)));
     }
 
+    // Every frame schedules the next one; if anything in between throws or fails, the chain
+    // would end and the lyrics freeze until the next playback report. So a failure re-arms
+    // the timer, and scheduleNext() always keeps a short watchdog tick while playing.
     void refresh() {
+        try {
+            refreshFrame();
+        } catch (const std::exception& e) {
+            log::error("overlay", "lyrics frame failed: {}", e.what());
+            retryLater();
+        } catch (...) {
+            log::error("overlay", "lyrics frame failed");
+            retryLater();
+        }
+    }
+
+    void retryLater() {
+        if (test.offscreen || !owner->enabled_) return;
+        frameTimer.start(kRetryMs, [this] { refresh(); });
+    }
+
+    void refreshFrame() {
         frameTimer.cancel();
         if (test.offscreen) return;
         if (!shouldShow()) {
@@ -358,7 +386,7 @@ struct LyricsOverlay::Impl {
             armTopTimer();
             return;
         }
-        if (!ensureWindow()) return;
+        if (!ensureWindow()) return retryLater();
         updateRows();
         render();
         if (!shown) {
@@ -376,13 +404,14 @@ struct LyricsOverlay::Impl {
     void scheduleNext() {
         if (!shown || !lyr) return;
         double t = now();
-        bool fading = t - rowChangedAt[0] < kFadeMs || t - rowChangedAt[1] < kFadeMs;
+        bool fading = false;
+        for (double at : rowChangedAt) fading = fading || t - at < kFadeMs;
         bool moving = false;
         double next = -1;
         double p = position();
         double rate = clock ? std::max(0.1, clock->rate()) : 1.0;
         if (playing) {
-            for (int r = 0; r < 2; ++r)
+            for (int r = 0; r < 3; ++r)
                 if (rowNow[r].kind == RowKind::Line && rowNow[r].active && karaoke) {
                     double n = -1;
                     if (lyrics::fillMoving(kara(rowNow[r].line), p, &n)) moving = true;
@@ -395,8 +424,11 @@ struct LyricsOverlay::Impl {
         if (fading || moving) {
             // Requests below the 15.6 ms timer tick round up to it: ~60 fps.
             delay = lowPower ? 100 : 10;
-        } else if (playing && next >= 0) {
-            delay = std::clamp<int64_t>(static_cast<int64_t>((next - p) / rate), 15, 60'000);
+        } else if (playing) {
+            // Wake for the next word / line, but at least every kWatchdogMs: a missed report
+            // (seek, rate change, a slow clock) then costs a fraction of a second, not a freeze.
+            int64_t until = next >= 0 ? static_cast<int64_t>((next - p) / rate) : kWatchdogMs;
+            delay = std::clamp<int64_t>(until, 15, lowPower ? 2 * kWatchdogMs : kWatchdogMs);
         } else {
             return;
         }
@@ -468,7 +500,8 @@ struct LyricsOverlay::Impl {
     RowGeom rowGeom(int r) const {
         float y0 = kToolbarH + kPad;
         if (r == 0) return {y0, row0H(), fontSize};
-        return {y0 + row0H() + kRowGap, row1H(), fontSize * secondaryScale()};
+        float top = y0 + row0H() + kRowGap + (r == 2 ? row1H() + kRowGap : 0.f);
+        return {top, row1H(), fontSize * secondaryScale()};
     }
 
     // One row's content at alpha. centered / alignRight: placement when it fits.
@@ -477,20 +510,23 @@ struct LyricsOverlay::Impl {
             c.line >= static_cast<int>(lyr->lines.size()))
             return;
         auto g = rowGeom(r);
-        float size = c.kind == RowKind::Translation ? fontSize * kSecondaryTr
-                     : (r == 0 || !centered || trSong) ? fontSize
-                                                        : fontSize * kSecondaryNext;
+        bool extra = c.kind == RowKind::Translation || c.kind == RowKind::Romaji;
+        float size = extra ? fontSize * secondaryScale()
+                     : (r == 0 || !centered || trSong || roSong) ? fontSize
+                                                                  : fontSize * kSecondaryNext;
         if (r == 1 && !centered) size = fontSize; // alternate rows share the size
         std::wstring s;
         const lyrics::KaraokeLine* k = nullptr;
         if (c.kind == RowKind::Translation) {
             s = text::toWide(text::trim(lyr->lines[c.line].translation));
+        } else if (c.kind == RowKind::Romaji) {
+            s = text::toWide(text::trim(lyr->lines[c.line].romaji));
         } else {
             k = &kara(c.line);
             s = k->text.empty() ? std::wstring(L"\x266A") : k->text;
         }
         if (s.empty()) return;
-        auto weight = c.kind == RowKind::Translation ? DWRITE_FONT_WEIGHT_MEDIUM : DWRITE_FONT_WEIGHT_BOLD;
+        auto weight = extra ? DWRITE_FONT_WEIGHT_MEDIUM : DWRITE_FONT_WEIGHT_BOLD;
         const TextEntry* e = texts.get(s, fontFamily, size, weight, true);
         if (!e) return;
         float W = surface.size().cx / scale();
@@ -519,6 +555,7 @@ struct LyricsOverlay::Impl {
             mask = pushFadeClip(surface.rt(), layer.get(), D2D1::RectF(kPad - 2, g.top - bleed, W - kPad + 2, g.top + g.height + bleed),
                                 off > 0.5f, off < tw - avail - 0.5f, std::min(48.f, avail * 0.08f));
         D2D1_COLOR_F color = c.kind == RowKind::Translation ? withAlpha(active, 0.92f)
+                             : c.kind == RowKind::Romaji ? withAlpha(active, 0.8f)
                              : (isActive && !karaoke) || past ? active
                                                               : inactive;
         if (fx) drawText(*e, x, y, ks, active, alpha, &*fx, inactive, size);
@@ -649,7 +686,7 @@ struct LyricsOverlay::Impl {
             rt->DrawRoundedRectangle(rr, border.get(), 1.f);
         }
         double p = position();
-        for (int r = 0; r < 2; ++r) {
+        for (int r = 0; r < 3; ++r) {
             float t = fadeT(r);
             if (t < 1.f) drawRow(r, rowPrev[r], centeredPrev[r], 1.f - t, p);
             drawRow(r, rowNow[r], centeredNow, t, p);
@@ -1030,6 +1067,7 @@ void LyricsOverlay::configure(const nlohmann::json& o, bool animations, bool low
     i.karaoke = o.value("karaoke", true);
     i.twoLines = o.value("twoLines", true);
     i.translation = o.value("translation", true);
+    i.romaji = o.value("romaji", false);
     bool wasLocked = i.locked;
     i.locked = o.value("locked", false);
     i.clickThrough = o.value("clickThrough", false);
@@ -1047,6 +1085,7 @@ void LyricsOverlay::configure(const nlohmann::json& o, bool animations, bool low
     i.lowPower = lowPower;
     i.strings = strings;
     i.trSong = i.translation && i.lyr && lyrics::hasTranslation(*i.lyr);
+    i.roSong = i.romaji && i.lyr && lyrics::hasRomaji(*i.lyr);
     if (i.locked != wasLocked) {
         i.hover = false;
         i.hideUnlock();
@@ -1068,17 +1107,19 @@ void LyricsOverlay::setEnabled(bool enabled) {
 void LyricsOverlay::setLyrics(std::shared_ptr<const lyrics::Lyrics> l, const std::string& trackId) {
     auto& i = *impl_;
     if (trackId == i.trackId && l == i.lyr) return;
-    bool rows = i.hasSecondRow();
+    bool rows = i.hasSecondRow(), third = i.hasThirdRow();
     float second = i.secondaryScale();
     i.lyr = std::move(l);
     i.lyrRows = i.lyr ? lyrics::buildRows(*i.lyr) : lyrics::LyricRows{};
     i.mainLine = -1;
     i.trSong = i.translation && i.lyr && lyrics::hasTranslation(*i.lyr);
-    if (rows != i.hasSecondRow() || second != i.secondaryScale()) i.placementDirty = true; // height changes
+    i.roSong = i.romaji && i.lyr && lyrics::hasRomaji(*i.lyr);
+    if (rows != i.hasSecondRow() || third != i.hasThirdRow() || second != i.secondaryScale())
+        i.placementDirty = true; // height changes
     i.trackId = trackId;
     i.karas.clear();
     i.texts.clear();
-    for (int r = 0; r < 2; ++r) {
+    for (int r = 0; r < 3; ++r) {
         i.rowNow[r] = i.rowPrev[r] = {};
         i.rowChangedAt[r] = -1e9;
     }

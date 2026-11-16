@@ -30,7 +30,7 @@ using namespace winrt::Windows::Web::Http;
 namespace {
 
 constexpr auto kNegativeTtl = std::chrono::hours(72);
-// Like the phone (LyricsRepository): at most this many cache files (.lrc / .yrc / .tlrc / .none),
+// Like the phone (LyricsRepository): at most this many cache files (.lrc / .yrc / .tlrc / .rlrc / .none),
 // least recently used first out; a cache hit refreshes the file time.
 constexpr size_t kMaxCacheFiles = 600;
 
@@ -132,6 +132,7 @@ struct OnlineResult {
     std::string provider;
     std::string translation; // LRC with the same timestamps
     std::string translationTiming; // the LRC `translation` is timed by when `lrc` is not (NetEase yrc)
+    std::string romaji;  // romanised LRC (NetEase romalrc), same timestamps as `translation`
 };
 
 using web::browserClient;
@@ -149,20 +150,22 @@ std::optional<OnlineResult> neteaseLyricById(HttpClient& client, int64_t id) {
     if (lj.value("pureMusic", false)) return OnlineResult{};
     std::string trans;
     if (lj.contains("tlyric") && lj["tlyric"].is_object()) trans = lj["tlyric"].value("lyric", std::string());
+    std::string romaji;
+    if (lj.contains("romalrc") && lj["romalrc"].is_object()) romaji = lj["romalrc"].value("lyric", std::string());
     if (lj.contains("yrc") && lj["yrc"].is_object()) {
         std::string y = lj["yrc"].value("lyric", std::string());
         if (!y.empty() && !lyrics::parseYrc(y).empty()) {
             // tlyric follows the plain LRC's timestamps, which often differ from the yrc's.
             std::string plain;
             if (lj.contains("lrc") && lj["lrc"].is_object()) plain = lj["lrc"].value("lyric", std::string());
-            return OnlineResult{y, true, true, "netease", trans, plain};
+            return OnlineResult{y, true, true, "netease", trans, plain, romaji};
         }
     }
     if (lj.contains("lrc") && lj["lrc"].is_object()) {
         std::string l = lj["lrc"].value("lyric", std::string());
         auto parsed = lyrics::parseLrc(l);
         if (!parsed.empty() && !lyrics::isInstrumentalNotice(parsed))
-            return OnlineResult{l, parsed.synced, false, "netease", trans};
+            return OnlineResult{l, parsed.synced, false, "netease", trans, {}, romaji};
     }
     return OnlineResult{};
 }
@@ -317,6 +320,8 @@ void LyricsService::cacheCopy(const Result& r) {
     if (!fs::exists(lrc, ec) && !fs::exists(fs::path(stem).replace_extension(L".yrc"), ec)) writeText(lrc, tagSource(r.source, r.lrc));
     auto tr = fs::path(stem).replace_extension(L".tlrc");
     if (!r.translation.empty() && !fs::exists(tr, ec)) writeText(tr, r.translation);
+    auto ro = fs::path(stem).replace_extension(L".rlrc");
+    if (lyrics::hasRomaji(r.lyrics) && !fs::exists(ro, ec)) writeText(ro, lyrics::romajiLrc(r.lyrics));
     trimCacheAsync(cacheDir_);
 }
 
@@ -357,6 +362,7 @@ void LyricsService::request(const media::MediaSessionInfo& t, int64_t neteaseId)
         auto hitYrc = fs::path(stem).replace_extension(L".yrc");
         auto miss = fs::path(stem).replace_extension(L".none");
         auto hitTr = fs::path(stem).replace_extension(L".tlrc");
+        auto hitRo = fs::path(stem).replace_extension(L".rlrc");
         std::error_code ec;
         bool negative = fs::exists(miss, ec) &&
                         fs::last_write_time(miss, ec) + kNegativeTtl > fs::file_time_type::clock::now();
@@ -433,6 +439,9 @@ void LyricsService::request(const media::MediaSessionInfo& t, int64_t neteaseId)
                     writeText(hitTr, tr);
                     wroteTr = true;
                 }
+                if (!res->romaji.empty() &&
+                    lyrics::mergeRomaji(parsed, lyrics::parseLrc(res->romaji), 600, timing ? &*timing : nullptr) > 0)
+                    writeText(hitRo, lyrics::romajiLrc(parsed));
                 r = {t.trackId, "found", res->provider, std::move(parsed), std::move(asLrc), std::move(tr)};
                 break;
             }
@@ -454,6 +463,10 @@ void LyricsService::request(const media::MediaSessionInfo& t, int64_t neteaseId)
         if (r.status == "found" && r.cached && !lyrics::hasTranslation(r.lyrics)) {
             if (auto tr = readText(hitTr); tr && lyrics::mergeTranslation(r.lyrics, lyrics::parseLrc(*tr)) > 0)
                 r.translation = *tr;
+        }
+        if (r.status == "found" && r.cached && !lyrics::hasRomaji(r.lyrics)) {
+            touch(hitRo);
+            if (auto ro = readText(hitRo)) lyrics::mergeRomaji(r.lyrics, lyrics::parseLrc(*ro));
         }
         if (!r.cached) trimCache(cache); // something new may have been written
         if (r.status == "found" && r.lyrics.empty()) r.status = "notfound";
