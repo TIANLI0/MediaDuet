@@ -17,7 +17,7 @@
 #>
 param(
     [ValidateSet('x64', 'ARM64')] [string]$Arch = 'x64',
-    [string]$Version = '1.12.0',
+    [string]$Version = '1.12.1',
     [switch]$SkipTests,
     # Build and stage only; pack.ps1 then signs (release builds), zips and builds the installer.
     [switch]$NoPackage

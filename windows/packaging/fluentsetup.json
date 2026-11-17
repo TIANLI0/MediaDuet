@@ -31,6 +31,8 @@
     "version": "$(Version)",
     "description": "MediaDuet",
     "website": "https://github.com/TIANLI0/MediaDuet",
+    "supportUrl": "https://github.com/TIANLI0/MediaDuet/issues",
+    "releaseNotesUrl": "https://github.com/TIANLI0/MediaDuet/releases",
     "icon": "../app/resources/app.ico",
     "mainExecutable": "MediaDuet.exe",
     "appUserModelId": "MediaDuet.Host"
@@ -76,6 +78,7 @@
   },
   "ui": {
     "license": "../../LICENSE",
+    "licenseStyle": "inline",
     "defaultLanguage": "auto"
   },
   "update": { "github": "TIANLI0/MediaDuet", "checksums": "SHA256SUMS.txt" },
