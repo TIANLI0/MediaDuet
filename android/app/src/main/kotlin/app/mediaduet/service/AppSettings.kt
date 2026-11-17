@@ -53,6 +53,15 @@ class AppSettings(context: Context) {
         _translations.value = enabled
     }
 
+    private val _romaji = MutableStateFlow(prefs.getBoolean(KEY_ROMAJI, false))
+    /** Show Japanese romaji under each lyric line (between the line and its translation). */
+    val showRomaji: StateFlow<Boolean> = _romaji
+
+    fun setShowRomaji(enabled: Boolean) {
+        prefs.edit { putBoolean(KEY_ROMAJI, enabled) }
+        _romaji.value = enabled
+    }
+
     private val _lyricsSize = MutableStateFlow(LyricsSize.fromKey(prefs.getString(KEY_LYRICS_SIZE, null)))
     /** Text size of the synced lyrics (Now Playing lyrics mode). */
     val lyricsSize: StateFlow<LyricsSize> = _lyricsSize
@@ -234,6 +243,7 @@ class AppSettings(context: Context) {
         const val KEY_LYRICS_NOTIFICATION = "lyrics_notification"
         const val KEY_AUDIO = "audio_receive"
         const val KEY_TRANSLATIONS = "lyrics_translations"
+        const val KEY_ROMAJI = "lyrics_romaji"
         const val KEY_LYRICS_SIZE = "lyrics.size"
         const val KEY_TARGET = "player_target"
         const val KEY_LATENCY_AUTO = "lyrics.latency.auto"

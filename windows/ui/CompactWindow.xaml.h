@@ -68,6 +68,9 @@ namespace winrt::MediaDuetUI::implementation
         // Translation (settings lyrics.translation): shown as the second lyric row; the artist line
         // gives way to it so everything still fits into the 96 px window.
         bool m_translationOn{ true };
+        // Romaji (lyrics.romaji) takes that one row instead of the translation on lines that have it.
+        bool m_romajiOn{ false };
+        void ApplySecondRow(mdui::KaraokeLine& slot, mdui::LyricLine const& line) const;
         bool m_hasArtistLine{ false };
         bool m_lyricLineVisible{ false };
         void UpdateSubLabel();

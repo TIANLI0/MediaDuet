@@ -107,7 +107,7 @@ bool save(const std::wstring& dir, const std::wstring& name, Bg bg, const std::v
 
 // ------------------------------------------------------------------ sample lyrics
 // Showcase mode (website / README screenshots): lyrics and translation read from LRC files.
-std::string g_showcaseLrc, g_showcaseTr;
+std::string g_showcaseLrc, g_showcaseTr, g_showcaseRo;
 
 std::string readFile(const std::wstring& path) {
     std::string out;
@@ -124,6 +124,7 @@ std::shared_ptr<md::lyrics::Lyrics> sampleLyrics(bool withTranslation) {
     if (!g_showcaseLrc.empty()) {
         auto parsed = md::lyrics::parseLrc(g_showcaseLrc);
         if (withTranslation && !g_showcaseTr.empty()) md::lyrics::mergeTranslation(parsed, md::lyrics::parseLrc(g_showcaseTr));
+        if (!g_showcaseRo.empty()) md::lyrics::mergeRomaji(parsed, md::lyrics::parseLrc(g_showcaseRo));
         return std::make_shared<md::lyrics::Lyrics>(std::move(parsed));
     }
     const char* lrc =
@@ -220,7 +221,9 @@ void runOverlay(md::ManualScheduler& sched, const std::wstring& dir, UINT dpi, c
 void runTaskbar(md::ManualScheduler& sched, const std::wstring& dir, UINT dpi, bool light,
                 std::vector<int> times = {1400, 7000, 11000, 15000, 21000, 27000}, const char* align = "left") {
     TaskbarWidget tb(sched, {}, {true, [] { return g_now; }, dpi, light});
-    tb.configure({{"enabled", true}, {"width", 360}, {"fontSize", 13}, {"translation", false}, {"align", align}}, true, false);
+    tb.configure({{"enabled", true}, {"width", 360}, {"fontSize", 13}, {"translation", false}, {"romaji", !g_showcaseRo.empty()},
+                  {"align", align}},
+                 true, false);
     bool right = std::string(align) == "right";
     md::media::MediaSessionInfo s;
     s.title = g_showcaseLrc.empty() ? "Sample Track" : "\xE6\x99\x9A\xE9\xA3\x8E\xE6\x9D\xA5\xE4\xBF\xA1"; // 晚风来信
@@ -293,10 +296,17 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, LPWSTR, int) {
     }
     md::ManualScheduler sched; // timers never fire: nothing runs behind our back
 
-    // MediaDuetOverlayDemo <dir> <dpi> showcase <lyrics.lrc> [translation.lrc]: website screenshots.
+    // MediaDuetOverlayDemo <dir> <dpi> showcase <lyrics.lrc> [translation.lrc] [romaji.lrc]: website
+    // screenshots; with romaji also the romaji scenario (romaji, then the translation, filling along).
     if (argc > 4 && std::wstring(argv[3]) == L"showcase") {
         g_showcaseLrc = readFile(argv[4]);
         if (argc > 5) g_showcaseTr = readFile(argv[5]);
+        if (argc > 6) {
+            g_showcaseRo = readFile(argv[6]);
+            runOverlay(sched, dir, dpi, {L"showcase_romaji", {{"layout", "center"}, {"romaji", true}, {"colorActive", "#FF7FDBFF"}}, true, {2600, 5200, 10500, 33000}, {Bg::Dark, Bg::Light}});
+            runTaskbar(sched, dir, dpi, false, {2600, 5200, 10500});
+            return 0;
+        }
         std::vector<OverlayScenario> show = {
             {L"showcase_center", {{"layout", "center"}}, true, {10200, 28000, 37000}, {Bg::Dark, Bg::Light}},
             {L"showcase_alternate", {{"layout", "alternate"}}, false, {10200, 28000}, {Bg::Dark}},

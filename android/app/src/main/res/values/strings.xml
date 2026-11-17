@@ -280,6 +280,9 @@
     <string name="settings_lyrics_header">Lyrics &amp; display</string>
     <string name="settings_translations">Show translation</string>
     <string name="settings_translations_text">Show translated lines (when the PC provides them) under the original lyrics.</string>
+    <string name="settings_romaji">Show romaji</string>
+    <string name="lyrics_romaji_toggle">Romaji</string>
+    <string name="settings_romaji_text">Show the Japanese romanisation under each line. Uses the provider\'s romaji when it has one, otherwise romanises kana lines itself (kanji lines need the provider).</string>
     <string name="settings_lyrics_notification_header">Lock screen &amp; status bar</string>
     <string name="settings_lyrics_notification">Lyrics notification</string>
     <string name="settings_lyrics_notification_text">Shows the current lyric line of what\'s playing (phone or PC) in a notification, on the lock screen too. On Android 16 it becomes a Live Update: a status bar chip, or Fluid Cloud on ColorOS 16. Hidden while paused; swipe it away to hide it for this song.</string>

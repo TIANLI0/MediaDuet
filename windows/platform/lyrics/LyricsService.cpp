@@ -143,7 +143,7 @@ std::optional<std::string> httpPostJson(HttpClient& client, const std::wstring& 
 }
 
 std::optional<OnlineResult> neteaseLyricById(HttpClient& client, int64_t id) {
-    auto ly = httpGet(client, L"https://music.163.com/api/song/lyric/v1?lv=1&yv=1&tv=-1&id=" + std::to_wstring(id));
+    auto ly = httpGet(client, L"https://music.163.com/api/song/lyric/v1?lv=1&yv=1&tv=-1&rv=-1&id=" + std::to_wstring(id));
     if (!ly || ly->empty()) return std::nullopt;
     auto lj = nlohmann::json::parse(*ly, nullptr, false);
     if (!lj.is_object()) return std::nullopt;
@@ -341,13 +341,16 @@ void LyricsService::cacheCopy(const Result& r) {
 }
 
 void LyricsService::offerRemote(const std::string& trackId, const std::string& lrc, const std::string& source,
-                                const std::string& translation) {
-    if (trackId.size() > 64 || lrc.size() > 256 * 1024 || translation.size() > 256 * 1024) return;
+                                const std::string& translation, const std::string& romaji) {
+    if (trackId.size() > 64 || lrc.size() > 256 * 1024 || translation.size() > 256 * 1024 || romaji.size() > 256 * 1024)
+        return;
     auto parsed = lyrics::parseLrc(lrc);
     if (parsed.empty()) return;
     if (!translation.empty()) lyrics::mergeTranslation(parsed, lyrics::parseLrc(translation));
+    if (!romaji.empty()) lyrics::mergeRomaji(parsed, lyrics::parseLrc(romaji));
     writeText(cacheDir_ / (text::toWide(trackId) + L".lrc"), tagSource(source, lrc));
     if (!translation.empty()) writeText(cacheDir_ / (text::toWide(trackId) + L".tlrc"), translation);
+    if (lyrics::hasRomaji(parsed)) writeText(cacheDir_ / (text::toWide(trackId) + L".rlrc"), lyrics::romajiLrc(parsed));
     std::error_code ec;
     fs::remove(cacheDir_ / (text::toWide(trackId) + L".none"), ec); // our own "not found" is outdated
     trimCacheAsync(cacheDir_);

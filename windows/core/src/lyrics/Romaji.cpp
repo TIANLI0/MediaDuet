@@ -125,7 +125,28 @@ std::string kanaToRomaji(std::string_view utf8) {
     return hasKana ? out : std::string();
 }
 
+namespace {
+bool hasJapanese(std::string_view utf8) {
+    for (wchar_t c : text::toWide(utf8)) {
+        char32_t f = fold(c);
+        if (isHan(c) || (f >= kFirst && f <= kLast) || c == 0x30FC || c == 0x30F4) return true;
+    }
+    return false;
+}
+} // namespace
+
 size_t fillLocalRomaji(Lyrics& l) {
+    // Without the provider's romaji, a song gets local romaji only when every Japanese line can
+    // have it: kanji lines can't, and romaji on just the odd kana line looks broken.
+    if (!hasRomaji(l)) {
+        bool any = false;
+        for (auto& line : l.lines) {
+            if (!hasJapanese(line.text)) continue;
+            if (kanaToRomaji(line.text).empty()) return 0;
+            any = true;
+        }
+        if (!any) return 0;
+    }
     size_t n = 0;
     for (auto& line : l.lines) {
         if (!line.romaji.empty() || line.text.empty()) continue;

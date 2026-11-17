@@ -267,7 +267,32 @@ SHOWCASE_LYRICS = [
 ]
 
 
+# --romaji: invented Japanese test lyrics with romaji ("ro", NetEase romalrc style) and translations.
+# One line is English (no romaji), one has no translation, one is long enough to wrap.
+ROMAJI_LYRICS = [
+    (8000, "朝の光が窓を照らす", "a sa no hi ka ri ga ma do wo te ra su", "晨光照亮窗户"),
+    (12500, "二つの画面で同じ歌", "fu ta tsu no ga me n de o na ji u ta", "两块屏幕唱同一首歌"),
+    (17000, "君の声がまだ聞こえる遠い街の向こうまで",
+     "ki mi no ko e ga ma da ki ko e ru to o i ma chi no mu ko u ma de", "仍能听见你的声音，一直传到遥远街道的另一边"),
+    (21500, "Hello hello test line", None, "你好你好，测试行"),
+    (26000, "ひとつずつ光る言葉", "hi to tsu zu tsu hi ka ru ko to ba", "一个个亮起的词语"),
+    (30500, "さよならは言わないで", "sa yo na ra wa i wa na i de", None),
+    (35000, "明日もここで歌おう", "a shi ta mo ko ko de u ta o u", "明天也在这里唱吧"),
+    (39500, "手を離さないで", "te wo ha na sa na i de", "不要放开手"),
+    (44000, "ずっとずっと", "zu tto zu tto", "一直一直"),
+    (48500, "サビの前のもう一行", "sa bi no ma e no mo u i chi gyo u", "副歌之前还有一行"),
+    (53000, "二人で歌えば", "fu ta ri de u ta e ba", "两个人一起唱的话"),
+    (57500, "どこまでも届く", "do ko ma de mo to do ku", "就能传到任何地方"),
+    (62000, "", None, None),
+    (66000, "間奏のあとで", "ka n so u no a to de", "间奏之后"),
+    (70500, "最後の一行をありがとう", "sa i go no i chi gyo u wo a ri ga to u", "谢谢这最后一行"),
+]
+ROMAJI = False   # set by --romaji
+
+
 def lyric_rows(showcase):
+    if ROMAJI:
+        return [(t, text) for t, text, _, _ in ROMAJI_LYRICS], {t: tr for t, _, _, tr in ROMAJI_LYRICS if tr}
     if showcase:
         return [(t, text) for t, text, _ in SHOWCASE_LYRICS], {t: tr for t, _, tr in SHOWCASE_LYRICS if tr}
     return TEST_LYRICS_WORDS, TEST_TRANSLATIONS
@@ -281,6 +306,10 @@ def build_lyrics(session, words=True, translation=True, showcase=False):
         line = {"t": t, "d": nxt - t, "text": text}
         if translation and t in translations:
             line["tr"] = translations[t]
+        if ROMAJI:
+            ro = next((r for rt, _, r, _ in ROMAJI_LYRICS if rt == t), None)
+            if ro:
+                line["ro"] = ro
         if words and text:
             parts = text.split(" ") if " " in text else list(text)
             step = max(1, int((nxt - t) * 0.8) // max(1, len(parts)))
@@ -289,7 +318,7 @@ def build_lyrics(session, words=True, translation=True, showcase=False):
         lines.append(line)
     return {"type": "lyrics", "trackId": session["trackId"], "side": session["_side"], "key": session["key"],
             "status": "found", "source": "netease", "synced": True,
-            "hasTranslation": any("tr" in l for l in lines), "lines": lines}
+            "hasTranslation": any("tr" in l for l in lines), "hasRomaji": any("ro" in l for l in lines), "lines": lines}
 
 
 # --------------------------------------------------------------------------------------------
@@ -309,6 +338,8 @@ class FakeHost:
         self.volume_restricted = args.volume_restricted
         self.diag_enabled = args.diagnostics
         self.settings = json.loads(json.dumps(DEFAULT_SETTINGS))
+        if args.romaji:
+            self.settings["lyrics"]["romaji"] = True
         if args.lang:
             self.settings["language"] = args.lang
         if args.theme:
@@ -896,6 +927,7 @@ def main():
     p.add_argument("--volume-restricted", action="store_true",
                    help='phone volume changes fail with "background_restricted" (Android 17 background restriction)')
     p.add_argument("--no-translation", action="store_true", help="lyrics without translations (hasTranslation=false)")
+    p.add_argument("--romaji", action="store_true", help="invented Japanese lyrics with romaji; lyrics.romaji on")
     p.add_argument("--long-names", action="store_true", help="very long titles/names (layout clipping test)")
     p.add_argument("--landscape-artwork", action="store_true", help="16:9 covers with a border to detect cropping")
     p.add_argument("--showcase", action="store_true",
@@ -914,6 +946,8 @@ def main():
     name = args.pipe or ("MediaDuet.UI." + current_user_sid())
     args.pipe_name = name if name.startswith("\\\\.\\pipe\\") else "\\\\.\\pipe\\" + name
 
+    global ROMAJI
+    ROMAJI = args.romaji
     host = FakeHost(args)
     threading.Thread(target=host.diagnostics_loop, daemon=True).start()
     threading.Thread(target=host.serve, daemon=True).start()

@@ -523,7 +523,8 @@ void HostApp::applySettings() {
                        settings_.get<std::vector<std::string>>("lyrics.providers", {"netease", "qqmusic", "lrclib"}));
     // Songs cached before romaji existed have none, and a cache hit never asks the provider again:
     // the first time romaji is switched on, drop the cache and look the current song up again.
-    if (settings_.get<bool>("lyrics.romaji", false) && lyrics_->wipeCacheOnce("romaji") && !lyricsTrack_.empty()) {
+    // "romaji-rv": 1.12.0 asked NetEase without rv=-1 and so cached every song without its romalrc.
+    if (settings_.get<bool>("lyrics.romaji", false) && lyrics_->wipeCacheOnce("romaji-rv") && !lyricsTrack_.empty()) {
         lyricsTrack_.clear();
         lyrics_->clear();
         updateFocus();
@@ -550,6 +551,7 @@ void HostApp::applySettings() {
     overlayCfg["translation"] = showTr;
     overlayCfg["romaji"] = settings_.get<bool>("lyrics.romaji", false);
     taskbarCfg["translation"] = showTr;
+    taskbarCfg["romaji"] = overlayCfg["romaji"];
     overlay_->configure(overlayCfg, settings_.get<bool>("ui.animations", true),
                         settings_.get<bool>("ui.lowPower", false), os);
     overlay_->setEnabled(settings_.get<bool>("lyrics.overlay.visible", false));
@@ -745,7 +747,7 @@ void HostApp::onEnvelope(const std::string& peerId, const proto::Envelope& e, ui
         auto text = e.body.value("text", std::string());
         if (text.size() <= proto::kMaxLyricsBytes)
             lyrics_->offerRemote(e.body.value("trackId", std::string()), text, "remote",
-                                 e.body.value("translation", std::string()));
+                                 e.body.value("translation", std::string()), e.body.value("romaji", std::string()));
         return;
     }
     if (t == proto::types::MediaQueue) {
@@ -1386,6 +1388,10 @@ void HostApp::pushLyricsToPhone(const platform::LyricsService::Result& r) {
     if (!caps || std::find(caps->begin(), caps->end(), proto::caps::Lyrics) == caps->end()) return;
     json body = {{"trackId", r.trackId}, {"format", "lrc"}, {"source", r.source}, {"text", r.lrc}};
     if (!r.translation.empty() && r.translation.size() <= proto::kMaxLyricsBytes) body["translation"] = r.translation;
+    // Romaji as an LRC on the lines' own timestamps, local kana romaji included (see onLyrics).
+    const lyrics::Lyrics& shown = lyricsData_ && r.trackId == lyricsTrack_ ? *lyricsData_ : r.lyrics;
+    if (lyrics::hasRomaji(shown))
+        if (auto ro = lyrics::romajiLrc(shown); ro.size() <= proto::kMaxLyricsBytes) body["romaji"] = std::move(ro);
     cm_->send(proto::types::LyricsPush, body);
     lyricsPushed_.insert(r.trackId);
 }
@@ -2119,10 +2125,14 @@ void HostApp::sendLyricsToUi() {
         m["artist"] = lyricsSong_.artist;
         m["durationMs"] = lyricsSong_.durationMs ? json(*lyricsSong_.durationMs) : json(nullptr);
     }
-    json lj = lyrics::toJson(r.lyrics);
+    // lyricsData_ carries the local kana romaji on top of the service's lyrics.
+    bool own = lyricsData_ && r.status == "found" && r.trackId == lyricsTrack_;
+    const lyrics::Lyrics& shown = own ? *lyricsData_ : r.lyrics;
+    json lj = lyrics::toJson(shown);
     m["synced"] = lj["synced"];
     m["lines"] = lj["lines"];
-    m["hasTranslation"] = lyrics::hasTranslation(r.lyrics);
+    m["hasTranslation"] = lyrics::hasTranslation(shown);
+    m["hasRomaji"] = lyrics::hasRomaji(shown);
     ipc_->send(m.dump(-1, ' ', false, json::error_handler_t::replace));
 }
 

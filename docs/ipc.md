@@ -198,7 +198,8 @@ Every message has a `"type"` field. Messages from the UI to the host may carry a
   "source":"lrclib",
   "synced":true,
   "hasTranslation":true,
-  "lines":[{"t":12000,"d":3500,"text":"…","tr":"(translated line, optional)","words":[{"t":12000,"d":400,"text":"…"}]}]
+  "hasRomaji":true,
+  "lines":[{"t":12000,"d":3500,"text":"…","tr":"(translated line, optional)","ro":"(romaji, optional)","words":[{"t":12000,"d":400,"text":"…"}]}]
 }
 ```
 `source` names where the lyrics came from, also when they were read from the
@@ -206,7 +207,7 @@ host's cache: `netease`, `qqmusic`, `lrclib`, `local` (a file in the lyrics
 folder) or the provider the phone named; `cache` is a cached copy from before
 1.9.0 (provider unknown) and `remote` lyrics from the phone without a provider.
 The UI shows only names it knows (unknown values: no source line).
-`status` ∈ `loading`, `found`, `notfound`, `disabled`. `words` is present only for
+`ro` is the Japanese romaji of the line (NetEase `romalrc`, or romanised locally when the song is written only in kana); shown under the line, above `tr`, when settings `lyrics.romaji` is on, and on the active line it fills at the same fraction as the line. `status` ∈ `loading`, `found`, `notfound`, `disabled`. `words` is present only for
 enhanced (word-timed) LRC. Without lyrics the UI shows only the media card — no
 placeholder lyrics.
 

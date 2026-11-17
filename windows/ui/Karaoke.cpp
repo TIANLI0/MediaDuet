@@ -25,6 +25,7 @@ namespace mdui
         l.d = line.d;
         l.text = line.text;
         l.translation = line.tr;
+        l.romaji = line.ro;
         for (auto const& w : line.words) l.words.push_back({ w.t, w.d, w.text });
         return l;
     }
@@ -168,7 +169,37 @@ namespace mdui
         m_tr.Opacity(0.6);
         m_tr.IsHitTestVisible(false);
         m_tr.Visibility(Visibility::Collapsed);
-        Grid::SetRow(m_tr, 1);
+        Grid::SetRow(m_tr, 2);
+
+        // Romaji row: like the translation, between the original and the translation.
+        m_ro.FontSize(m_tr.FontSize());
+        m_ro.TextWrapping(m_tr.TextWrapping());
+        ApplyLyricFont(m_ro, LyricWeight::Medium, true);
+        m_ro.Foreground(m_trBrush);
+        m_ro.Opacity(0.6);
+        m_ro.IsHitTestVisible(false);
+        if (m_style.scrollLongLine)
+        {
+            // Single row: the romaji fills, so a long one scrolls along with its edge (a clipped
+            // canvas, like the line itself) instead of ending in an ellipsis.
+            Canvas host;
+            RectangleGeometry clip;
+            host.Clip(clip);
+            host.SizeChanged([clip](auto&&, SizeChangedEventArgs const& e) {
+                clip.Rect({ 0, -4, e.NewSize().Width, e.NewSize().Height + 8 });
+            });
+            m_ro.SizeChanged([host](auto&&, SizeChangedEventArgs const& e) { host.Height(e.NewSize().Height); });
+            host.Children().Append(m_ro);
+            m_roHost = host;
+        }
+        else
+        {
+            m_ro.TextTrimming(m_tr.TextTrimming());
+            m_roHost = m_ro;
+        }
+        m_roHost.Margin(m_tr.Margin());
+        m_roHost.Visibility(Visibility::Collapsed);
+        Grid::SetRow(m_roHost, 1);
 
         // Interlude dots (row 0, instead of the text).
         double dot = std::max(5.0, std::round(m_style.fontSize * 0.36));
@@ -199,6 +230,9 @@ namespace mdui
         RowDefinition trRow;
         trRow.Height(GridLength{ 1, GridUnitType::Auto });
         m_root.RowDefinitions().Append(textRow);
+        RowDefinition roRow;
+        roRow.Height(GridLength{ 1, GridUnitType::Auto });
+        m_root.RowDefinitions().Append(roRow);
         m_root.RowDefinitions().Append(trRow);
         if (m_style.scrollLongLine)
         {
@@ -219,6 +253,7 @@ namespace mdui
             m_root.Children().Append(m_panel);
         }
         m_root.Children().Append(m_dots);
+        m_root.Children().Append(m_roHost);
         m_root.Children().Append(m_tr);
         m_root.Background(SolidColorBrush(Color{ 0, 0, 0, 0 }));   // whole line is clickable
         SetColors(Color{ 255, 255, 255, 255 }, Color{ 0x66, 255, 255, 255 });
@@ -248,6 +283,8 @@ namespace mdui
         m_panel.Visibility(Visibility::Visible);
         m_dots.Visibility(Visibility::Collapsed);
         m_tr.Text(blank ? std::wstring{} : Widen(line.tr));
+        m_roText = blank ? std::wstring{} : Widen(line.ro);
+        SetRomajiPlain();
         ApplyTranslation();
         m_lastEdge = -1e9;
         m_wholeSung = false;
@@ -315,6 +352,8 @@ namespace mdui
         m_panel.Visibility(Visibility::Collapsed);
         m_dots.Visibility(Visibility::Visible);
         m_tr.Text(L"");
+        m_roText.clear();
+        SetRomajiPlain();
         ApplyTranslation();
         m_lastDotScale = -1;
         UpdateInterlude(-1, false);
@@ -348,11 +387,83 @@ namespace mdui
         ApplyTranslation();
     }
 
+    void KaraokeLine::SetRomajiEnabled(bool enabled)
+    {
+        if (m_roEnabled == enabled) return;
+        m_roEnabled = enabled;
+        ApplyTranslation();
+    }
+
     void KaraokeLine::ApplyTranslation()
     {
         bool show = m_trEnabled && !m_tr.Text().empty();
         m_trShown = show;
         m_tr.Visibility(show ? Visibility::Visible : Visibility::Collapsed);
+        bool ro = m_roEnabled && !m_roText.empty();
+        m_roShown = ro;
+        m_roHost.Visibility(ro ? Visibility::Visible : Visibility::Collapsed);
+    }
+
+    void KaraokeLine::SetRomajiPlain()
+    {
+        if (m_roFilled)
+        {
+            m_ro.Inlines().Clear();
+            m_roFilled = false;
+        }
+        m_roSplit = -1;
+        if (m_ro.Text() != m_roText) m_ro.Text(m_roText);
+        if (m_roScroll != 0)
+        {
+            m_ro.Translation({ 0, 0, 0 });
+            m_roScroll = 0;
+        }
+    }
+
+    void KaraokeLine::ApplyRomajiFill(double fraction)
+    {
+        int n = static_cast<int>(m_roText.size());
+        if (n == 0) return;
+        double pos = std::clamp(fraction, 0.0, 1.0) * n;
+        int idx = std::min(n, static_cast<int>(pos));
+        if (!m_roFilled)
+        {
+            m_ro.Text(L"");
+            m_ro.Inlines().Clear();
+            m_roSung.Foreground(m_trBrush);
+            m_roEdge.Foreground(m_roEdgeBrush);
+            m_roRest.Foreground(m_unsungBrush);
+            m_ro.Inlines().Append(m_roSung);
+            m_ro.Inlines().Append(m_roEdge);
+            m_ro.Inlines().Append(m_roRest);
+            m_roFilled = true;
+            m_roSplit = -1;
+        }
+        if (idx != m_roSplit)
+        {
+            // Re-split only when the edge reaches the next character (text changes re-layout).
+            m_roSplit = idx;
+            m_roSung.Text(m_roText.substr(0, idx));
+            m_roEdge.Text(idx < n ? m_roText.substr(idx, 1) : std::wstring{});
+            m_roRest.Text(idx + 1 < n ? m_roText.substr(idx + 1) : std::wstring{});
+        }
+        // The edge character blends from unsung to sung as the edge crosses it.
+        double t = pos - idx;
+        Color a = m_unsung, b = m_trBrush.Color();
+        auto mix = [t](uint8_t x, uint8_t y) { return static_cast<uint8_t>(std::lround(x + (y - x) * t)); };
+        m_roEdgeBrush.Color(Color{ mix(a.A, b.A), mix(a.R, b.R), mix(a.G, b.G), mix(a.B, b.B) });
+        if (m_style.scrollLongLine)
+        {
+            double view = m_root.ActualWidth(), total = m_ro.ActualWidth();
+            double off = view > 0 && total > 0
+                ? md::lyrics::scrollOffset(static_cast<float>(total), static_cast<float>(view), static_cast<float>(fraction * total))
+                : 0.0;
+            if (std::abs(off - m_roScroll) > 0.4)
+            {
+                m_roScroll = off;
+                m_ro.Translation({ static_cast<float>(-off), 0, 0 });
+            }
+        }
     }
 
     void KaraokeLine::SetAllSegments(Brush const& brush)
@@ -374,6 +485,8 @@ namespace mdui
             return;
         }
         m_tr.Opacity(active ? 0.8 : 0.6);
+        m_ro.Opacity(active ? 0.8 : 0.6);
+        SetRomajiPlain();
         m_lastEdge = -1e9;
         m_wholeSung = false;
         // Inactive lines are plain sung colour (the view dims them); an active line starts unsung
@@ -486,6 +599,7 @@ namespace mdui
         }
         if (!fillEnabled)
         {
+            SetRomajiPlain();
             // Simple highlight: the whole current line in the sung colour.
             if (!m_wholeSung)
             {
@@ -500,9 +614,10 @@ namespace mdui
             m_wholeSung = false;
             force = true;
         }
+        auto span = md::lyrics::fillAt(m_karaoke, positionMs);
+        if (m_roShown) ApplyRomajiFill(md::lyrics::fillFraction(m_karaoke, span));
         auto const& lineX = m_panelImpl->LineX();
         if (lineX.size() != m_segs.size() + 1) return;   // measured on the next layout pass
-        auto span = md::lyrics::fillAt(m_karaoke, positionMs);
         double edge = lyrics::EdgeX(span, m_segments, lineX);
         if (span.from >= m_karaoke.text.size()) edge = lineX.back() + 1e4;   // complete
         if (!force && std::abs(edge - m_lastEdge) < 0.25) return;   // sub-pixel movement is invisible

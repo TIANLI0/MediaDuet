@@ -602,10 +602,13 @@ namespace winrt::MediaDuetUI::implementation
             }
             EnsureLyricSlots();
             bool on = Controller::Get().Model().Setting("lyrics.translation", true);
-            if (on != m_translationOn)
+            bool ro = Controller::Get().Model().Setting("lyrics.romaji", false);
+            if (on != m_translationOn || ro != m_romajiOn)
             {
                 m_translationOn = on;
-                for (auto& slot : m_slots) slot->SetTranslationEnabled(on);
+                m_romajiOn = ro;
+                if (m_activeLine >= 0 && m_activeLine < static_cast<int>(m_lines.size()) && m_slots[m_front])
+                    ApplySecondRow(*m_slots[m_front], m_lines[m_activeLine]);
             }
         }
         else
@@ -680,7 +683,7 @@ namespace winrt::MediaDuetUI::implementation
                 auto& outgoing = m_slots[m_front];
                 int back = 1 - m_front;
                 auto& incoming = m_slots[back];
-                incoming->SetTranslationEnabled(m_translationOn);
+                ApplySecondRow(*incoming, m_lines[index]);
                 incoming->SetLine(m_lines[index]);
                 incoming->SetActive(true);
                 outgoing->SetActive(false);
@@ -715,9 +718,17 @@ namespace winrt::MediaDuetUI::implementation
         UpdateSubLabel();
     }
 
+    void CompactWindow::ApplySecondRow(mdui::KaraokeLine& slot, mdui::LyricLine const& line) const
+    {
+        bool ro = m_romajiOn && !line.ro.empty();
+        slot.SetRomajiEnabled(ro);
+        slot.SetTranslationEnabled(m_translationOn && !ro);
+    }
+
     void CompactWindow::UpdateSubLabel()
     {
-        bool translation = m_lyricsShown && m_lyricLineVisible && m_slots[0] && m_slots[m_front]->TranslationShown();
+        bool translation = m_lyricsShown && m_lyricLineVisible && m_slots[0] &&
+            (m_slots[m_front]->TranslationShown() || m_slots[m_front]->RomajiShown());
         auto want = m_hasArtistLine && !translation ? Visibility::Visible : Visibility::Collapsed;
         if (SubLabel().Visibility() != want) SubLabel().Visibility(want);
     }

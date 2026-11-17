@@ -9,7 +9,10 @@
 // the segment(s) under it, unsung after it. Wrapped rows continue segment by segment, so there is
 // always exactly one fill edge (no caret hit-testing, no clips).
 // An optional translation ("tr") is a second, static row under the original (smaller, lower
-// opacity; the fill never applies to it). It is part of Root(), so line heights, scaling and the
+// opacity; the fill never applies to it). Romaji ("ro") is styled the same and sits between the
+// original and the translation; on the active line it fills along with the singing (like Apple
+// Music's pronunciation) at the original's fill fraction, as runs: sung / one edge character whose
+// colour blends / unsung, so a wrapped romaji row still fills row after row. It is part of Root(), so line heights, scaling and the
 // follow centring of the lyrics view include it.
 // An interlude line (long instrumental gap) shows three dots instead of text: while current they
 // light up one after another over the gap and breathe, then shrink away just before the next line.
@@ -18,6 +21,7 @@
 #include <string>
 #include <vector>
 
+#include <winrt/Microsoft.UI.Xaml.Documents.h>
 #include <winrt/Microsoft.UI.Xaml.Media.h>
 #include <winrt/Microsoft.UI.Xaml.Shapes.h>
 #include <winrt/Windows.UI.h>
@@ -91,6 +95,9 @@ namespace mdui
         // Shows the translation row when enabled and the line has one.
         void SetTranslationEnabled(bool enabled);
         bool TranslationShown() const { return m_trShown; }
+        // Shows the romaji row (between the line and its translation) when enabled and the line has one.
+        void SetRomajiEnabled(bool enabled);
+        bool RomajiShown() const { return m_roShown; }
         // Active: segments show the fill from Update(); inactive: plain sung colour.
         void SetActive(bool active);
         bool IsActive() const { return m_active; }
@@ -102,6 +109,8 @@ namespace mdui
         void BuildSegments();
         void ApplyFill(double edgeX, bool force);
         void ApplyTranslation();
+        void SetRomajiPlain();
+        void ApplyRomajiFill(double fraction);
         void UpdateInterlude(double positionMs, bool animate);
         void SetAllSegments(winrt::Microsoft::UI::Xaml::Media::Brush const& brush);
 
@@ -109,6 +118,9 @@ namespace mdui
         winrt::Microsoft::UI::Xaml::Controls::Panel m_panel{ nullptr };
         winrt::MediaDuetUI::implementation::LyricWrapPanel* m_panelImpl{ nullptr };
         winrt::Microsoft::UI::Xaml::Controls::TextBlock m_tr;
+        winrt::Microsoft::UI::Xaml::Controls::TextBlock m_ro;
+        winrt::Microsoft::UI::Xaml::FrameworkElement m_roHost{ nullptr };   // m_ro, or its clipped scroll canvas
+        double m_roScroll{ 0 };
         winrt::Microsoft::UI::Xaml::Controls::StackPanel m_dots;
         winrt::Microsoft::UI::Xaml::Shapes::Ellipse m_dot[3]{ nullptr, nullptr, nullptr };
         winrt::Microsoft::UI::Xaml::Media::SolidColorBrush m_sungBrush;
@@ -117,6 +129,13 @@ namespace mdui
         bool m_trCustomColor{ false };
         bool m_trEnabled{ true };
         bool m_trShown{ false };
+        bool m_roEnabled{ false };
+        bool m_roShown{ false };
+        std::wstring m_roText;
+        winrt::Microsoft::UI::Xaml::Documents::Run m_roSung, m_roEdge, m_roRest;
+        winrt::Microsoft::UI::Xaml::Media::SolidColorBrush m_roEdgeBrush;
+        bool m_roFilled{ false };   // shown as the three runs (else plain text)
+        int m_roSplit{ -1 };        // index of the edge character
 
         struct Seg
         {

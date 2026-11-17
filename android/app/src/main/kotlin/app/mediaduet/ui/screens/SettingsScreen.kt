@@ -450,6 +450,7 @@ fun LyricsDisplayPage(ui: UiContext, onBack: () -> Unit) {
     val settings = ui.engine.settings
     val glass = LocalGlass.current
     val translations by settings.showTranslations.collectAsStateWithLifecycle()
+    val romaji by settings.showRomaji.collectAsStateWithLifecycle()
     val mirror by settings.mirrorEnabled.collectAsStateWithLifecycle()
     val online by settings.onlineLyrics.collectAsStateWithLifecycle()
     val lyricsSize by settings.lyricsSize.collectAsStateWithLifecycle()
@@ -463,6 +464,16 @@ fun LyricsDisplayPage(ui: UiContext, onBack: () -> Unit) {
                     LiquidToggle({ translations }, { settings.setShowTranslations(it) }, ui.backdrop, contentDescription = stringResource(R.string.settings_translations))
                 },
                 onClick = { settings.setShowTranslations(!translations) },
+                role = Role.Switch,
+            )
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
+            InfoRow(
+                stringResource(R.string.settings_romaji),
+                subtitle = stringResource(R.string.settings_romaji_text),
+                trailing = {
+                    LiquidToggle({ romaji }, { settings.setShowRomaji(it) }, ui.backdrop, contentDescription = stringResource(R.string.settings_romaji))
+                },
+                onClick = { settings.setShowRomaji(!romaji) },
                 role = Role.Switch,
             )
             HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))

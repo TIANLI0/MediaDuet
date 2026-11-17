@@ -679,22 +679,34 @@ data class AudioOffer(
     }
 }
 
-/** `lyrics.push`; [translation] is an optional LRC whose timestamps match [text]'s lines. */
-data class LyricsPush(val trackId: String, val format: String, val source: String, val text: String, val translation: String? = null) {
+/**
+ * `lyrics.push`; [translation] and [romaji] are optional LRCs whose timestamps match [text]'s
+ * lines.
+ */
+data class LyricsPush(
+    val trackId: String,
+    val format: String,
+    val source: String,
+    val text: String,
+    val translation: String? = null,
+    val romaji: String? = null,
+) {
     companion object {
         fun parse(o: JsonObject): LyricsPush {
             val text = o.requireString("text")
             if (text.toByteArray(Charsets.UTF_8).size > Limits.MAX_LYRICS_TEXT) throw BadMessageException("lyrics too large")
-            val translation = o.optString("translation")
-            if (translation != null && translation.toByteArray(Charsets.UTF_8).size > Limits.MAX_LYRICS_TEXT) {
-                throw BadMessageException("translation too large")
+            fun extra(key: String): String? {
+                val s = o.optString(key)
+                if (s != null && s.toByteArray(Charsets.UTF_8).size > Limits.MAX_LYRICS_TEXT) throw BadMessageException("$key too large")
+                return s?.takeIf { it.isNotBlank() }
             }
             return LyricsPush(
                 trackId = o.requireString("trackId", 64),
                 format = o.optString("format", 32) ?: "lrc",
                 source = o.optString("source", StrLimit.MISC) ?: "",
                 text = text,
-                translation = translation?.takeIf { it.isNotBlank() },
+                translation = extra("translation"),
+                romaji = extra("romaji"),
             )
         }
     }

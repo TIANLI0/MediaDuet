@@ -145,7 +145,7 @@
   <data name="SetTranslationTitle.Text" xml:space="preserve"><value>Show lyric translation</value></data>
   <data name="SetTranslationDesc.Text" xml:space="preserve"><value>When the lyrics include a translation, show it under each line. Also applies to desktop lyrics and the taskbar.</value></data>
   <data name="SetRomajiTitle.Text" xml:space="preserve"><value>Show romaji</value></data>
-  <data name="SetRomajiDesc.Text" xml:space="preserve"><value>Show the Japanese romanisation under each line of desktop lyrics. Uses the provider's romaji when it has one, otherwise romanises kana lines itself (kanji lines need the provider).</value></data>
+  <data name="SetRomajiDesc.Text" xml:space="preserve"><value>Show the Japanese romanisation under each lyric line: main window, compact window, desktop and taskbar lyrics, and the phone. Uses NetEase Cloud Music's romaji; songs written only in kana are romanised locally.</value></data>
   <data name="BrowseButton.Content" xml:space="preserve"><value>Browse…</value></data>
   <data name="ClearButton.Content" xml:space="preserve"><value>Clear</value></data>
   <data name="HdrOverlay.Text" xml:space="preserve"><value>Desktop lyrics</value></data>
@@ -601,4 +601,8 @@
   <data name="UpdateBarButton.Content" xml:space="preserve"><value>Update</value></data>
   <data name="UpdateBarTitle" xml:space="preserve"><value>MediaDuet {0} is out</value></data>
   <data name="UpdateBarMessage" xml:space="preserve"><value>Download and install it with one click; MediaDuet restarts afterwards.</value></data>
+  <data name="RomajiButton.Content" xml:space="preserve"><value>Romaji</value></data>
+  <data name="RomajiButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Show or hide the romaji</value></data>
+  <data name="RomajiButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Lyric romaji</value></data>
+  <data name="LyricsMenuRomaji" xml:space="preserve"><value>Show romaji</value></data>
 </root>

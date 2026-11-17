@@ -68,6 +68,14 @@ object LyricFormats {
         return if (body.isEmpty()) body else "$TRANSLATION_MARK\n$body"
     }
 
+    /** The romaji as an LRC on the base lines' timestamps (the host's `lyrics::romajiLrc`). */
+    fun romajiLrc(l: Lyrics): String = buildString {
+        for (line in l.lines) {
+            val r = line.romaji?.takeIf { it.isNotEmpty() } ?: continue
+            append('[').append(stamp(line.timeMs)).append(']').append(r).append('\n')
+        }
+    }
+
     private fun stamp(ms: Long): String {
         val m = ms / 60_000
         val s = (ms / 1000) % 60

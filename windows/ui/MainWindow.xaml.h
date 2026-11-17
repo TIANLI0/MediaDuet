@@ -137,6 +137,8 @@ namespace winrt::MediaDuetUI::implementation
         bool m_lyricsSynced{ false };
         bool m_translationOn{ true };   // settings lyrics.translation
         void ApplyTranslationSetting(bool on);
+        bool m_romajiOn{ false };       // settings lyrics.romaji
+        void ApplyRomajiSetting(bool on);
         std::string m_lyricsIdentity;
         Microsoft::UI::Dispatching::DispatcherQueueTimer m_holdTimer{ nullptr };
         Microsoft::UI::Dispatching::DispatcherQueueTimer m_layoutTimer{ nullptr };

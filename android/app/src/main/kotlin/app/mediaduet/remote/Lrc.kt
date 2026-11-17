@@ -7,10 +7,13 @@ data class LyricLine(
     val text: String,
     val words: List<LyricWord> = emptyList(),
     val translation: String? = null,
+    /** Romanised line (Japanese romaji), shown between the line and its translation. */
+    val romaji: String? = null,
 )
 
 data class Lyrics(val lines: List<LyricLine>) {
     val hasTranslations: Boolean get() = lines.any { !it.translation.isNullOrEmpty() }
+    val hasRomaji: Boolean get() = lines.any { !it.romaji.isNullOrEmpty() }
 
     /** Index of the line active at [positionMs], or -1 before the first line. */
     fun indexAt(positionMs: Long): Int {
@@ -69,9 +72,16 @@ object TranslationMerge {
         return best
     }
 
-    fun merge(original: Lyrics, translationLrc: String, timedLike: Lyrics? = null): Lyrics {
+    fun merge(original: Lyrics, translationLrc: String, timedLike: Lyrics? = null): Lyrics =
+        mergeInto(original, translationLrc, timedLike) { line, text -> line.copy(translation = text) }
+
+    /** Same as [merge], for romanised lines (NetEase romalrc) into [LyricLine.romaji]. */
+    fun mergeRomaji(original: Lyrics, romajiLrc: String, timedLike: Lyrics? = null): Lyrics =
+        mergeInto(original, romajiLrc, timedLike) { line, text -> line.copy(romaji = text) }
+
+    private inline fun mergeInto(original: Lyrics, lrc: String, timedLike: Lyrics?, set: (LyricLine, String) -> LyricLine): Lyrics {
         if (original.isEmpty) return original
-        val translated = LrcParser.parse(translationLrc).lines
+        val translated = LrcParser.parse(lrc).lines
         val out = original.lines.toMutableList()
         for (t in translated) {
             val text = t.text.trim()
@@ -96,7 +106,7 @@ object TranslationMerge {
             if (best < 0) continue
             val line = out[best]
             if (line.text.isEmpty() || text == line.text.trim()) continue
-            out[best] = line.copy(translation = text)
+            out[best] = set(line, text)
         }
         return Lyrics(out)
     }

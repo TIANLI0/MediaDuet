@@ -86,6 +86,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -130,9 +131,9 @@ class Engine private constructor(private val app: Context) : LinkHost {
     val dialer = PeerDialer(scope, settings.deviceId, link, trust, discovery, settings)
     private val calls = CallMonitor(app, scope)
     /** Lyrics from the PC and the phone's own lookup (see [LyricsRepository]). */
-    val lyrics = LyricsRepository(scope, app.filesDir, settings.onlineLyrics, onFound = { trackId, lrc, tr, source ->
+    val lyrics = LyricsRepository(scope, app.filesDir, settings.onlineLyrics, onFound = { trackId, lrc, tr, ro, source ->
         // The PC's own lookup may miss what the phone found (other match rules / endpoints).
-        scope.launch { if (link.sendLyrics(trackId, lrc, tr, source)) MdLog.i(TAG, "shared lyrics for $trackId with the PC") }
+        scope.launch { if (link.sendLyrics(trackId, lrc, tr, source, ro)) MdLog.i(TAG, "shared lyrics for $trackId with the PC") }
     })
     val audio = AudioReceiver(scope, settings.audioReceiveEnabled) { peer, stream, reason -> link.sendAudioStop(peer, stream, reason) }
     val mirror = MirrorSessionController(app, scope, remote, settings.mirrorEnabled)
@@ -217,6 +218,11 @@ class Engine private constructor(private val app: Context) : LinkHost {
             }
                 .distinctUntilChanged { a, b -> a?.first?.trackId == b?.first?.trackId && a?.second == b?.second && a?.third == b?.third }
                 .collect { cur -> cur?.let { (info, side, pc) -> lyrics.request(info, side, pc) } }
+        }
+        // Lyrics cached before the phone asked NetEase for romaji have none: re-fetch once.
+        scope.launch {
+            settings.showRomaji.first { it }
+            lyrics.wipeCacheOnce("romaji-rv")
         }
     }
 

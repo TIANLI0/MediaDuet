@@ -208,6 +208,21 @@ object LyricTiming {
         val hi = lo + Character.charCount(text.codePointAt(lo))
         return Caret(lo, hi, (target - k).toFloat())
     }
+
+    /**
+     * How much of [text] is sung at [c] (0..1, by code points; null caret = not started). The
+     * romaji row is filled by this fraction of its own width (Apple Music's pronunciation row):
+     * romaji has no timing of its own and its letters do not map onto the original's.
+     */
+    fun sungFraction(text: String, c: Caret?): Float {
+        if (c == null) return 0f
+        val total = text.codePointCount(0, text.length)
+        if (total == 0) return 0f
+        val from = c.from.coerceIn(0, text.length)
+        val before = text.codePointCount(0, from)
+        val inSpan = text.codePointCount(from, c.to.coerceIn(from, text.length))
+        return ((before + c.fraction * inSpan) / total).coerceIn(0f, 1f)
+    }
 }
 
 /** One row of the lyrics list: a line or an instrumental gap ("•••"). */
@@ -215,7 +230,13 @@ sealed interface LyricRow {
     val startMs: Long
 }
 
-data class LineRow(val index: Int, val line: TimedLine, val translation: String?, override val startMs: Long) : LyricRow
+data class LineRow(
+    val index: Int,
+    val line: TimedLine,
+    val translation: String?,
+    override val startMs: Long,
+    val romaji: String? = null,
+) : LyricRow
 
 data class GapRow(override val startMs: Long, val endMs: Long) : LyricRow
 
@@ -240,7 +261,7 @@ object LyricRows {
             val timed = LyricTiming.prepare(line, next)
             // Row starts stay sorted (binary search) even for odd word timestamps.
             val start = max(timed.startMs, rows.lastOrNull()?.startMs ?: 0L)
-            rows += LineRow(i, timed, line.translation?.takeIf { it.isNotBlank() }, start)
+            rows += LineRow(i, timed, line.translation?.takeIf { it.isNotBlank() }, start, line.romaji?.trim()?.ifEmpty { null })
             if (next == null || lines[i + 1].text.isBlank()) continue
             val vocalEnd = vocalEnd(timed, next)
             if (next - vocalEnd >= MIN_GAP_MS && vocalEnd > start) rows += GapRow(vocalEnd, next)

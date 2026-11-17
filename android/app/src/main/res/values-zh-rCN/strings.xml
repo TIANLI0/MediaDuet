@@ -256,6 +256,9 @@
     <string name="settings_lyrics_header">歌词与显示</string>
     <string name="settings_translations">显示翻译</string>
     <string name="settings_translations_text">在原文歌词下方显示翻译（若电脑提供）。</string>
+    <string name="settings_romaji">显示罗马音</string>
+    <string name="lyrics_romaji_toggle">音</string>
+    <string name="settings_romaji_text">在每行歌词下方显示日语罗马音。优先使用歌词源提供的罗马音，没有时自行转写假名行（含汉字的行需要歌词源提供）。</string>
     <string name="settings_lyrics_notification_header">锁屏与状态栏</string>
     <string name="settings_lyrics_notification">歌词通知</string>
     <string name="settings_lyrics_notification_text">用一条通知显示正在播放内容（手机或电脑）的当前歌词，锁屏上也能看到。在 Android 16 上会成为实时通知：显示为状态栏胶囊，ColorOS 16 上显示在流体云中。暂停时隐藏；划掉后本首歌不再显示。</string>

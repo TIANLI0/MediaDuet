@@ -287,7 +287,9 @@ class RemoteMediaStore(
     /** Parses a `lyrics.push` (stored by the engine's lyrics repository). */
     fun parseLyrics(push: LyricsPush): LyricsState {
         val parsed = if (push.format == "lrc") {
-            LrcParser.parse(push.text).let { l -> push.translation?.let { TranslationMerge.merge(l, it) } ?: l }
+            LrcParser.parse(push.text)
+                .let { l -> push.translation?.let { TranslationMerge.merge(l, it) } ?: l }
+                .let { l -> push.romaji?.let { TranslationMerge.mergeRomaji(l, it) } ?: l }
         } else null
         val plain = if (parsed == null || parsed.isEmpty) LrcParser.plainLines(push.text) else emptyList()
         return LyricsState(push.trackId, parsed?.takeIf { !it.isEmpty }, plain, push.source)

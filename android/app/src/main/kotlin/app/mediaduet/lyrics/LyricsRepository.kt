@@ -30,14 +30,14 @@ import java.io.File
  */
 class LyricsRepository(
     private val scope: CoroutineScope,
-    filesDir: File,
+    private val filesDir: File,
     private val onlineEnabled: StateFlow<Boolean>,
     private val io: CoroutineDispatcher = Dispatchers.IO,
     /**
      * Lyrics the phone found itself (its cache or its own online lookup), as LRC (+ translation
-     * LRC), so the PC can show them too when its own lookup came up empty (`lyrics.push`).
+     * and romaji LRCs), so the PC can show them too when its own lookup came up empty (`lyrics.push`).
      */
-    private val onFound: (trackId: String, lrc: String, translation: String?, source: String) -> Unit = { _, _, _, _ -> },
+    private val onFound: (trackId: String, lrc: String, translation: String?, romaji: String?, source: String) -> Unit = { _, _, _, _, _ -> },
 ) {
     private val _entries = MutableStateFlow<Map<String, LyricsState>>(emptyMap())
     val entries: StateFlow<Map<String, LyricsState>> = _entries
@@ -48,6 +48,9 @@ class LyricsRepository(
 
     private val cacheDir = File(filesDir, "lyrics").apply { mkdirs() }
     private val inFlight = HashMap<String, Job>()
+    /** Track ids whose entry came from the phone's own cache / lookup (not a PC push). */
+    private val ownFinds = HashSet<String>()
+    private var lastRequest: Triple<MediaSessionInfo, Side, Boolean>? = null
 
     /** The lyrics to show for [info]: its own entry, else one for the same song. */
     fun resolve(info: MediaSessionInfo, map: Map<String, LyricsState> = _entries.value): LyricsState? =
@@ -60,11 +63,13 @@ class LyricsRepository(
     fun request(info: MediaSessionInfo, side: Side, pcConnected: Boolean) {
         val id = info.trackId
         if (id.isEmpty() || info.title.isBlank()) return
+        lastRequest = Triple(info, side, pcConnected)
         val song = songOf(info)
         val existing = _entries.value[id]
         if (existing?.available == true) return
         // Same song under another id (metadata re-reported): alias it, no lookup, no flicker.
         resolve(id, song, _entries.value)?.let { alias ->
+            synchronized(ownFinds) { if (alias.trackId in ownFinds) ownFinds += id }
             put(alias.copy(trackId = id, song = song))
             return
         }
@@ -83,6 +88,7 @@ class LyricsRepository(
                     val found = withContext(io) { lookUp(id, song) }
                     // A PC push that arrived meanwhile wins.
                     if (_entries.value[id]?.available != true) {
+                        if (found.available) synchronized(ownFinds) { ownFinds += id }
                         put(found)
                         if (found.available) withContext(io) { share(id, found.source) }
                     }
@@ -99,7 +105,29 @@ class LyricsRepository(
         val current = _entries.value[trackId]
         // Keep synced lyrics the phone found if the PC only has plain text.
         if (current?.synced == true && !state.synced) return
+        synchronized(ownFinds) { ownFinds -= trackId }
         put(state.copy(song = song ?: current?.song))
+    }
+
+    /**
+     * Songs cached before romaji existed have none (the phone asked NetEase without `rv=-1`), and a
+     * cache hit never asks the provider again: the first time romaji is switched on, drop the cache
+     * and look the current song up again. Mirrors the host's `wipeCacheOnce("romaji-rv")`.
+     */
+    suspend fun wipeCacheOnce(mark: String) {
+        val wiped = withContext(io) {
+            // Outside the cache directory: trim() would delete the marker one day.
+            val marker = File(filesDir, "lyrics-wiped-$mark")
+            if (marker.exists()) return@withContext false
+            cacheDir.listFiles()?.forEach { it.delete() }
+            runCatching { marker.writeText("") }
+            true
+        }
+        if (!wiped) return
+        MdLog.i(TAG, "lyrics cache wiped ($mark)")
+        val own = synchronized(ownFinds) { ownFinds.toSet().also { ownFinds.clear() } }
+        _entries.update { m -> m.filterKeys { it !in own } }
+        lastRequest?.let { (info, side, pc) -> request(info, side, pc) }
     }
 
     /** `lyrics.none` from the PC: the phone may still find some (unless it already answered). */
@@ -108,7 +136,9 @@ class LyricsRepository(
         put(LyricsState(trackId, null, emptyList(), SOURCE_PC_NONE, song))
     }
 
-    private fun put(state: LyricsState) {
+    private fun put(given: LyricsState) {
+        // Kana lines the provider gave no romaji for (shown only when romaji is switched on).
+        val state = given.lyrics?.let { l -> Romaji.fillLocal(l).takeIf { it !== l }?.let { given.copy(lyrics = it) } } ?: given
         _entries.update { m ->
             val next = LinkedHashMap(m)
             next.remove(state.trackId)
@@ -132,13 +162,14 @@ class LyricsRepository(
         val stem = safe(trackId)
         val lrcFile = File(cacheDir, "$stem.lrc")
         val trFile = File(cacheDir, "$stem.tlrc")
+        val roFile = File(cacheDir, "$stem.rlrc")
         val missFile = File(cacheDir, "$stem.none")
         // Translations of word-timed lyrics cached before they were aligned through the plain LRC
         // (no TRANSLATION_MARK) may miss lines: look the song up again, once; the old cache stays
         // in use when that finds nothing.
         val stale = onlineEnabled.value && !(missFile.isFile && System.currentTimeMillis() - missFile.lastModified() < NEGATIVE_TTL_MS) &&
             staleTranslation(lrcFile, trFile)
-        if (!stale) readCached(lrcFile, trFile)?.let { return it.copy(trackId = trackId, song = song) }
+        if (!stale) readCached(lrcFile, trFile, roFile)?.let { return it.copy(trackId = trackId, song = song) }
         else MdLog.i(TAG, "refreshing the cached translation of $trackId")
         if (missFile.isFile && System.currentTimeMillis() - missFile.lastModified() < NEGATIVE_TTL_MS) return none
         if (!onlineEnabled.value) return none
@@ -160,9 +191,13 @@ class LyricsRepository(
             if (base.isEmpty) continue
             val lrc = if (r.yrc) LyricFormats.toLrc(base) else r.text
             val timing = r.translationTiming.takeIf { it.isNotBlank() }?.let { LrcParser.parse(it) }
-            val merged = if (r.translation.isNotBlank()) TranslationMerge.merge(base, r.translation, timing) else base
+            val translated = if (r.translation.isNotBlank()) TranslationMerge.merge(base, r.translation, timing) else base
+            // romalrc follows the same timestamps as tlyric.
+            val merged = if (r.romaji.isNotBlank()) TranslationMerge.mergeRomaji(translated, r.romaji, timing) else translated
             write(lrcFile, lrc)
             if (merged.hasTranslations) write(trFile, LyricFormats.translationLrc(merged))
+            // Only the provider's romaji is cached (and shared): local romaji is redone on load.
+            if (merged.hasRomaji) write(roFile, LyricFormats.romajiLrc(merged)) else roFile.delete()
             MdLog.i(TAG, "lyrics for $trackId from $provider (${merged.lines.size} lines)")
             trim()
             return LyricsState(trackId, merged, emptyList(), provider, song)
@@ -171,7 +206,7 @@ class LyricsRepository(
             // Nothing better online: keep the cached lyrics; mark the old translation as checked
             // when the providers answered, so the song is not looked up on every play.
             if (definitive || plain != null) runCatching { trFile.readText() }.getOrNull()?.let { write(trFile, "${LyricFormats.TRANSLATION_MARK}\n$it") }
-            readCached(lrcFile, trFile)?.let { return it.copy(trackId = trackId, song = song) }
+            readCached(lrcFile, trFile, roFile)?.let { return it.copy(trackId = trackId, song = song) }
         }
         if (plain != null) {
             write(lrcFile, plain.plain.joinToString("\n"))
@@ -196,14 +231,15 @@ class LyricsRepository(
         val stem = safe(trackId)
         val lrc = runCatching { File(cacheDir, "$stem.lrc").readText() }.getOrNull()?.takeIf { it.isNotBlank() } ?: return
         val tr = runCatching { File(cacheDir, "$stem.tlrc").takeIf { it.isFile }?.readText() }.getOrNull()?.takeIf { it.isNotBlank() }
+        val ro = runCatching { File(cacheDir, "$stem.rlrc").takeIf { it.isFile }?.readText() }.getOrNull()?.takeIf { it.isNotBlank() }
         try {
-            onFound(trackId, lrc, tr, source)
+            onFound(trackId, lrc, tr, ro, source)
         } catch (e: Exception) {
             MdLog.w(TAG, "sharing lyrics failed", e)
         }
     }
 
-    private fun readCached(lrcFile: File, trFile: File): LyricsState? {
+    private fun readCached(lrcFile: File, trFile: File, roFile: File): LyricsState? {
         if (!lrcFile.isFile) return null
         val text = runCatching { lrcFile.readText() }.getOrNull() ?: return null
         lrcFile.setLastModified(System.currentTimeMillis()) // LRU
@@ -213,7 +249,9 @@ class LyricsRepository(
             return if (plain.isEmpty()) null else LyricsState("", null, plain, SOURCE_CACHE)
         }
         val tr = if (trFile.isFile) runCatching { trFile.readText() }.getOrNull() else null
-        val merged = if (!tr.isNullOrBlank() && !parsed.hasTranslations) TranslationMerge.merge(parsed, tr) else parsed
+        val translated = if (!tr.isNullOrBlank() && !parsed.hasTranslations) TranslationMerge.merge(parsed, tr) else parsed
+        val ro = if (roFile.isFile) runCatching { roFile.readText() }.getOrNull() else null
+        val merged = if (!ro.isNullOrBlank()) TranslationMerge.mergeRomaji(translated, ro) else translated
         return LyricsState("", merged, emptyList(), SOURCE_CACHE)
     }
 

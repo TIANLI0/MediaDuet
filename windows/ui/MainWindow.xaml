@@ -210,47 +210,52 @@
                             Margin="0,0,0,10" Padding="14,5,14,6" CornerRadius="16" FontSize="12" Visibility="Collapsed" />
                 </Grid>
                 <Grid Grid.Row="1" Margin="0,4,4,0" ColumnSpacing="8">
+                    <!-- The quiet chips (ToggleButtons below) share these. Per theme: a plain StaticResource alias would resolve against the app theme, not the window's. -->
+                    <Grid.Resources>
+                        <ResourceDictionary>
+                            <ResourceDictionary.ThemeDictionaries>
+                                <ResourceDictionary x:Key="Light">
+                                    <StaticResource x:Key="ToggleButtonBackgroundPointerOver" ResourceKey="SubtleFillColorSecondaryBrush" />
+                                    <StaticResource x:Key="ToggleButtonBackgroundPressed" ResourceKey="SubtleFillColorTertiaryBrush" />
+                                    <StaticResource x:Key="ToggleButtonBackgroundChecked" ResourceKey="SubtleFillColorSecondaryBrush" />
+                                    <StaticResource x:Key="ToggleButtonBackgroundCheckedPointerOver" ResourceKey="SubtleFillColorTertiaryBrush" />
+                                    <StaticResource x:Key="ToggleButtonBackgroundCheckedPressed" ResourceKey="SubtleFillColorSecondaryBrush" />
+                                    <StaticResource x:Key="ToggleButtonForegroundChecked" ResourceKey="TextFillColorPrimaryBrush" />
+                                    <StaticResource x:Key="ToggleButtonForegroundCheckedPointerOver" ResourceKey="TextFillColorPrimaryBrush" />
+                                    <StaticResource x:Key="ToggleButtonForegroundCheckedPressed" ResourceKey="TextFillColorSecondaryBrush" />
+                                </ResourceDictionary>
+                                <ResourceDictionary x:Key="Dark">
+                                    <StaticResource x:Key="ToggleButtonBackgroundPointerOver" ResourceKey="SubtleFillColorSecondaryBrush" />
+                                    <StaticResource x:Key="ToggleButtonBackgroundPressed" ResourceKey="SubtleFillColorTertiaryBrush" />
+                                    <StaticResource x:Key="ToggleButtonBackgroundChecked" ResourceKey="SubtleFillColorSecondaryBrush" />
+                                    <StaticResource x:Key="ToggleButtonBackgroundCheckedPointerOver" ResourceKey="SubtleFillColorTertiaryBrush" />
+                                    <StaticResource x:Key="ToggleButtonBackgroundCheckedPressed" ResourceKey="SubtleFillColorSecondaryBrush" />
+                                    <StaticResource x:Key="ToggleButtonForegroundChecked" ResourceKey="TextFillColorPrimaryBrush" />
+                                    <StaticResource x:Key="ToggleButtonForegroundCheckedPointerOver" ResourceKey="TextFillColorPrimaryBrush" />
+                                    <StaticResource x:Key="ToggleButtonForegroundCheckedPressed" ResourceKey="TextFillColorSecondaryBrush" />
+                                </ResourceDictionary>
+                            </ResourceDictionary.ThemeDictionaries>
+                            <StaticResource x:Key="ToggleButtonBorderBrushChecked" ResourceKey="ControlFillColorTransparentBrush" />
+                            <StaticResource x:Key="ToggleButtonBorderBrushCheckedPointerOver" ResourceKey="ControlFillColorTransparentBrush" />
+                            <StaticResource x:Key="ToggleButtonBorderBrushCheckedPressed" ResourceKey="ControlFillColorTransparentBrush" />
+                        </ResourceDictionary>
+                    </Grid.Resources>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <!-- Quick translation toggle (only when the lyrics carry translations) -->
-                    <!-- A quiet chip (not an accent fill): on = subtle fill + primary text, off = secondary text. -->
-                    <ToggleButton x:Name="TranslationButton" x:Uid="TranslationButton" Visibility="Collapsed" VerticalAlignment="Center"
-                                  Padding="10,2,10,3" MinHeight="0" MinWidth="0" FontSize="12" CornerRadius="12" BorderThickness="0"
-                                  Background="Transparent" Foreground="{ThemeResource TextFillColorSecondaryBrush}">
-                        <!-- Per theme: a plain StaticResource alias would resolve against the app theme, not the window's. -->
-                        <ToggleButton.Resources>
-                            <ResourceDictionary>
-                                <ResourceDictionary.ThemeDictionaries>
-                                    <ResourceDictionary x:Key="Light">
-                                        <StaticResource x:Key="ToggleButtonBackgroundPointerOver" ResourceKey="SubtleFillColorSecondaryBrush" />
-                                        <StaticResource x:Key="ToggleButtonBackgroundPressed" ResourceKey="SubtleFillColorTertiaryBrush" />
-                                        <StaticResource x:Key="ToggleButtonBackgroundChecked" ResourceKey="SubtleFillColorSecondaryBrush" />
-                                        <StaticResource x:Key="ToggleButtonBackgroundCheckedPointerOver" ResourceKey="SubtleFillColorTertiaryBrush" />
-                                        <StaticResource x:Key="ToggleButtonBackgroundCheckedPressed" ResourceKey="SubtleFillColorSecondaryBrush" />
-                                        <StaticResource x:Key="ToggleButtonForegroundChecked" ResourceKey="TextFillColorPrimaryBrush" />
-                                        <StaticResource x:Key="ToggleButtonForegroundCheckedPointerOver" ResourceKey="TextFillColorPrimaryBrush" />
-                                        <StaticResource x:Key="ToggleButtonForegroundCheckedPressed" ResourceKey="TextFillColorSecondaryBrush" />
-                                    </ResourceDictionary>
-                                    <ResourceDictionary x:Key="Dark">
-                                        <StaticResource x:Key="ToggleButtonBackgroundPointerOver" ResourceKey="SubtleFillColorSecondaryBrush" />
-                                        <StaticResource x:Key="ToggleButtonBackgroundPressed" ResourceKey="SubtleFillColorTertiaryBrush" />
-                                        <StaticResource x:Key="ToggleButtonBackgroundChecked" ResourceKey="SubtleFillColorSecondaryBrush" />
-                                        <StaticResource x:Key="ToggleButtonBackgroundCheckedPointerOver" ResourceKey="SubtleFillColorTertiaryBrush" />
-                                        <StaticResource x:Key="ToggleButtonBackgroundCheckedPressed" ResourceKey="SubtleFillColorSecondaryBrush" />
-                                        <StaticResource x:Key="ToggleButtonForegroundChecked" ResourceKey="TextFillColorPrimaryBrush" />
-                                        <StaticResource x:Key="ToggleButtonForegroundCheckedPointerOver" ResourceKey="TextFillColorPrimaryBrush" />
-                                        <StaticResource x:Key="ToggleButtonForegroundCheckedPressed" ResourceKey="TextFillColorSecondaryBrush" />
-                                    </ResourceDictionary>
-                                </ResourceDictionary.ThemeDictionaries>
-                                <StaticResource x:Key="ToggleButtonBorderBrushChecked" ResourceKey="ControlFillColorTransparentBrush" />
-                                <StaticResource x:Key="ToggleButtonBorderBrushCheckedPointerOver" ResourceKey="ControlFillColorTransparentBrush" />
-                                <StaticResource x:Key="ToggleButtonBorderBrushCheckedPressed" ResourceKey="ControlFillColorTransparentBrush" />
-                            </ResourceDictionary>
-                        </ToggleButton.Resources>
-                    </ToggleButton>
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <!-- Quick translation toggle (only when the lyrics carry translations) -->
+                        <!-- A quiet chip (not an accent fill): on = subtle fill + primary text, off = secondary text. -->
+                        <ToggleButton x:Name="TranslationButton" x:Uid="TranslationButton" Visibility="Collapsed" VerticalAlignment="Center"
+                                      Padding="10,2,10,3" MinHeight="0" MinWidth="0" FontSize="12" CornerRadius="12" BorderThickness="0"
+                                      Background="Transparent" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <!-- Quick romaji toggle (only when the lyrics carry romaji; lyrics.romaji) -->
+                        <ToggleButton x:Name="RomajiButton" x:Uid="RomajiButton" Visibility="Collapsed" VerticalAlignment="Center"
+                                      Padding="10,2,10,3" MinHeight="0" MinWidth="0" FontSize="12" CornerRadius="12" BorderThickness="0"
+                                      Background="Transparent" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
                     <!-- Lyrics timing: per-app offset (lyrics.offset); shortcuts [ and ] -->
                     <Button x:Name="LyricsOffsetButton" x:Uid="LyricsOffsetButton" Grid.Column="1" Visibility="Collapsed" VerticalAlignment="Center"
                             Padding="10,2,10,3" MinHeight="0" MinWidth="0" CornerRadius="12" Background="Transparent" BorderThickness="0">

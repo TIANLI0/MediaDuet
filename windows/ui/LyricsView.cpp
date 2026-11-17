@@ -247,19 +247,20 @@ namespace mdui
         // Font size changed: rebuild in place (no fade-in), keeping the scroll / follow state.
         bool paused = m_followPaused;
         auto source = m_source;
-        Build(source, m_translationOn);
+        Build(source, m_translationOn, m_romajiOn);
         for (size_t i = 0; i < m_revealed.size(); ++i) m_revealed[i] = true;
         m_revealTimer.Stop();
         m_followPaused = paused;
         ApplyLineStates();
     }
 
-    void LyricsView::Build(Lyrics const& lyrics, bool translationOn)
+    void LyricsView::Build(Lyrics const& lyrics, bool translationOn, bool romajiOn)
     {
         Clear();
         m_source = lyrics;
         m_synced = lyrics.synced;
         m_translationOn = translationOn;
+        m_romajiOn = romajiOn;
         m_animations = Controller::Get().AnimationsEnabled();
         m_fontSize = FontSizeFor(m_height);
         m_core = ToCoreLyrics(lyrics);
@@ -286,6 +287,7 @@ namespace mdui
             auto const& d = m_rows.rows[i];
             auto line = std::make_unique<KaraokeLine>(style);
             line->SetTranslationEnabled(translationOn);
+            line->SetRomajiEnabled(romajiOn);
             if (d.kind == lyrics::RowKind::Interlude) line->SetInterlude(d.t, d.d);
             else line->SetLine(lyrics.lines[static_cast<size_t>(d.line)]);
             auto root = line->Root();
@@ -397,6 +399,13 @@ namespace mdui
         m_translationOn = on;
         for (auto const& l : m_lines) l->SetTranslationEnabled(on);
         // Line heights change: the panel's SizeChanged re-centres the current line.
+    }
+
+    void LyricsView::SetRomaji(bool on)
+    {
+        if (m_romajiOn == on) return;
+        m_romajiOn = on;
+        for (auto const& l : m_lines) l->SetRomajiEnabled(on);
     }
 
     void LyricsView::ApplyLineStates()

@@ -419,7 +419,7 @@ struct TaskbarWidget::Impl {
     int offset = 0;
     float widthDip = 360.f;
     float fontSize = 13.f;
-    bool translation = true;
+    bool translation = true, romaji = false;
     bool animations = true, lowPower = false;
 
     // content
@@ -439,6 +439,7 @@ struct TaskbarWidget::Impl {
         bool karaoke = false;
         lyrics::FillSpan span;
         bool translated = false;
+        bool romaji = false; // line2 is the romaji: it fills along with line1
     } shown, leaving;
     double rollStart = -1; // now() when the roll started; -1 = none
     static constexpr double kRollMs = 360;
@@ -872,7 +873,7 @@ struct TaskbarWidget::Impl {
     // the karaoke line above it (its translation). Returns the fill fraction of a karaoke row.
     float drawRow(const std::wstring& s, float size, DWRITE_FONT_WEIGHT weight, float x, float y, float w,
                   D2D1_COLOR_F color, const lyrics::FillSpan* fill, D2D1_COLOR_F dim, float progress = -1.f,
-                  float zoom = 1.f) {
+                  float zoom = 1.f, bool fillToProgress = false) {
         auto* rt = surface.rt();
         const TextEntry* e = texts.get(s, L"Segoe UI Variable Text", size, weight);
         if (!e || s.empty() || color.a <= 0.003f) return 0.f;
@@ -890,9 +891,9 @@ struct TaskbarWidget::Impl {
         float yk = y + e->height * (1 - k) / 2;
         rt->SetTransform(D2D1::Matrix3x2F::Scale(k, k) * D2D1::Matrix3x2F::Translation(x - off, yk) * old);
         com_ptr<ID2D1Brush> brush;
-        if (fill) {
+        if (fill || (fillToProgress && progress >= 0)) {
             float feather = std::max(6.f, size * 0.45f) / k;
-            float ex = fx / k;
+            float ex = fill ? fx / k : progress * e->width;
             D2D1_GRADIENT_STOP stops[] = {{0.f, color}, {1.f, dim}};
             com_ptr<ID2D1GradientStopCollection> coll;
             com_ptr<ID2D1LinearGradientBrush> gb;
@@ -940,8 +941,11 @@ struct TaskbarWidget::Impl {
         dim.a = 0.45f * a;
         float frac = drawRow(b.line1, f1, DWRITE_FONT_WEIGHT_SEMI_BOLD, textLeft, y, tw, c1, b.karaoke ? &b.span : nullptr, dim);
         // A translation scrolls with its line; the next line's preview shows its beginning.
-        if (two) drawRow(b.line2, f2, DWRITE_FONT_WEIGHT_NORMAL, textLeft, y + f1 * 1.3f, tw, c2, nullptr, c2,
-                         b.karaoke && b.translated ? frac : -1.f);
+        // Romaji also fills with it (sung: the second row's colour, unsung: dimmer).
+        D2D1_COLOR_F dim2 = c2;
+        dim2.a = 0.3f * a;
+        if (two) drawRow(b.line2, f2, DWRITE_FONT_WEIGHT_NORMAL, textLeft, y + f1 * 1.3f, tw, c2, nullptr,
+                         b.romaji ? dim2 : c2, b.karaoke && b.translated ? frac : -1.f, 1.f, b.romaji && b.karaoke);
     }
 
     bool render() {
@@ -1000,7 +1004,12 @@ struct TaskbarWidget::Impl {
             cur.line1 = kara.text;
             cur.karaoke = !cur.line1.empty();
             const auto& line = lyr->lines[idx];
-            if (translation && lyrics::hasTranslation(*lyr)) {
+            // Two rows only: with romaji on, a line's romaji takes the second row, else its translation.
+            if (romaji && !line.romaji.empty() && lyrics::hasRomaji(*lyr)) {
+                cur.line2 = text::toWide(line.romaji);
+                cur.translated = true;
+                cur.romaji = true;
+            } else if (translation && lyrics::hasTranslation(*lyr)) {
                 cur.line2 = text::toWide(line.translation);
                 cur.translated = true;
             } else if (int next = nextSungLine(idx); next >= 0) {
@@ -1012,6 +1021,7 @@ struct TaskbarWidget::Impl {
             cur.line2 = text::toWide(artist);
             cur.karaoke = false;
             cur.translated = false;
+            cur.romaji = false;
         }
         if (cur.karaoke) cur.span = lyrics::fillAt(kara, playPos());
         // The lyric moved to another line (or another song): roll, like the desktop lyrics.
@@ -1154,6 +1164,7 @@ void TaskbarWidget::configure(const nlohmann::json& t, bool animations, bool low
     i.widthDip = static_cast<float>(t.value("width", 360.0));
     i.fontSize = static_cast<float>(t.value("fontSize", 13.0));
     i.translation = t.value("translation", true);
+    i.romaji = t.value("romaji", false);
     i.animations = animations;
     i.lowPower = lowPower;
     i.surface.release();

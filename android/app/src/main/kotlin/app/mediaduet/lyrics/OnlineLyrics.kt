@@ -26,10 +26,10 @@ import java.net.URLEncoder
  * matched by [SongMatch] and never invented. Blocking: call from Dispatchers.IO.
  */
 object OnlineLyrics {
-    /** [text] is LRC or yrc (see [yrc]); empty [text] = the provider answered "no lyrics". */
     /**
      * [text] is LRC or yrc (see [yrc]); empty [text] = the provider answered "no lyrics".
-     * [translationTiming]: the LRC [translation] is timed by when [text] is not (NetEase yrc).
+     * [translationTiming]: the LRC [translation] and [romaji] are timed by when [text] is not
+     * (NetEase yrc).
      */
     data class Result(
         val text: String,
@@ -38,6 +38,8 @@ object OnlineLyrics {
         val provider: String,
         val translation: String = "",
         val translationTiming: String = "",
+        /** Romanised LRC (NetEase romalrc), timed like [translation]. */
+        val romaji: String = "",
     )
 
     val DEFAULT_PROVIDERS = listOf("netease", "qqmusic", "lrclib")
@@ -212,16 +214,20 @@ object OnlineLyrics {
         val found = findNetease(want)
         if (!found.answered) return null
         val bestId = found.hit ?: return Result("", false, false, "netease")
-        val ly = get("https://music.163.com/api/song/lyric/v1?lv=1&yv=1&tv=-1&id=$bestId", ref) ?: return null
+        // romalrc is only returned with rv=-1.
+        val ly = get("https://music.163.com/api/song/lyric/v1?lv=1&yv=1&tv=-1&rv=-1&id=$bestId", ref) ?: return null
         val j = parse(ly) ?: return null
         if (j.bool("pureMusic") == true) return Result("", false, false, "netease")
         val trans = j.obj("tlyric").str("lyric").orEmpty()
+        val roma = j.obj("romalrc").str("lyric").orEmpty()
         val yrc = j.obj("yrc").str("lyric").orEmpty()
-        // tlyric follows the plain LRC's timestamps, which often differ from the yrc's.
-        if (yrc.isNotBlank() && !LyricFormats.parseYrc(yrc).isEmpty) return Result(yrc, true, true, "netease", trans, j.obj("lrc").str("lyric").orEmpty())
+        // tlyric and romalrc follow the plain LRC's timestamps, which often differ from the yrc's.
+        if (yrc.isNotBlank() && !LyricFormats.parseYrc(yrc).isEmpty) {
+            return Result(yrc, true, true, "netease", trans, j.obj("lrc").str("lyric").orEmpty(), roma)
+        }
         val lrc = j.obj("lrc").str("lyric").orEmpty()
         val parsed = LyricFormats.parseSynced(lrc)
-        if (parsed != null && !LyricFormats.isInstrumentalNotice(parsed)) return Result(lrc, true, false, "netease", trans)
+        if (parsed != null && !LyricFormats.isInstrumentalNotice(parsed)) return Result(lrc, true, false, "netease", trans, romaji = roma)
         return Result("", false, false, "netease")
     }
 

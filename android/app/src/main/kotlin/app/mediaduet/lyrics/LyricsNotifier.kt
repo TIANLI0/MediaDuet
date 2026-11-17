@@ -69,7 +69,7 @@ class LyricsNotifier(
         val artHash: String?,
     )
 
-    private class Timing(val autoLatency: Boolean, val offsets: Map<String, Int>, val translations: Boolean, val localLatencyMs: Int)
+    private class Timing(val autoLatency: Boolean, val offsets: Map<String, Int>, val translations: Boolean, val romaji: Boolean, val localLatencyMs: Int)
 
     /**
      * The song whose notification the user swiped away: not shown again until the next song (by
@@ -108,7 +108,7 @@ class LyricsNotifier(
                 }
             }
         }
-        val timing = combine(settings.lyricsAutoLatency, settings.lyricOffsets, settings.showTranslations, localLatencyMs, ::Timing)
+        val timing = combine(settings.lyricsAutoLatency, settings.lyricOffsets, settings.showTranslations, settings.showRomaji, localLatencyMs, ::Timing)
         scope.launch {
             combine(current, timing, dismissedSong) { c, t, d -> Triple(c, t, d) }.collectLatest { (cur, t, dismissed) ->
                 if (cur == null || cur.info.songKey == dismissed) {
@@ -129,7 +129,7 @@ class LyricsNotifier(
                     if (sinceLast < MIN_POST_INTERVAL_MS) delay(MIN_POST_INTERVAL_MS - sinceLast)
                     val now = SystemClock.elapsedRealtime()
                     val pos = LyricsDelay.displayPosition(cur.positionAt(now) ?: 0L, delayMs)
-                    val frame = LyricsFrame.at(cur.rows, cur.endMs, pos, t.translations)
+                    val frame = LyricsFrame.at(cur.rows, cur.endMs, pos, t.translations, t.romaji)
                     post(cur, frame)
                     val next = frame.nextMs ?: awaitCancellation()
                     delay((((next - pos) / rate).toLong() + 1).coerceIn(1L, MAX_WAIT_MS))
@@ -157,7 +157,7 @@ class LyricsNotifier(
         val b = Notification.Builder(context, Notifications.CHANNEL_LYRICS)
             .setSmallIcon(R.drawable.ic_mc_music)
             .setContentTitle(line ?: title)
-            .setContentText(if (line == null) info.artist.ifEmpty { null } else frame.translation ?: song)
+            .setContentText(if (line == null) info.artist.ifEmpty { null } else frame.secondary ?: song)
             .setSubText(if (cur.side == Side.PC) context.getString(R.string.mirror_subtext) else info.appName.ifEmpty { null })
             .setLargeIcon(artwork(cur))
             .setOngoing(true)
@@ -173,7 +173,7 @@ class LyricsNotifier(
                     PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
                 ),
             )
-        if (frame.translation != null) b.setStyle(Notification.BigTextStyle().bigText(frame.translation))
+        frame.secondaryRows?.let { b.setStyle(Notification.BigTextStyle().bigText(it)) }
         if (Build.VERSION.SDK_INT >= 36) {
             b.setShortCriticalText(line ?: NOTE)
             // Live Updates arrived in Android 16 QPR2 (36.1); 36.0 has no such method.
@@ -232,13 +232,20 @@ class LyricsNotifier(
  * lyrics, in instrumental gaps and after their end (the song title is shown instead); [nextMs] =
  * position of the next change, null when nothing changes any more.
  */
-data class LyricsFrame(val text: String?, val translation: String?, val nextMs: Long?) {
+data class LyricsFrame(val text: String?, val translation: String?, val nextMs: Long?, val romaji: String? = null) {
+    /** The one row under the line where only one fits: the romaji (when shown), else the translation. */
+    val secondary: String? get() = romaji ?: translation
+
+    /** Every row under the line (expanded notification): romaji, then the translation. */
+    val secondaryRows: String? get() = listOfNotNull(romaji, translation).joinToString("\n").ifEmpty { null }
+
     companion object {
-        fun at(rows: List<LyricRow>, endMs: Long, positionMs: Long, translations: Boolean): LyricsFrame {
+        fun at(rows: List<LyricRow>, endMs: Long, positionMs: Long, translations: Boolean, romaji: Boolean = false): LyricsFrame {
             val row = LyricRows.lineAt(rows, endMs, positionMs)
             val text = row?.line?.text?.ifEmpty { null }
             val tr = if (translations && text != null) row.translation?.trim()?.ifEmpty { null } else null
-            return LyricsFrame(text, tr, LyricRows.nextChange(rows, endMs, positionMs))
+            val ro = if (romaji && text != null) row.romaji?.trim()?.ifEmpty { null } else null
+            return LyricsFrame(text, tr, LyricRows.nextChange(rows, endMs, positionMs), ro)
         }
     }
 }

@@ -188,8 +188,8 @@ private const val RESUME_FOLLOW_MS = 4_000L
  * Apple-Music-style synced lyrics (AMLL-like): the current line at ~32 % of the area with a
  * continuous feathered fill (sung part bright, the rest clearly dimmer but brighter than other
  * lines), a slight spring scale-up, other lines dimmed (and lightly blurred on API 31+) by
- * distance, spring auto-scroll, breathing "•••" for instrumental gaps ≥ 4 s, translations under
- * each line. A manual scroll pauses auto-follow (no blur while browsing) and shows a "back to the
+ * distance, spring auto-scroll, breathing "•••" for instrumental gaps ≥ 4 s, romaji and
+ * translations under each line. A manual scroll pauses auto-follow (no blur while browsing) and shows a "back to the
  * current line" pill; tapping a line seeks ([onSeek] null = not seekable).
  *
  * [position] is the delayed, smoothed lyrics clock; it is read in the draw phase only, so the
@@ -203,6 +203,8 @@ fun SyncedLyrics(
     backdrop: com.kyant.backdrop.Backdrop,
     modifier: Modifier = Modifier,
     showTranslations: Boolean = true,
+    /** Romaji row between each line and its translation (lines without romaji have none). */
+    showRomaji: Boolean = false,
     /** Height of the bottom fade (lines dissolve under floating controls). */
     bottomFade: androidx.compose.ui.unit.Dp = 96.dp,
     /** Space at the bottom covered by floating controls (the "back to current" pill sits above it). */
@@ -310,6 +312,7 @@ fun SyncedLyrics(
                         flash = i == flashIndex,
                         position = position,
                         showTranslation = showTranslations,
+                        showRomaji = showRomaji,
                         textScale = textScale,
                         onClick = onSeek?.let { seek ->
                             {
@@ -347,6 +350,7 @@ private fun LyricLineItem(
     flash: Boolean,
     position: State<Long>,
     showTranslation: Boolean,
+    showRomaji: Boolean,
     textScale: Float,
     onClick: (() -> Unit)?,
 ) {
@@ -370,6 +374,8 @@ private fun LyricLineItem(
     val blurDp by animateFloatAsState(blurTarget, tween(360), label = "lyricBlur")
     var layout by remember(row.line.text) { mutableStateOf<TextLayoutResult?>(null) }
     val feather = with(LocalDensity.current) { lyricStyle.fontSize.toPx() * 0.5f }
+    var roLayout by remember(row.romaji) { mutableStateOf<TextLayoutResult?>(null) }
+    val roFeather = with(LocalDensity.current) { translationStyle.fontSize.toPx() * 0.5f }
     Column(
         Modifier
             .fillMaxWidth()
@@ -424,6 +430,47 @@ private fun LyricLineItem(
                     }
                 },
         )
+        // Romaji right under the line, then the translation (never filled). On the current line the
+        // romaji follows the singing like Apple Music's pronunciation row: filled by the sung share
+        // of the original line, spread over its own width.
+        val ro = row.romaji
+        if (ro != null && showRomaji) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                ro,
+                style = translationStyle,
+                color = color.copy(alpha = if (isActive) 0.72f else 0.9f),
+                onTextLayout = { roLayout = it },
+                modifier = if (!isActive) Modifier else Modifier
+                    .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
+                    .drawWithContent {
+                        drawContent()
+                        val l = roLayout ?: return@drawWithContent
+                        val unsung = Color.Black.copy(alpha = UNSUNG_ALPHA)
+                        val f = LyricTiming.sungFraction(row.line.text, LyricTiming.caret(row.line, position.value))
+                        val widths = FloatArray(l.lineCount) { l.getLineRight(it) - l.getLineLeft(it) }
+                        var rest = f * widths.sum()
+                        for (vl in 0 until l.lineCount) {
+                            val top = l.getLineTop(vl)
+                            val height = l.getLineBottom(vl) - top
+                            when {
+                                rest >= widths[vl] -> Unit // sung
+                                rest <= 0f -> drawRect(unsung, Offset(0f, top), Size(size.width, height), blendMode = BlendMode.DstIn)
+                                else -> {
+                                    val x = l.getLineLeft(vl) + rest
+                                    drawRect(
+                                        Brush.horizontalGradient(0f to Color.Black, 1f to unsung, startX = x - roFeather / 2, endX = x + roFeather / 2),
+                                        Offset(0f, top),
+                                        Size(size.width, height),
+                                        blendMode = BlendMode.DstIn,
+                                    )
+                                }
+                            }
+                            rest -= widths[vl]
+                        }
+                    },
+            )
+        }
         val tr = row.translation
         if (tr != null && showTranslation) {
             Spacer(Modifier.height(4.dp))

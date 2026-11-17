@@ -86,6 +86,13 @@ FillSpan fillAt(const KaraokeLine& k, double p) {
     return {0, total, frac};
 }
 
+double fillFraction(const KaraokeLine& k, const FillSpan& f) {
+    double total = static_cast<double>(k.text.size());
+    if (total <= 0) return 0;
+    double at = f.from + (static_cast<double>(f.to) - f.from) * std::clamp(f.frac, 0.0, 1.0);
+    return std::clamp(at / total, 0.0, 1.0);
+}
+
 bool fillMoving(const KaraokeLine& k, double p, double* nextMs) {
     if (nextMs) *nextMs = -1;
     if (k.text.empty()) return false;
@@ -214,8 +221,11 @@ DesktopRows layoutRows(const Lyrics& l, int main, int next, bool active, int par
         r.centered = true;
         r.row[0] = lineRow(main, active);
         if (roSong) {
-            if (!l.lines[main].romaji.empty()) r.row[1] = {RowKind::Romaji, main, false};
-            if (trSong && !l.lines[main].translation.empty()) r.row[2] = {RowKind::Translation, main, false};
+            // A line without romaji (English, credits) moves its translation up: no empty row between.
+            int at = 1;
+            // Active with its line: the romaji fills along with the singing.
+            if (!l.lines[main].romaji.empty()) r.row[at++] = {RowKind::Romaji, main, active};
+            if (trSong && !l.lines[main].translation.empty()) r.row[at] = {RowKind::Translation, main, false};
         } else if (trSong && !l.lines[main].translation.empty()) {
             r.row[1] = {RowKind::Translation, main, false};
         } else if (!trSong && twoLines) {

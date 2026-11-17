@@ -881,17 +881,20 @@ class LinkManager(
      * Lyrics the phone found itself for [trackId] (a phone or PC track), for the PC to show and
      * cache (`lyrics.push`, §8.2). Only when the PC takes lyrics and the record fits in one frame.
      */
-    suspend fun sendLyrics(trackId: String, lrc: String, translation: String?, source: String): Boolean = withContext(dispatcher) {
+    suspend fun sendLyrics(trackId: String, lrc: String, translation: String?, source: String, romaji: String? = null): Boolean = withContext(dispatcher) {
         val session = currentSession() ?: return@withContext false
         if (Caps.LYRICS !in session.peerCaps) return@withContext false
-        val body = buildJsonObject {
+        fun body(withRomaji: Boolean) = buildJsonObject {
             put("trackId", trackId)
             put("format", "lrc")
             put("source", source.take(StrLimit.MISC))
             put("text", lrc)
             if (!translation.isNullOrBlank()) put("translation", translation)
+            if (withRomaji && !romaji.isNullOrBlank()) put("romaji", romaji)
         }
-        if (body.toString().toByteArray(Charsets.UTF_8).size > MAX_LYRICS_RECORD) return@withContext false
+        fun fits(b: JsonObject) = b.toString().toByteArray(Charsets.UTF_8).size <= MAX_LYRICS_RECORD
+        // The romaji is extra: drop it rather than the lyrics when the record would not fit.
+        val body = body(true).takeIf(::fits) ?: body(false).takeIf(::fits) ?: return@withContext false
         send(session, null, MsgType.LYRICS_PUSH, body) != null
     }
 

@@ -537,6 +537,12 @@ struct LyricsOverlay::Impl {
         bool past = c.kind == RowKind::Line && !c.active && p >= 0 && c.line < mainLine; // fading out after it was sung
         std::optional<float> fx;
         if (isActive && karaoke && k && !k->text.empty()) fx = fillX(e->carets, lyrics::fillAt(*k, p));
+        bool romajiFill = c.kind == RowKind::Romaji && c.active && karaoke && p >= 0;
+        if (romajiFill) {
+            // Romaji follows the singing (like Apple Music's pronunciation): the line's fill fraction.
+            const auto& kl = kara(c.line);
+            if (!kl.text.empty()) fx = static_cast<float>(lyrics::fillFraction(kl, lyrics::fillAt(kl, p))) * e->width;
+        }
         float x;
         float off = 0.f;
         bool overflow = tw > avail + 0.5f;
@@ -558,7 +564,8 @@ struct LyricsOverlay::Impl {
                              : c.kind == RowKind::Romaji ? withAlpha(active, 0.8f)
                              : (isActive && !karaoke) || past ? active
                                                               : inactive;
-        if (fx) drawText(*e, x, y, ks, active, alpha, &*fx, inactive, size);
+        if (fx && romajiFill) drawText(*e, x, y, ks, withAlpha(active, 0.8f), alpha, &*fx, inactive, size);
+        else if (fx) drawText(*e, x, y, ks, active, alpha, &*fx, inactive, size);
         else drawText(*e, x, y, ks, color, alpha, nullptr, inactive, size);
         if (overflow) surface.rt()->PopLayer();
     }

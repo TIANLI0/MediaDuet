@@ -53,6 +53,10 @@ double lineSweepMs(const KaraokeLine& k);
 // it is complete. Line-timed: an even sweep over lineSweepMs().
 FillSpan fillAt(const KaraokeLine& k, double posMs);
 
+// How much of the line the edge has covered, 0..1 (by UTF-16 offset). Romaji follows the singing
+// with it: its own edge sits at the same fraction of its width (no word timing of its own).
+double fillFraction(const KaraokeLine& k, const FillSpan& f);
+
 // True while the edge moves (frames are needed); otherwise *nextMs (if given)
 // receives the line-relative absolute time at which it starts moving again
 // (-1 = never within this line).

@@ -288,6 +288,11 @@ namespace winrt::MediaDuetUI::implementation
             ApplyTranslationSetting(on);   // immediately; the host echoes the setting in its next state
             Controller::Get().SetSetting("lyrics.translation", on);
         });
+        RomajiButton().Click([this](auto&&, auto&&) {
+            bool on = RomajiButton().IsChecked().Value();
+            ApplyRomajiSetting(on);
+            Controller::Get().SetSetting("lyrics.romaji", on);
+        });
         // Lyrics timing
         LyricsEarlierButton().Click([this](auto&&, auto&&) { AdjustLyricsOffset(-kOffsetStepMs); });
         LyricsLaterButton().Click([this](auto&&, auto&&) { AdjustLyricsOffset(kOffsetStepMs); });
@@ -1265,15 +1270,27 @@ namespace winrt::MediaDuetUI::implementation
             Controller::Get().SetSetting("lyrics.translation", on);
         });
         menu.Items().Append(translation);
-        menu.Opening([this, larger, smaller, reset, separator, translation](auto&&, auto&&) {
+        ToggleMenuFlyoutItem romaji;
+        romaji.Text(Str(L"LyricsMenuRomaji"));
+        romaji.Click([this](auto&&, auto&&) {
+            bool on = !m_romajiOn;
+            ApplyRomajiSetting(on);
+            Controller::Get().SetSetting("lyrics.romaji", on);
+        });
+        menu.Items().Append(romaji);
+        menu.Opening([this, larger, smaller, reset, separator, translation, romaji](auto&&, auto&&) {
             double scale = m_lyricsView.FontScale();
             larger.IsEnabled(scale < LyricsView::kMaxFontScale - 1e-3);
             smaller.IsEnabled(scale > LyricsView::kMinFontScale + 1e-3);
             reset.IsEnabled(std::abs(scale - 1.0) > 1e-3);
             reset.Text(StrF(L"LyricsSizeReset", { std::to_wstring(std::lround(scale * 100)) }));
-            separator.Visibility(TranslationButton().Visibility());
+            bool tr = TranslationButton().Visibility() == Visibility::Visible;
+            bool ro = RomajiButton().Visibility() == Visibility::Visible;
+            separator.Visibility(tr || ro ? Visibility::Visible : Visibility::Collapsed);
             translation.Visibility(TranslationButton().Visibility());
             translation.IsChecked(m_translationOn);
+            romaji.Visibility(RomajiButton().Visibility());
+            romaji.IsChecked(m_romajiOn);
         });
         LyricsViewport().ContextFlyout(menu);
 
@@ -1398,13 +1415,14 @@ namespace winrt::MediaDuetUI::implementation
             {
                 m_lyricsIdentity = identity;
                 m_translationOn = Controller::Get().Model().Setting("lyrics.translation", true);
+                m_romajiOn = Controller::Get().Model().Setting("lyrics.romaji", false);
                 m_lyricsSynced = lyrics.synced;
                 if (!m_lyricsShown)
                 {
                     // Make the pane visible first so the view knows its size, then build.
                     SetLyricsLayout(true, true);
                 }
-                m_lyricsView.Build(lyrics, m_translationOn);   // fades the new lines in one by one
+                m_lyricsView.Build(lyrics, m_translationOn, m_romajiOn);   // fades the new lines in one by one
                 UpdateLyricsPosition(QpcNowMs(), true);
             }
             // (Where the lyrics come from is shown in Settings > Lyrics, not in the player.)
@@ -1433,6 +1451,9 @@ namespace winrt::MediaDuetUI::implementation
         if (!m_holding)   // while holding, the pane keeps its controls (no jump in the bottom row)
             TranslationButton().Visibility(hasTranslation ? Visibility::Visible : Visibility::Collapsed);
         if (hasTranslation) ApplyTranslationSetting(Controller::Get().Model().Setting("lyrics.translation", true));
+        bool hasRomaji = show && lyrics.hasRomaji;
+        if (!m_holding) RomajiButton().Visibility(hasRomaji ? Visibility::Visible : Visibility::Collapsed);
+        if (hasRomaji) ApplyRomajiSetting(Controller::Get().Model().Setting("lyrics.romaji", false));
         UpdateLyricsOffset();
         if (show && m_session && m_lyricsSynced) UpdateLyricsPosition(QpcNowMs(), false);
         UpdateFrameLoop();
@@ -1463,6 +1484,14 @@ namespace winrt::MediaDuetUI::implementation
         if (on == m_translationOn) return;
         m_translationOn = on;
         m_lyricsView.SetTranslation(on);   // the view re-centres once the new line heights are known
+    }
+
+    void MainWindow::ApplyRomajiSetting(bool on)
+    {
+        if (RomajiButton().IsChecked().Value() != on) RomajiButton().IsChecked(on);
+        if (on == m_romajiOn) return;
+        m_romajiOn = on;
+        m_lyricsView.SetRomaji(on);
     }
 
     double MainWindow::LyricPosition(double now) const

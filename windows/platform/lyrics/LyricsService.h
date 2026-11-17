@@ -50,7 +50,7 @@ public:
     bool rekey(const std::string& trackId);
     // Lyrics pushed by the peer for a track (spec lyrics.push).
     void offerRemote(const std::string& trackId, const std::string& lrc, const std::string& source,
-                     const std::string& translation = {});
+                     const std::string& translation = {}, const std::string& romaji = {});
     const Result& current() const { return cur_; }
 
 private:

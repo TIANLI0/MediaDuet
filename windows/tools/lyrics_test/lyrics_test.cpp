@@ -58,12 +58,12 @@ int wmain(int argc, wchar_t** argv) {
     auto cache = std::filesystem::temp_directory_path() / L"mediaduet_lyrics_test";
     std::filesystem::remove_all(cache);
     md::platform::Win32Scheduler sched;
-    size_t idx = 0, found = 0, synced = 0, words = 0, translated = 0;
+    size_t idx = 0, found = 0, synced = 0, words = 0, translated = 0, romanised = 0;
     md::platform::LyricsService* svc = nullptr;
     auto next = [&] {
         if (idx >= tracks.size()) {
-            std::printf("\nfound %zu/%zu (synced %zu, word-timed %zu, translated %zu) with providers:", found, tracks.size(),
-                        synced, words, translated);
+            std::printf("\nfound %zu/%zu (synced %zu, word-timed %zu, translated %zu, romaji %zu) with providers:", found,
+                        tracks.size(), synced, words, translated, romanised);
             for (auto& p : providers) std::printf(" %s", p.c_str());
             std::printf("\n");
             PostQuitMessage(0);
@@ -77,13 +77,20 @@ int wmain(int argc, wchar_t** argv) {
         bool hasWords = false;
         for (auto& l : r.lyrics.lines) hasWords |= !l.words.empty();
         bool hasTr = md::lyrics::hasTranslation(r.lyrics);
-        std::printf("%-8s %-8s %3zu lines%s%s  %s - %s\n", r.status.c_str(), r.source.c_str(), r.lyrics.lines.size(),
-                    hasWords ? " (words)" : "", hasTr ? " (translated)" : "", t.title.c_str(), t.artist.c_str());
+        size_t ro = 0;
+        for (auto& l : r.lyrics.lines) ro += l.romaji.empty() ? 0 : 1;
+        std::printf("%-8s %-8s %3zu lines%s%s", r.status.c_str(), r.source.c_str(), r.lyrics.lines.size(),
+                    hasWords ? " (words)" : "", hasTr ? " (translated)" : "");
+        if (ro) std::printf(" (romaji %zu)", ro);
+        std::printf("  %s - %s\n", t.title.c_str(), t.artist.c_str());
+        if (ro && std::getenv("MD_DUMP_ROMAJI"))
+            for (auto& l : r.lyrics.lines) std::printf("    %s\n      %s\n", l.text.c_str(), l.romaji.c_str());
         if (r.status == "found") {
             ++found;
             synced += r.lyrics.synced ? 1 : 0;
             words += hasWords ? 1 : 0;
             translated += hasTr ? 1 : 0;
+            romanised += ro ? 1 : 0;
         }
         ++idx;
         sched.post(next);

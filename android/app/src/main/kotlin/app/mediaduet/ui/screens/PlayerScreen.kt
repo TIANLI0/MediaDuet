@@ -193,6 +193,7 @@ private class PlayerParts(
     /** The phone is still looking for lyrics for this track. */
     val searching: Boolean,
     val translations: Boolean,
+    val romaji: Boolean,
     val lyricsSize: LyricsSize,
     val reduced: Boolean,
     val canSeek: Boolean,
@@ -222,6 +223,7 @@ fun PlayerScreen(ui: UiContext) {
     val lyricsMap by engine.lyrics.entries.collectAsStateWithLifecycle()
     val pending by engine.lyrics.pending.collectAsStateWithLifecycle()
     val translations by engine.settings.showTranslations.collectAsStateWithLifecycle()
+    val romaji by engine.settings.showRomaji.collectAsStateWithLifecycle()
     val lyricsSize by engine.settings.lyricsSize.collectAsStateWithLifecycle()
     val autoLatency by engine.settings.lyricsAutoLatency.collectAsStateWithLifecycle()
     val offsets by engine.settings.lyricOffsets.collectAsStateWithLifecycle()
@@ -349,6 +351,7 @@ fun PlayerScreen(ui: UiContext) {
                 lyrics = lyrics,
                 searching = searching,
                 translations = translations,
+                romaji = romaji,
                 lyricsSize = lyricsSize,
                 reduced = reduced,
                 canSeek = view.canControl && Action.SEEK in info.actions && (info.durationMs ?: 0) > 0,
@@ -720,7 +723,7 @@ private fun LyricsBody(p: PlayerParts, modifier: Modifier, bottomFade: androidx.
             shown == null -> LyricsSearching(Modifier.fillMaxSize().padding(bottom = bottomObscured), p.reduced)
             synced != null && !synced.isEmpty -> SyncedLyrics(
                 synced, p.lyricsPosition, if (p.canSeek) p.controls.seek else null, p.ui.backdrop, Modifier.fillMaxSize(),
-                showTranslations = p.translations, bottomFade = bottomFade, bottomObscured = bottomObscured,
+                showTranslations = p.translations, showRomaji = p.romaji, bottomFade = bottomFade, bottomObscured = bottomObscured,
                 textScale = p.lyricsSize.scale,
             )
             else -> PlainLyrics(
@@ -757,7 +760,7 @@ private fun LyricsSearching(modifier: Modifier, reduced: Boolean) {
 }
 
 /**
- * Lyrics options popover: translation on / off (when the lyrics have translations) and the
+ * Lyrics options popover: romaji / translation on / off (when the lyrics have them) and the
  * per-app timing offset (−/+ 0.1 s, reset; the automatic output delay is noted). Closes on an
  * outside tap or 5 s after the last touch.
  */
@@ -781,7 +784,30 @@ private fun LyricsOptions(p: PlayerParts, open: Boolean, modifier: Modifier, onD
     ) {
         GlassCard(p.ui.backdrop, Modifier.width(296.dp), strong = true, cornerRadius = 26.dp, contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp)) {
             val settings = p.ui.engine.settings
-            if (p.lyrics?.lyrics?.hasTranslations == true) {
+            val hasRomaji = p.lyrics?.lyrics?.hasRomaji == true
+            val hasTranslations = p.lyrics?.lyrics?.hasTranslations == true
+            if (hasRomaji) {
+                InfoRow(
+                    // "音" pairs with the translation (NetEase / QQ Music convention).
+                    stringResource(R.string.lyrics_romaji_toggle),
+                    leading = { Icon(AppIcons.Globe, null, Modifier.size(20.dp)) },
+                    trailing = {
+                        LiquidToggle({ p.romaji }, {
+                            touch++
+                            settings.setShowRomaji(it)
+                        }, p.ui.backdrop, contentDescription = stringResource(R.string.settings_romaji))
+                    },
+                    onClick = {
+                        touch++
+                        settings.setShowRomaji(!p.romaji)
+                    },
+                    role = Role.Switch,
+                )
+                if (hasTranslations) {
+                    HorizontalDivider(Modifier.padding(start = 36.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
+                }
+            }
+            if (hasTranslations) {
                 InfoRow(
                     stringResource(R.string.settings_translations),
                     leading = { Icon(AppIcons.Translate, null, Modifier.size(20.dp)) },
@@ -799,7 +825,7 @@ private fun LyricsOptions(p: PlayerParts, open: Boolean, modifier: Modifier, onD
                 )
             }
             if (p.lyrics?.synced == true) {
-                if (p.lyrics.lyrics?.hasTranslations == true) {
+                if (hasTranslations || hasRomaji) {
                     HorizontalDivider(Modifier.padding(start = 36.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
                 }
                 LyricsSizePicker(p.lyricsSize) {

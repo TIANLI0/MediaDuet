@@ -47,6 +47,27 @@ TEST_CASE("romaji: fills only missing lines") {
     CHECK(l.lines[2].romaji == "UTA");
 }
 
+TEST_CASE("romaji: without the provider's, all Japanese lines or none") {
+    Lyrics mixed;
+    mixed.lines.resize(3);
+    mixed.lines[0].text = "さくら";
+    mixed.lines[1].text = "桜が咲いた";
+    mixed.lines[2].text = "Hello";
+    CHECK(fillLocalRomaji(mixed) == 0); // a kanji line: no romaji on the odd kana line alone
+    CHECK_FALSE(hasRomaji(mixed));
+    Lyrics kana;
+    kana.lines.resize(3);
+    kana.lines[0].text = "さくら";
+    kana.lines[1].text = "Hello";
+    kana.lines[2].text = "ララララ";
+    CHECK(fillLocalRomaji(kana) == 2);
+    CHECK(kana.lines[2].romaji == "rararara");
+    Lyrics chinese;
+    chinese.lines.resize(1);
+    chinese.lines[0].text = "风从山背转过来";
+    CHECK(fillLocalRomaji(chinese) == 0);
+}
+
 TEST_CASE("romaji: desktop rows put the romaji under the line, the translation under that") {
     Lyrics l;
     l.synced = true;
@@ -60,12 +81,17 @@ TEST_CASE("romaji: desktop rows put the romaji under the line, the translation u
     auto r = desktopRows(l, 1, RowLayout::Alternate, true, true, true);
     CHECK(r.centered);
     CHECK(r.row[0] == RowContent{RowKind::Line, 1, true});
-    CHECK(r.row[1] == RowContent{RowKind::Romaji, 1, false});
+    CHECK(r.row[1] == RowContent{RowKind::Romaji, 1, true}); // fills with its line
     CHECK(r.row[2].kind == RowKind::None);
     l.lines[1].translation = "樱花";
     auto both = desktopRows(l, 1, RowLayout::Alternate, true, true, true);
     CHECK(both.row[1].kind == RowKind::Romaji);
     CHECK(both.row[2] == RowContent{RowKind::Translation, 1, false});
+    l.lines[2].romaji.clear(); // an English line: its translation moves up, no gap
+    l.lines[2].translation = "x";
+    auto up = desktopRows(l, 2, RowLayout::Alternate, true, true, true);
+    CHECK(up.row[1] == RowContent{RowKind::Translation, 2, false});
+    CHECK(up.row[2].kind == RowKind::None);
     auto off = desktopRows(l, 1, RowLayout::Alternate, true, true, false);
     CHECK(off.row[1].kind == RowKind::Translation); // romaji off: as before
 }
@@ -77,4 +103,17 @@ TEST_CASE("romaji: a romanised LRC merges into Line::romaji") {
     CHECK(hasRomaji(base));
     CHECK(base.lines[1].romaji == "kotoba");
     CHECK(parseLrc(romajiLrc(base)).lines.size() == 2);
+}
+
+TEST_CASE("romaji: fill fraction follows the line's edge") {
+    Line x;
+    x.t = 0;
+    x.d = 4000;
+    x.text = "abcd";
+    x.words = {{0, 1000, "ab"}, {1000, 1000, "cd"}};
+    auto k = buildKaraoke(x);
+    CHECK(fillFraction(k, fillAt(k, -10)) == doctest::Approx(0.0));
+    CHECK(fillFraction(k, fillAt(k, 500)) == doctest::Approx(0.25));
+    CHECK(fillFraction(k, fillAt(k, 1000)) == doctest::Approx(0.5));
+    CHECK(fillFraction(k, fillAt(k, 5000)) == doctest::Approx(1.0));
 }

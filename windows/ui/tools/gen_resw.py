@@ -29,6 +29,9 @@ S += [
     ("TranslationButton.Content", "Translation", "译"),
     (f"TranslationButton.{TT}", "Show or hide the lyric translation", "显示或隐藏歌词翻译"),
     (f"TranslationButton.{AN}", "Lyric translation", "歌词翻译"),
+    ("RomajiButton.Content", "Romaji", "音"),
+    (f"RomajiButton.{TT}", "Show or hide the romaji", "显示或隐藏罗马音"),
+    (f"RomajiButton.{AN}", "Lyric romaji", "歌词罗马音"),
 ]
 S += icon_button("CompactButton", "Mini player", "迷你播放器")
 S += icon_button("SettingsButton", "Settings", "设置")
@@ -175,8 +178,8 @@ S += [
     ("SetTranslationDesc.Text", "When the lyrics include a translation, show it under each line. Also applies to desktop lyrics and the taskbar.",
      "歌词带有翻译时，在每行原文下方显示。同样作用于桌面歌词和任务栏歌词。"),
     ("SetRomajiTitle.Text", "Show romaji", "显示罗马音"),
-    ("SetRomajiDesc.Text", "Show the Japanese romanisation under each line of desktop lyrics. Uses the provider's romaji when it has one, otherwise romanises kana lines itself (kanji lines need the provider).",
-     "在桌面歌词每行下方显示日语罗马音。优先使用歌词源提供的罗马音，没有时自行转写假名行（含汉字的行需要歌词源提供）。"),
+    ("SetRomajiDesc.Text", "Show the Japanese romanisation under each lyric line: main window, compact window, desktop and taskbar lyrics, and the phone. Uses NetEase Cloud Music's romaji; songs written only in kana are romanised locally.",
+     "在每行歌词下方显示日语罗马音：主窗口、迷你窗口、桌面歌词、任务栏歌词和手机端。罗马音来自网易云音乐；纯假名的歌曲会在本地转写。"),
     ("BrowseButton.Content", "Browse…", "浏览…"),
     ("ClearButton.Content", "Clear", "清除"),
     ("HdrOverlay.Text", "Desktop lyrics", "桌面歌词"),
@@ -320,6 +323,7 @@ S += [
     ("LyricsSmaller", "Smaller text", "缩小歌词"),
     ("LyricsSizeReset", "Default size (now {0} %)", "默认大小（当前 {0}%）"),
     ("LyricsMenuTranslation", "Show translation", "显示翻译"),
+    ("LyricsMenuRomaji", "Show romaji", "显示罗马音"),
     ("CommandFailed", "The command failed", "命令执行失败"),
     ("MenuOpenMain", "Open the full player", "打开完整播放器"),
     ("MenuSettings", "Settings", "设置"),

@@ -145,7 +145,7 @@
   <data name="SetTranslationTitle.Text" xml:space="preserve"><value>显示歌词翻译</value></data>
   <data name="SetTranslationDesc.Text" xml:space="preserve"><value>歌词带有翻译时，在每行原文下方显示。同样作用于桌面歌词和任务栏歌词。</value></data>
   <data name="SetRomajiTitle.Text" xml:space="preserve"><value>显示罗马音</value></data>
-  <data name="SetRomajiDesc.Text" xml:space="preserve"><value>在桌面歌词每行下方显示日语罗马音。优先使用歌词源提供的罗马音，没有时自行转写假名行（含汉字的行需要歌词源提供）。</value></data>
+  <data name="SetRomajiDesc.Text" xml:space="preserve"><value>在每行歌词下方显示日语罗马音：主窗口、迷你窗口、桌面歌词、任务栏歌词和手机端。罗马音来自网易云音乐；纯假名的歌曲会在本地转写。</value></data>
   <data name="BrowseButton.Content" xml:space="preserve"><value>浏览…</value></data>
   <data name="ClearButton.Content" xml:space="preserve"><value>清除</value></data>
   <data name="HdrOverlay.Text" xml:space="preserve"><value>桌面歌词</value></data>
@@ -601,4 +601,8 @@
   <data name="UpdateBarButton.Content" xml:space="preserve"><value>更新</value></data>
   <data name="UpdateBarTitle" xml:space="preserve"><value>MediaDuet {0} 已发布</value></data>
   <data name="UpdateBarMessage" xml:space="preserve"><value>一键下载并安装，完成后自动重启。</value></data>
+  <data name="RomajiButton.Content" xml:space="preserve"><value>音</value></data>
+  <data name="RomajiButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>显示或隐藏罗马音</value></data>
+  <data name="RomajiButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>歌词罗马音</value></data>
+  <data name="LyricsMenuRomaji" xml:space="preserve"><value>显示罗马音</value></data>
 </root>

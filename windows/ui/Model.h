@@ -358,6 +358,7 @@ namespace mdui
         int64_t d{ 0 };
         std::string text;
         std::string tr;   // translated line ("tr"), empty when there is none
+        std::string ro;   // romanised line ("ro", Japanese romaji), empty when there is none
         std::vector<LyricWord> words;
     };
 
@@ -371,6 +372,7 @@ namespace mdui
         std::string source;
         bool synced{ false };
         bool hasTranslation{ false };   // at least one line carries a translation
+        bool hasRomaji{ false };        // at least one line carries romaji
         std::vector<LyricLine> lines;
         // The song these lyrics were found for (newer hosts; empty / -1 otherwise).
         std::string title;

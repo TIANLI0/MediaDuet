@@ -47,12 +47,13 @@ namespace mdui
             Callbacks callbacks);
         void Detach();
 
-        void Build(Lyrics const& lyrics, bool translationOn);
+        void Build(Lyrics const& lyrics, bool translationOn, bool romajiOn);
         void Clear();
         bool Empty() const { return m_lines.empty(); }
         bool Synced() const { return m_synced; }
         int ActiveLine() const { return m_active; }
         void SetTranslation(bool on);
+        void SetRomaji(bool on);
         // User scale of the height-based font size (ui.lyricsScale); rebuilds in place when it changes.
         static constexpr double kMinFontScale = 0.7, kMaxFontScale = 1.6, kFontScaleStep = 0.1;
         void SetFontScale(double scale);
@@ -106,6 +107,7 @@ namespace mdui
         bool m_dark{ false };
         bool m_colorsSet{ false };
         bool m_translationOn{ true };
+        bool m_romajiOn{ false };
         bool m_animations{ true };
         int m_active{ -2 };
         int m_pinned{ -1 };

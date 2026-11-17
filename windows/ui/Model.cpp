@@ -627,6 +627,7 @@ namespace mdui
             line.d = JInt(lj, "d", 0);
             line.text = JStr(lj, "text");
             line.tr = JStr(lj, "tr");
+            line.ro = JStr(lj, "ro");
             for (auto const& wj : JArr(lj, "words"))
             {
                 if (!wj.is_object()) continue;
@@ -641,6 +642,7 @@ namespace mdui
         // "hasTranslation" is informative; what matters is whether any line actually carries one
         // (a flag without any "tr" would show a toggle that does nothing).
         l.hasTranslation = std::any_of(l.lines.begin(), l.lines.end(), [](auto const& x) { return !x.tr.empty(); });
+        l.hasRomaji = std::any_of(l.lines.begin(), l.lines.end(), [](auto const& x) { return !x.ro.empty(); });
         if (l.synced)
             std::stable_sort(l.lines.begin(), l.lines.end(), [](auto const& a, auto const& b) { return a.t < b.t; });
         return l;
@@ -694,6 +696,7 @@ namespace mdui
             mix(std::to_string(l.t));
             mix(l.text);
             mix(l.tr);
+            mix(l.ro);
             for (auto const& w : l.words) mix(std::to_string(w.t) + "/" + std::to_string(w.d));
         }
         return key + "|" + source + "|" + std::to_string(lines.size()) + (synced ? "s" : "u") + (hasTranslation ? "|tr|" : "|") +
