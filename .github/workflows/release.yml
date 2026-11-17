@@ -5,6 +5,9 @@ name: Release
 # Android signing needs these repository secrets (Settings > Secrets and variables > Actions):
 #   ANDROID_KEYSTORE_BASE64  base64 of the release keystore (.jks)
 #   ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
+# Windows code signing (Certum, TIANLI0/codesign): secrets CERTUM_EMAIL and CERTUM_OTPAUTH and the variable
+# CERTUM_THUMBPRINT in the "codesign" environment (main and v* tags only). The own binaries, setup.exe and its
+# uninstall.exe are signed; the Windows App SDK files keep Microsoft's signature.
 on:
   push:
     tags: ["v*"]
@@ -50,15 +53,29 @@ jobs:
     name: Windows x64 (installer + zip)
     needs: version
     runs-on: windows-2025
+    environment: codesign
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.version.outputs.tag }}
       # fluentsetup CLI + installer runtime (verified download of the pinned release), on PATH.
       - uses: TIANLI0/FluentSetup@latest
-      - name: Build, test and package
+      - name: Build and test
         shell: pwsh
-        run: windows/packaging/package.ps1 -Arch x64 -Version ${{ needs.version.outputs.version }}
+        run: windows/packaging/package.ps1 -Arch x64 -Version ${{ needs.version.outputs.version }} -NoPackage
+      # Signed in only after the build, so no build tool runs with the signing session open.
+      - name: Code signing login (Certum)
+        uses: TIANLI0/codesign@v1
+        with:
+          email: ${{ secrets.CERTUM_EMAIL }}
+          otpauth: ${{ secrets.CERTUM_OTPAUTH }}
+          thumbprint: ${{ vars.CERTUM_THUMBPRINT }}
+      - name: Sign and package
+        shell: pwsh
+        run: windows/packaging/pack.ps1 -Arch x64 -Version ${{ needs.version.outputs.version }}
+      - name: Code signing logout
+        if: always()
+        uses: TIANLI0/codesign/logout@v1
       - uses: actions/upload-artifact@v4
         with:
           name: windows
