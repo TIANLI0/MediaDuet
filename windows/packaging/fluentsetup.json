@@ -21,7 +21,9 @@
   // when its setup is gone (the in-app updater deletes it after updating).
   // Uninstall: phone sign-in is revoked first (MediaDuet.exe --unlock-remove, may ask for administrator rights);
   // if that fails nothing is removed. Pairings, settings and cache are deleted only if the user agrees.
-  "variables": { "Version": "0.0.0-dev", "Arch": "x64" },
+  // Code signing (release workflow only: pack.ps1 adds --sign -D CodesignThumbprint=<Certum certificate>): FluentSetup
+  // signs setup.exe and the uninstall.exe it installs; local builds stay unsigned.
+  "variables": { "Version": "0.0.0-dev", "Arch": "x64", "CodesignThumbprint": "" },
   "app": {
     "id": "MediaDuet",
     "name": "MediaDuet",
@@ -29,6 +31,8 @@
     "version": "$(Version)",
     "description": "MediaDuet",
     "website": "https://github.com/TIANLI0/MediaDuet",
+    "supportUrl": "https://github.com/TIANLI0/MediaDuet/issues",
+    "releaseNotesUrl": "https://github.com/TIANLI0/MediaDuet/releases",
     "icon": "../app/resources/app.ico",
     "mainExecutable": "MediaDuet.exe",
     "appUserModelId": "MediaDuet.Host"
@@ -74,9 +78,16 @@
   },
   "ui": {
     "license": "../../LICENSE",
+    "licenseStyle": "inline",
     "defaultLanguage": "auto"
   },
   "update": { "github": "TIANLI0/MediaDuet", "checksums": "SHA256SUMS.txt" },
+  "signing": {
+    "enabled": false,
+    "provider": "signtool",
+    "certificateThumbprint": "$(CodesignThumbprint)",
+    "timestampUrl": "http://time.certum.pl"
+  },
   "output": {
     "fileName": "MediaDuet-{Version}-{Architecture}-setup.exe",
     "architecture": "x64",

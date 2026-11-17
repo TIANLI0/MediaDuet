@@ -6,8 +6,9 @@
   1. CMake/Ninja build of the native host (MediaDuet.exe), probe and unit tests.
   2. MSBuild of the WinUI 3 UI (self-contained Windows App SDK, unpackaged).
   3. Runs the unit tests.
-  4. Copies everything into dist\MediaDuet-<version>-win-<arch>\ and zips it.
-  5. Builds dist\MediaDuet-<version>-<arch>-setup.exe from the staged folder with FluentSetup
+  4. Copies everything into dist\MediaDuet-<version>-win-<arch>\.
+  5. pack.ps1: signs the own binaries (release builds), zips, and builds dist\MediaDuet-<version>-<arch>-setup.exe
+     from the staged folder with FluentSetup
      (fluentsetup.json; the fluentsetup CLI from $env:FLUENTSETUP or PATH, see
      https://github.com/TIANLI0/FluentSetup/releases; CI uses the TIANLI0/FluentSetup action).
 
@@ -16,8 +17,10 @@
 #>
 param(
     [ValidateSet('x64', 'ARM64')] [string]$Arch = 'x64',
-    [string]$Version = '1.12.0',
-    [switch]$SkipTests
+    [string]$Version = '1.12.1',
+    [switch]$SkipTests,
+    # Build and stage only; pack.ps1 then signs (release builds), zips and builds the installer.
+    [switch]$NoPackage
 )
 $ErrorActionPreference = 'Stop'
 $root = Resolve-Path (Join-Path $PSScriptRoot '..\..')
@@ -98,19 +101,7 @@ foreach ($f in 'HarmonyOS_Sans_SC_Medium.ttf', 'HarmonyOS_Sans_SC_Bold.ttf', 'Ha
 }
 if (-not (Test-Path (Join-Path $dist 'Assets\Developer.png'))) { throw 'Staged UI is missing Assets\Developer.png' }
 
-$zip = "$dist.zip"
-if (Test-Path $zip) { Remove-Item $zip }
-Compress-Archive -Path (Join-Path $dist '*') -DestinationPath $zip
-"Staged: $dist"
-"Zip:    $zip ({0:N1} MB)" -f ((Get-Item $zip).Length / 1MB)
-
-# Installer (FluentSetup), if the CLI is available.
-$fluentsetup = if ($env:FLUENTSETUP) { $env:FLUENTSETUP } else { (Get-Command fluentsetup -ErrorAction SilentlyContinue).Source }
-if ($fluentsetup) {
-    $fsArch = $Arch.ToLowerInvariant()
-    & $fluentsetup build (Join-Path $PSScriptRoot 'fluentsetup.json') -D "Version=$Version" -D "Arch=$Arch" --arch $fsArch -o (Join-Path $root 'dist')
-    if ($LASTEXITCODE) { throw 'FluentSetup failed' }
-    "Setup:  " + (Join-Path $root "dist\MediaDuet-$Version-$fsArch-setup.exe")
-} else {
-    'fluentsetup not found: skipped setup.exe (install FluentSetup from https://github.com/TIANLI0/FluentSetup/releases or set FLUENTSETUP).'
-}
+# Packaging (code signing for releases, zip, installer) is pack.ps1, so the release workflow can sign in to the
+# code-signing service between building and packaging.
+if ($NoPackage) { "Staged: $dist"; return }
+& (Join-Path $PSScriptRoot 'pack.ps1') -Arch $Arch -Version $Version
