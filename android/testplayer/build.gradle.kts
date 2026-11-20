@@ -7,7 +7,9 @@ plugins {
 // MediaDuet app can be verified on an emulator without third-party apps.
 android {
     namespace = "app.mediaduet.testplayer"
-    compileSdk = 37
+    compileSdk {
+        version = release(37) { minorApiLevel = 2 }
+    }
     buildToolsVersion = "37.0.0"
 
     defaultConfig {

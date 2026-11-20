@@ -13,7 +13,9 @@ val protocolVectors = rootProject.file("../protocol/test-vectors/crypto-v1.json"
 
 android {
     namespace = "app.mediaduet"
-    compileSdk = 37
+    compileSdk {
+        version = release(37) { minorApiLevel = 2 }
+    }
     buildToolsVersion = "37.0.0"
 
     defaultConfig {

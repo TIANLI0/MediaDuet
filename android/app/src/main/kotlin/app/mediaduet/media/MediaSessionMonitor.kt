@@ -369,7 +369,7 @@ class MediaSessionMonitor(
     fun setActiveSessionVolume(index: Int) {
         val active = SnapshotBuilder.pickActive(states)?.key ?: return
         val t = tracked.values.firstOrNull { it.key == active } ?: return
-        val info = t.controller.playbackInfo ?: return
+        val info = t.controller.playbackInfo
         if (info.playbackType != MediaController.PlaybackInfo.PLAYBACK_TYPE_LOCAL) return
         t.controller.setVolumeTo(index, 0)
     }
