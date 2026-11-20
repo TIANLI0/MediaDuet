@@ -34,11 +34,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -67,7 +65,14 @@ import app.mediaduet.ui.SettingsRoute
 import app.mediaduet.ui.UiContext
 import app.mediaduet.ui.components.AppIcons
 import app.mediaduet.ui.components.GlassButton
+import app.mediaduet.ui.components.ButtonHeight
+import app.mediaduet.ui.components.CardRadius
 import app.mediaduet.ui.components.GlassCard
+import app.mediaduet.ui.components.GlassTextButton
+import app.mediaduet.ui.components.ListDivider
+import app.mediaduet.ui.components.RowIconGap
+import app.mediaduet.ui.components.RowIconSize
+import androidx.compose.ui.draw.shadow
 import app.mediaduet.ui.theme.LocalGlass
 import app.mediaduet.util.VersionCompat
 import com.kyant.backdrop.Backdrop
@@ -84,7 +89,7 @@ fun WorkModeCard(ui: UiContext) {
             haptics.performHapticFeedback(HapticFeedbackType.Confirm)
             ui.engine.settings.setMode(WorkMode.LINKED)
         }
-        HorizontalDivider(Modifier.padding(start = 58.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
+        ListDivider(icon = true, cardPadding = NAV_ROW_PADDING)
         ModeRow(AppIcons.Phone, stringResource(R.string.mode_standalone), stringResource(R.string.mode_standalone_text), !mode.linked) {
             haptics.performHapticFeedback(HapticFeedbackType.Confirm)
             ui.engine.settings.setMode(WorkMode.STANDALONE)
@@ -100,11 +105,11 @@ private fun ModeRow(icon: ImageVector, title: String, text: String, selected: Bo
             .fillMaxWidth()
             .clickable(role = Role.RadioButton, onClick = onClick)
             .heightIn(min = 64.dp)
-            .padding(horizontal = 20.dp, vertical = 14.dp),
+            .padding(horizontal = NAV_ROW_PADDING, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, null, Modifier.size(22.dp), tint = if (selected) glass.accent else MaterialTheme.colorScheme.onSurface)
-        Spacer(Modifier.width(16.dp))
+        Icon(icon, null, Modifier.size(RowIconSize), tint = if (selected) glass.accent else MaterialTheme.colorScheme.onSurface)
+        Spacer(Modifier.width(RowIconGap))
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyLarge, color = if (selected) glass.accent else MaterialTheme.colorScheme.onSurface)
             Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -117,8 +122,9 @@ private fun ModeRow(icon: ImageVector, title: String, text: String, selected: Bo
 }
 
 /**
- * First run (no choice yet and nothing paired): a calm welcome over the player asking how the app
- * will be used. Two large glass cards; the choice is changeable in Settings.
+ * First run (no choice yet and nothing paired): a calm welcome over the app asking how it will be
+ * used. Two large cards on one opaque surface (the selected one marked only by the accent); the
+ * choice is changeable in Settings.
  */
 @Composable
 fun ModeWelcome(ui: UiContext, backdrop: Backdrop, reduced: Boolean) {
@@ -131,8 +137,8 @@ fun ModeWelcome(ui: UiContext, backdrop: Backdrop, reduced: Boolean) {
         Box(
             Modifier
                 .fillMaxSize()
-                // Calm and nearly opaque: only the blurred artwork colour shows through.
-                .background(glass.background.copy(alpha = 0.97f))
+                // Opaque: nothing of the app behind it shows through.
+                .background(glass.background)
                 .clickable(remember { MutableInteractionSource() }, indication = null) { },
             contentAlignment = Alignment.Center,
         ) {
@@ -157,11 +163,11 @@ fun ModeWelcome(ui: UiContext, backdrop: Backdrop, reduced: Boolean) {
                     textAlign = TextAlign.Center,
                 )
                 Spacer(Modifier.height(28.dp))
-                ModeChoice(backdrop, AppIcons.Computer, stringResource(R.string.mode_linked), stringResource(R.string.mode_linked_text), pick == WorkMode.LINKED) {
+                ModeChoice(AppIcons.Computer, stringResource(R.string.mode_linked), stringResource(R.string.mode_linked_text), pick == WorkMode.LINKED) {
                     pick = WorkMode.LINKED
                 }
                 Spacer(Modifier.height(12.dp))
-                ModeChoice(backdrop, AppIcons.Phone, stringResource(R.string.mode_standalone), stringResource(R.string.mode_standalone_text), pick == WorkMode.STANDALONE) {
+                ModeChoice(AppIcons.Phone, stringResource(R.string.mode_standalone), stringResource(R.string.mode_standalone_text), pick == WorkMode.STANDALONE) {
                     pick = WorkMode.STANDALONE
                 }
                 Spacer(Modifier.height(28.dp))
@@ -169,7 +175,7 @@ fun ModeWelcome(ui: UiContext, backdrop: Backdrop, reduced: Boolean) {
                     ui.engine.settings.setMode(pick)
                     // Linking with a PC starts on the Devices tab, where pairing mode is opened.
                     if (pick == WorkMode.LINKED) ui.openSettings(SettingsRoute.CONNECTION)
-                }, backdrop, Modifier.fillMaxWidth(), prominent = true, height = 52.dp) {
+                }, backdrop, Modifier.fillMaxWidth(), prominent = true, height = ButtonHeight.Large) {
                     Text(stringResource(R.string.mode_continue), style = MaterialTheme.typography.labelLarge)
                 }
             }
@@ -178,21 +184,23 @@ fun ModeWelcome(ui: UiContext, backdrop: Backdrop, reduced: Boolean) {
 }
 
 @Composable
-private fun ModeChoice(backdrop: Backdrop, icon: ImageVector, title: String, text: String, selected: Boolean, onClick: () -> Unit) {
+private fun ModeChoice(icon: ImageVector, title: String, text: String, selected: Boolean, onClick: () -> Unit) {
     val glass = LocalGlass.current
     val haptics = LocalHapticFeedback.current
-    GlassCard(
-        backdrop,
+    val shape = RoundedCornerShape(CardRadius)
+    // Both cards share one opaque surface and shadow; only the accent (ring, icon) marks the choice.
+    Column(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp))
-            .border(if (selected) 2.dp else 0.dp, if (selected) glass.accent else Color.Transparent, RoundedCornerShape(24.dp))
+            .shadow(8.dp, shape, clip = false, ambientColor = Color.Black.copy(alpha = 0.3f), spotColor = Color.Black.copy(alpha = 0.3f))
+            .background(glass.solid, shape)
+            .border(2.dp, if (selected) glass.accent else Color.Transparent, shape)
+            .clip(shape)
             .clickable(role = Role.RadioButton) {
                 haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
                 onClick()
-            },
-        strong = selected,
-        contentPadding = PaddingValues(20.dp),
+            }
+            .padding(20.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
@@ -259,9 +267,8 @@ fun VersionCard(ui: UiContext, showWhenSame: Boolean) {
         val pair = "$local|$version"
         if (level == VersionCompat.Level.MISMATCH && dismissed != pair) {
             Spacer(Modifier.height(4.dp))
-            TextButton({ ui.engine.settings.dismissVersionWarning(pair) }, contentPadding = PaddingValues(horizontal = 0.dp)) {
-                Text(stringResource(R.string.version_dismiss), color = glass.accent)
-            }
+            Spacer(Modifier.height(8.dp))
+            GlassTextButton(stringResource(R.string.version_dismiss), { ui.engine.settings.dismissVersionWarning(pair) }, ui.backdrop)
         }
     }
 }
@@ -309,7 +316,7 @@ fun DeveloperCard(ui: UiContext) {
             }
         }
         Spacer(Modifier.height(12.dp))
-        HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
+        ListDivider()
         Row(
             Modifier
                 .fillMaxWidth()

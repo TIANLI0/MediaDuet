@@ -22,13 +22,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -62,6 +58,13 @@ import app.mediaduet.ui.SettingsRoute
 import app.mediaduet.ui.UiContext
 import app.mediaduet.ui.components.AppIcons
 import app.mediaduet.ui.components.GlassButton
+import app.mediaduet.ui.components.GlassTextButton
+import app.mediaduet.ui.components.GlassTextField
+import app.mediaduet.ui.components.ListDivider
+import app.mediaduet.ui.components.RowIconGap
+import app.mediaduet.ui.components.RowIconSize
+import app.mediaduet.ui.components.ThinProgressBar
+import app.mediaduet.service.LyricsSize
 import app.mediaduet.update.UpdateInfo
 import app.mediaduet.update.Updater
 import androidx.core.net.toUri
@@ -169,9 +172,17 @@ fun SettingsRoot(ui: UiContext) {
     val context = LocalContext.current
     val link by engine.link.status.collectAsStateWithLifecycle()
     val translations by engine.settings.showTranslations.collectAsStateWithLifecycle()
+    val romaji by engine.settings.showRomaji.collectAsStateWithLifecycle()
+    val lyricsSize by engine.settings.lyricsSize.collectAsStateWithLifecycle()
     val current = link.current
     val twoPane = LocalTwoPane.current
     val missing = missingPermissions(ui)
+    // Lyrics & display: the text size, then the extra lines that are on (translation, romaji).
+    val lyricsSummary = listOfNotNull(
+        lyricsSizeLabel(lyricsSize),
+        stringResource(R.string.summary_translations).takeIf { translations },
+        stringResource(R.string.summary_romaji).takeIf { romaji },
+    ).joinToString(stringResource(R.string.list_separator))
 
     ScreenScaffold(stringResource(R.string.settings_title), maxWidth = if (twoPane) 480.dp else 640.dp) {
         SectionHeader(stringResource(R.string.mode_header))
@@ -186,7 +197,7 @@ fun SettingsRoot(ui: UiContext) {
             RowDivider()
             NavRow(
                 AppIcons.QuoteBubble, stringResource(R.string.settings_lyrics_header),
-                stringResource(if (translations) R.string.summary_translations_on else R.string.summary_translations_off),
+                lyricsSummary,
                 selected = twoPane && ui.nav.route == SettingsRoute.LYRICS,
             ) { ui.openSettings(SettingsRoute.LYRICS) }
             RowDivider()
@@ -224,11 +235,11 @@ private fun NavRow(icon: ImageVector, title: String, summary: String, attention:
             .background(if (selected) glass.fill else Color.Transparent)
             .clickable(role = Role.Button, onClick = onClick)
             .heightIn(min = 60.dp)
-            .padding(horizontal = 20.dp, vertical = 16.dp),
+            .padding(horizontal = NAV_ROW_PADDING, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurface)
-        Spacer(Modifier.width(16.dp))
+        Icon(icon, null, Modifier.size(RowIconSize), tint = MaterialTheme.colorScheme.onSurface)
+        Spacer(Modifier.width(RowIconGap))
         Text(title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
         Spacer(Modifier.width(8.dp))
         Text(
@@ -245,10 +256,21 @@ private fun NavRow(icon: ImageVector, title: String, summary: String, attention:
     }
 }
 
+/** Between rows that pad themselves by [NAV_ROW_PADDING] (NavRow lists); [icon]: the rows have a leading icon. */
 @Composable
-private fun RowDivider() {
-    HorizontalDivider(Modifier.padding(start = 58.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
-}
+private fun RowDivider(icon: Boolean = true) = ListDivider(icon = icon, cardPadding = NAV_ROW_PADDING)
+
+/** Horizontal padding of rows in cards without content padding (NavRow, language list). */
+internal val NAV_ROW_PADDING = 20.dp
+
+@Composable
+fun lyricsSizeLabel(size: LyricsSize): String = stringResource(
+    when (size) {
+        LyricsSize.SMALL -> R.string.lyrics_size_small
+        LyricsSize.STANDARD -> R.string.lyrics_size_standard
+        LyricsSize.LARGE -> R.string.lyrics_size_large
+    },
+)
 
 @Composable
 private fun languageLabel(option: AppLanguage.Option): String = stringResource(
@@ -263,38 +285,32 @@ private fun languageLabel(option: AppLanguage.Option): String = stringResource(
 @Composable
 fun DeviceNameCard(ui: UiContext) {
     val settings = ui.engine.settings
-    val glass = LocalGlass.current
     val name by settings.deviceName.collectAsStateWithLifecycle()
     GlassCard(ui.backdrop, Modifier.fillMaxWidth()) {
-        var draft by remember(name) { mutableStateOf(name) }
+        val draft = remember(name) { TextFieldState(name) }
         val focus = androidx.compose.ui.platform.LocalFocusManager.current
         val savedText = stringResource(R.string.saved)
         val commit = {
-            if (draft.trim() != name) {
-                settings.setDeviceName(draft)
+            val text = draft.text.toString()
+            if (text.trim() != name) {
+                settings.setDeviceName(text)
                 ui.toast(savedText)
             }
         }
-        OutlinedTextField(
-            value = draft,
-            onValueChange = { draft = it.take(64) },
-            label = { Text(stringResource(R.string.settings_device_name)) },
-            supportingText = { Text(stringResource(R.string.settings_device_name_hint)) },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = {
+        GlassTextField(
+            state = draft,
+            backdrop = ui.backdrop,
+            label = stringResource(R.string.settings_device_name),
+            supportingText = stringResource(R.string.settings_device_name_hint),
+            maxLength = 64,
+            imeAction = ImeAction.Done,
+            onImeAction = {
                 commit()
                 focus.clearFocus()
-            }),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = glass.accent,
-                unfocusedBorderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f),
-                focusedContainerColor = Color.Transparent,
-                unfocusedContainerColor = Color.Transparent,
-            ),
+            },
             modifier = Modifier
                 .fillMaxWidth()
-                .onFocusChanged { if (!it.isFocused) commit() },
+                .onFocusChanged { if (!it.hasFocus) commit() },
         )
         Spacer(Modifier.height(8.dp))
         Text(
@@ -344,7 +360,6 @@ fun ArbitrationPage(ui: UiContext, onBack: () -> Unit) {
                     GlassButton(
                         { scope.launch { feedback = if (engine.link.sendPolicyConfig(mode)) sentText else failText } },
                         ui.backdrop,
-                        height = 36.dp,
                         enabled = canConfigure,
                         selected = policy?.mode == mode,
                     ) { Text(policyModeLabel(mode), style = MaterialTheme.typography.labelLarge) }
@@ -380,7 +395,7 @@ private fun PeerArbitrationCard(ui: UiContext) {
         Spacer(Modifier.height(16.dp))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             for (mode in PeerPolicy.MODES) {
-                GlassButton({ settings.setPeerPolicy(cfg.copy(mode = mode)) }, ui.backdrop, height = 36.dp, selected = cfg.mode == mode) {
+                GlassButton({ settings.setPeerPolicy(cfg.copy(mode = mode)) }, ui.backdrop, selected = cfg.mode == mode) {
                     Text(peerModeLabel(mode), style = MaterialTheme.typography.labelLarge)
                 }
             }
@@ -392,7 +407,7 @@ private fun PeerArbitrationCard(ui: UiContext) {
             Spacer(Modifier.height(8.dp))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 for (prio in PeerPolicy.MIN_PRIORITY..PeerPolicy.MAX_PRIORITY) {
-                    GlassButton({ settings.setPeerPolicy(cfg.copy(priority = prio)) }, ui.backdrop, height = 36.dp, selected = cfg.priority == prio) {
+                    GlassButton({ settings.setPeerPolicy(cfg.copy(priority = prio)) }, ui.backdrop, selected = cfg.priority == prio) {
                         Text(peerPriorityLabel(prio), style = MaterialTheme.typography.labelLarge)
                     }
                 }
@@ -400,7 +415,7 @@ private fun PeerArbitrationCard(ui: UiContext) {
         }
         if (cfg.mode != PeerPolicy.MODE_OFF) {
             Spacer(Modifier.height(8.dp))
-            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
+            ListDivider()
             InfoRow(
                 stringResource(R.string.peer_auto_resume),
                 subtitle = stringResource(R.string.peer_auto_resume_text),
@@ -410,7 +425,7 @@ private fun PeerArbitrationCard(ui: UiContext) {
                 onClick = { settings.setPeerPolicy(cfg.copy(autoResume = !cfg.autoResume)) },
                 role = Role.Switch,
             )
-            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
+            ListDivider()
             InfoRow(
                 stringResource(R.string.peer_calls),
                 subtitle = stringResource(R.string.peer_calls_text),
@@ -422,7 +437,7 @@ private fun PeerArbitrationCard(ui: UiContext) {
             )
         }
         Spacer(Modifier.height(8.dp))
-        HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
+        ListDivider()
         val connected = link.connectedSessions.filter { it.peer.id in peers }
         if (connected.isEmpty()) {
             Spacer(Modifier.height(8.dp))
@@ -433,7 +448,7 @@ private fun PeerArbitrationCard(ui: UiContext) {
             InfoRow(
                 s.peer.name,
                 subtitle = listOf(peerStateLabel(pp), peerModeLabel(pp.mode)).joinToString(stringResource(R.string.list_separator)),
-                leading = { Icon(platformIcon(s.peer.platform), null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                leading = { Icon(platformIcon(s.peer.platform), null, Modifier.size(RowIconSize), tint = MaterialTheme.colorScheme.onSurfaceVariant) },
             )
         }
         last?.let { a ->
@@ -466,7 +481,7 @@ fun LyricsDisplayPage(ui: UiContext, onBack: () -> Unit) {
                 onClick = { settings.setShowTranslations(!translations) },
                 role = Role.Switch,
             )
-            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
+            ListDivider()
             InfoRow(
                 stringResource(R.string.settings_romaji),
                 subtitle = stringResource(R.string.settings_romaji_text),
@@ -476,7 +491,7 @@ fun LyricsDisplayPage(ui: UiContext, onBack: () -> Unit) {
                 onClick = { settings.setShowRomaji(!romaji) },
                 role = Role.Switch,
             )
-            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
+            ListDivider()
             InfoRow(
                 stringResource(R.string.settings_online_lyrics),
                 subtitle = stringResource(R.string.settings_online_lyrics_text),
@@ -486,9 +501,10 @@ fun LyricsDisplayPage(ui: UiContext, onBack: () -> Unit) {
                 onClick = { settings.setOnlineLyrics(!online) },
                 role = Role.Switch,
             )
-            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
+            ListDivider()
             Spacer(Modifier.height(4.dp))
-            LyricsSizePicker(lyricsSize) { settings.setLyricsSize(it) }
+            // No icon, like the switch rows above it.
+            LyricsSizePicker(lyricsSize, icon = false) { settings.setLyricsSize(it) }
         }
         LyricsNotificationSettings(ui)
         LyricsTimingSettings(ui)
@@ -535,7 +551,7 @@ private fun LyricsNotificationSettings(ui: UiContext) {
         if (enabled && !ui.permissions.notifications) {
             Text(stringResource(R.string.settings_mirror_needs_notifications), style = MaterialTheme.typography.bodySmall, color = glass.warn)
         } else if (enabled && !promoted && Build.VERSION.SDK_INT >= 36) {
-            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
+            ListDivider()
             InfoRow(
                 stringResource(R.string.settings_live_updates),
                 subtitle = stringResource(R.string.settings_live_updates_text),
@@ -628,14 +644,12 @@ private fun LyricsTimingSettings(ui: UiContext) {
         val names = local.associate { it.packageName to it.appName } +
             remote?.snapshot?.sessions.orEmpty().associate { it.appId to it.appName.ifEmpty { it.appId } }
         for ((i, entry) in offsets.entries.sortedBy { names[it.key] ?: it.key }.withIndex()) {
-            if (i > 0) HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
+            if (i > 0) ListDivider()
             InfoRow(
                 names[entry.key] ?: entry.key,
                 subtitle = stringResource(R.string.lyrics_offset_value, app.mediaduet.remote.LyricsDelay.signedSeconds(entry.value)),
                 trailing = {
-                    androidx.compose.material3.TextButton({ ui.engine.setLyricOffset(entry.key, 0) }) {
-                        Text(stringResource(R.string.reset))
-                    }
+                    GlassTextButton(stringResource(R.string.reset), { ui.engine.setLyricOffset(entry.key, 0) }, ui.backdrop)
                 },
                 modifier = Modifier.heightIn(min = 60.dp),
             )
@@ -695,13 +709,13 @@ fun LanguagePage(ui: UiContext, onBack: () -> Unit) {
     ScreenScaffold(stringResource(R.string.settings_language_header), stringResource(R.string.settings_language_text), ui.backdrop, onBack) {
         GlassCard(ui.backdrop, Modifier.fillMaxWidth(), contentPadding = PaddingValues(vertical = 4.dp)) {
             for ((i, option) in AppLanguage.Option.entries.withIndex()) {
-                if (i > 0) RowDivider()
+                if (i > 0) RowDivider(icon = false)
                 Row(
                     Modifier
                         .fillMaxWidth()
                         .clickable(role = Role.RadioButton) { context.findActivity()?.let { AppLanguage.set(it, option) } }
                         .heightIn(min = 60.dp)
-                        .padding(horizontal = 20.dp, vertical = 16.dp),
+                        .padding(horizontal = NAV_ROW_PADDING, vertical = 16.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(languageLabel(option), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
@@ -795,7 +809,7 @@ private fun CrashReportCard(ui: UiContext) {
                         .putExtra(android.content.Intent.EXTRA_TEXT, text)
                     context.launchSafely(android.content.Intent.createChooser(send, subject))
                 },
-                ui.backdrop, height = 44.dp, prominent = true,
+                ui.backdrop, prominent = true,
             ) { Text(stringResource(R.string.diag_crash_share)) }
             GlassButton(
                 {
@@ -803,14 +817,14 @@ private fun CrashReportCard(ui: UiContext) {
                     cm?.setPrimaryClip(android.content.ClipData.newPlainText(subject, text))
                     ui.toast(copied)
                 },
-                ui.backdrop, height = 44.dp,
+                ui.backdrop,
             ) { Text(stringResource(R.string.diag_crash_copy)) }
             GlassButton(
                 {
                     log.markSeen()
                     report = null
                 },
-                ui.backdrop, height = 44.dp,
+                ui.backdrop,
             ) { Text(stringResource(R.string.dismiss)) }
         }
     }
@@ -885,21 +899,16 @@ private fun UpdateCard(ui: UiContext) {
         detail?.let {
             Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp))
         }
-        progress?.let {
-            androidx.compose.material3.LinearProgressIndicator(
-                progress = { it },
-                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                color = LocalGlass.current.accent,
-            )
-        }
+        progress?.let { ThinProgressBar({ it }, Modifier.padding(top = 12.dp)) }
         Spacer(Modifier.height(12.dp))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             action?.let { (label, run) ->
-                GlassButton(run, ui.backdrop, height = 44.dp, prominent = state is Updater.State.Available || state is Updater.State.NeedsPermission) { Text(label) }
+                GlassButton(run, ui.backdrop, prominent = state is Updater.State.Available || state is Updater.State.NeedsPermission) { Text(label) }
             }
-            val page = release?.page?.takeIf { release != null && UpdateInfo.isNewer(release.version, current) }
+            val r = release
+            val page = r?.page?.takeIf { UpdateInfo.isNewer(r.version, current) }
             if (page != null) {
-                GlassButton({ context.launchSafely(android.content.Intent(android.content.Intent.ACTION_VIEW, page.toUri())) }, ui.backdrop, height = 44.dp) {
+                GlassButton({ context.launchSafely(android.content.Intent(android.content.Intent.ACTION_VIEW, page.toUri())) }, ui.backdrop) {
                     Text(stringResource(R.string.update_notes))
                 }
             }

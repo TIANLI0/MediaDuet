@@ -27,6 +27,9 @@ data class GlassColors(
     val background: Color,
     val surface: Color,
     val surfaceStrong: Color,
+    /** Opaque card surface (where nothing may show through, e.g. the first-run choice). */
+    val solid: Color,
+    /** Floating bars (tab bar, mini player); see BarGlass. */
     val bar: Color,
     val fill: Color,
     val track: Color,
@@ -49,6 +52,7 @@ private val lightGlass = run {
         background = Color(0xFFF5F5F7),
         surface = Color.White.copy(alpha = if (fx) 0.55f else 0.88f),
         surfaceStrong = Color.White.copy(alpha = if (fx) 0.78f else 0.96f),
+        solid = Color.White,
         bar = Color(0xFFFAFAFA).copy(alpha = if (fx) 0.45f else 0.92f),
         fill = Color(0xFF1D1D1F).copy(alpha = 0.06f),
         track = Color(0xFF787880).copy(alpha = 0.2f),
@@ -71,6 +75,7 @@ private val darkGlass = run {
         background = Color(0xFF0B0B0C),
         surface = Color(0xFF1C1C1E).copy(alpha = if (fx) 0.5f else 0.9f),
         surfaceStrong = Color(0xFF2C2C2E).copy(alpha = if (fx) 0.78f else 0.96f),
+        solid = Color(0xFF1C1C1E),
         bar = Color(0xFF121212).copy(alpha = if (fx) 0.45f else 0.92f),
         fill = Color.White.copy(alpha = 0.08f),
         track = Color(0xFF787880).copy(alpha = 0.36f),

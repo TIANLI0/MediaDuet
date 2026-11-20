@@ -55,6 +55,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import app.mediaduet.R
@@ -105,6 +106,11 @@ class UiContext(
     val setNav: (NavState) -> Unit,
     val toast: (String) -> Unit,
     val confirm: (ConfirmRequest) -> Unit,
+    /**
+     * The player reports how far from the bottom of the window its bottom controls reach, so
+     * toasts float above them instead of covering them (0 dp: just above the bottom inset).
+     */
+    val liftToast: (Dp) -> Unit = {},
 ) {
     fun openSettings(route: SettingsRoute?) = setNav(nav.open(route))
     fun openPlayer() = setNav(nav.showPlayer())
@@ -132,6 +138,7 @@ fun MediaDuetRoot(engine: Engine, requestedPage: MutableState<String?>) {
     val navState = rememberSaveable(saver = NavSaver) { mutableStateOf(NavState()) }
     var nav by navState
     var toast by remember { mutableStateOf<Toast?>(null) }
+    var playerToastLift by remember { mutableStateOf(0.dp) }
     var confirm by remember { mutableStateOf<ConfirmRequest?>(null) }
 
     LaunchedEffect(requestedPage.value) {
@@ -177,6 +184,7 @@ fun MediaDuetRoot(engine: Engine, requestedPage: MutableState<String?>) {
         setNav = { nav = it },
         toast = { text -> if (toast?.text != text) toast = Toast(System.nanoTime(), text) },
         confirm = { confirm = it },
+        liftToast = { playerToastLift = it },
     )
 
     // One back handler for the whole back stack (see NavState.back). Settings pages follow the
@@ -267,7 +275,7 @@ fun MediaDuetRoot(engine: Engine, requestedPage: MutableState<String?>) {
                     TabBar(nav.tab, overlayBackdrop, onSelect = { nav = nav.select(it) }, onReselect = { nav = nav.select(it) })
                 }
             }
-            ToastHost(toast, bottomInset, overlayBackdrop, reduced) { toast = null }
+            ToastHost(toast, if (nav.playerOpen) maxOf(bottomInset, playerToastLift) else bottomInset, overlayBackdrop, reduced) { toast = null }
             PairingOverlay(engine, overlayBackdrop) { nav = nav.open(SettingsRoute.CONNECTION) }
             ModeWelcome(ui, ui.backdrop, reduced)
             ConfirmHost(confirm, overlayBackdrop, reduced) { confirm = null }

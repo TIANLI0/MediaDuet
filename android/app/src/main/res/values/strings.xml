@@ -272,14 +272,14 @@
     <string name="banner_access">Media access is off — tap to fix</string>
     <string name="banner_pair">Pair a PC or another device to get started</string>
     <string name="summary_all_set">All set</string>
-    <string name="summary_translations_on">Translations on</string>
-    <string name="summary_translations_off">Translations off</string>
+    <string name="summary_translations">Translations</string>
+    <string name="summary_romaji">Romaji</string>
     <string name="summary_on">On</string>
     <string name="summary_off">Off</string>
     <string name="summary_streaming">Streaming</string>
     <string name="settings_lyrics_header">Lyrics &amp; display</string>
     <string name="settings_translations">Show translation</string>
-    <string name="settings_translations_text">Show translated lines (when the PC provides them) under the original lyrics.</string>
+    <string name="settings_translations_text">Show translated lines under the original lyrics, when the lyrics have them.</string>
     <string name="settings_romaji">Show romaji</string>
     <string name="lyrics_romaji_toggle">Romaji</string>
     <string name="settings_romaji_text">Show the Japanese romanisation under each line. Uses the provider\'s romaji when it has one, otherwise romanises kana lines itself (kanji lines need the provider).</string>
@@ -307,7 +307,6 @@
     <string name="volume_mute">Mute</string>
     <string name="volume_unmute">Unmute</string>
     <string name="volume_fixed">The volume of this device is fixed by the system.</string>
-    <string name="target_auto_caption">Auto · %1$s</string>
     <string name="target_auto">Automatic</string>
     <string name="target_auto_text">Follows whatever started playing most recently</string>
 
@@ -358,7 +357,7 @@
     <string name="route_other">Other output</string>
     <string name="settings_bt_delay">Bluetooth delay</string>
     <string name="settings_offsets">Per-app adjustments</string>
-    <string name="settings_offsets_empty">None yet. If lyrics run early or late for an app, use the stopwatch button in the lyrics view.</string>
+    <string name="settings_offsets_empty">None yet. If lyrics run early or late for an app, adjust Lyrics timing under the ⋯ button in the lyrics view.</string>
     <string name="reset">Reset</string>
     <string name="lyrics_show">Show lyrics</string>
     <string name="lyrics_hide">Hide lyrics</string>

@@ -333,7 +333,7 @@ fun SyncedLyrics(
             exit = fadeOut() + scaleOut(targetScale = 0.9f),
             modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp + bottomObscured),
         ) {
-            GlassButton({ browsing = false }, rememberCombinedBackdrop(backdrop, lyricsLayer), height = 44.dp) {
+            GlassButton({ browsing = false }, rememberCombinedBackdrop(backdrop, lyricsLayer)) {
                 Text(stringResource(R.string.lyrics_back_to_current), style = MaterialTheme.typography.labelLarge)
             }
         }
@@ -535,12 +535,13 @@ private fun GapItem(row: GapRow, isActive: Boolean, reduced: Boolean, position: 
     )
 }
 
-/** Static list for plain (unsynced) lyrics. */
+/** Static list for plain (unsynced) lyrics, at the chosen lyrics size ([textScale]). */
 @Composable
-fun PlainLyrics(lines: List<String>, modifier: Modifier = Modifier) {
+fun PlainLyrics(lines: List<String>, modifier: Modifier = Modifier, textScale: Float = 1f) {
+    val style = remember(textScale) { LyricStyle.copy(fontSize = 22.sp, lineHeight = 30.sp, fontWeight = FontWeight.SemiBold).scaled(textScale) }
     Column(modifier.fillMaxWidth()) {
         for (l in lines) {
-            Text(l, style = LyricStyle.copy(fontSize = 22.sp, lineHeight = 30.sp, fontWeight = FontWeight.SemiBold), modifier = Modifier.padding(vertical = 8.dp))
+            Text(l, style = style, modifier = Modifier.padding(vertical = 8.dp))
         }
     }
 }

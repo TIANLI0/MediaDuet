@@ -59,7 +59,10 @@ data class ConfirmRequest(
     val onConfirm: () -> Unit,
 )
 
-/** Small, non-blocking glass toast above the bottom bars; auto-hides after 2.5 s. */
+/**
+ * Small, non-blocking glass toast above the bottom bars (in the player: above its bottom controls);
+ * a capsule-like card as wide as its text. Auto-hides after 2.5 s.
+ */
 @Composable
 fun ToastHost(toast: Toast?, bottomInset: Dp, backdrop: Backdrop, reduced: Boolean, onDone: () -> Unit) {
     LaunchedEffect(toast?.id) {
@@ -79,10 +82,10 @@ fun ToastHost(toast: Toast?, bottomInset: Dp, backdrop: Backdrop, reduced: Boole
                 backdrop,
                 Modifier.padding(horizontal = 24.dp).widthIn(max = 480.dp),
                 strong = true,
-                cornerRadius = 20.dp,
+                cornerRadius = 22.dp,
                 contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
             ) {
-                Text(t.text, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+                Text(t.text, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
             }
         }
     }
@@ -117,13 +120,13 @@ fun ConfirmHost(request: ConfirmRequest?, backdrop: Backdrop, reduced: Boolean, 
                     Text(r.text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(24.dp))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        GlassButton(onDismiss, backdrop, Modifier.weight(1f), height = 48.dp) { Text(r.cancelLabel) }
+                        GlassButton(onDismiss, backdrop, Modifier.weight(1f)) { Text(r.cancelLabel) }
                         GlassButton(
                             {
                                 r.onConfirm()
                                 onDismiss()
                             },
-                            backdrop, Modifier.weight(1f), height = 48.dp, prominent = !r.destructive, destructive = r.destructive,
+                            backdrop, Modifier.weight(1f), prominent = !r.destructive, destructive = r.destructive,
                         ) { Text(r.confirmLabel) }
                     }
                 }

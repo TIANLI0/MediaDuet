@@ -91,10 +91,10 @@ fun PairingOverlay(engine: Engine, backdrop: Backdrop, onRetry: () -> Unit) {
                         )
                     } else {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            GlassButton({ engine.pairing.reject(p.attemptId) }, backdrop, Modifier.weight(1f), height = 48.dp) {
+                            GlassButton({ engine.pairing.reject(p.attemptId) }, backdrop, Modifier.weight(1f)) {
                                 Text(stringResource(R.string.pair_reject))
                             }
-                            GlassButton({ engine.pairing.accept(p.attemptId) }, backdrop, Modifier.weight(1f), height = 48.dp, prominent = true) {
+                            GlassButton({ engine.pairing.accept(p.attemptId) }, backdrop, Modifier.weight(1f), prominent = true) {
                                 Text(stringResource(R.string.pair_accept))
                             }
                         }
@@ -132,8 +132,8 @@ fun PairingOverlay(engine: Engine, backdrop: Backdrop, onRetry: () -> Unit) {
                             engine.pairing.clearOutcome()
                             engine.pairing.open()
                             onRetry()
-                        }, backdrop, height = 40.dp, prominent = true) { Text(stringResource(R.string.pairing_retry)) }
-                        GlassButton({ engine.pairing.clearOutcome() }, backdrop, height = 40.dp) { Text(stringResource(R.string.dismiss)) }
+                        }, backdrop, prominent = true) { Text(stringResource(R.string.pairing_retry)) }
+                        GlassButton({ engine.pairing.clearOutcome() }, backdrop) { Text(stringResource(R.string.dismiss)) }
                     }
                 }
             }

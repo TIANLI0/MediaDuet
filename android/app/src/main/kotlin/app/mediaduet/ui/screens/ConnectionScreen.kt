@@ -21,7 +21,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.rememberCoroutineScope
@@ -50,6 +49,9 @@ import app.mediaduet.ui.UiContext
 import app.mediaduet.ui.components.AppIcons
 import app.mediaduet.ui.components.GlassButton
 import app.mediaduet.ui.components.GlassCard
+import app.mediaduet.ui.components.GlassTextButton
+import app.mediaduet.ui.components.ListDivider
+import app.mediaduet.ui.components.RowIconSize
 import app.mediaduet.ui.components.InfoRow
 import app.mediaduet.ui.components.SectionHeader
 import app.mediaduet.ui.components.StatusChip
@@ -101,15 +103,16 @@ fun ConnectionPage(ui: UiContext) {
                 if (others.isNotEmpty()) {
                     Spacer(Modifier.height(12.dp))
                     Text(stringResource(R.string.conn_also_connected), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    for (o in others) {
+                    for ((i, o) in others.withIndex()) {
+                        if (i > 0) ListDivider(icon = true)
                         InfoRow(
                             o.peer.name,
                             subtitle = listOfNotNull(
                                 o.transports.firstOrNull()?.let { transportLabel(it.kind) },
                                 o.rttMs?.let { stringResource(R.string.conn_rtt, it) },
                             ).joinToString(stringResource(R.string.list_separator)),
-                            leading = { Icon(platformIcon(o.peer.platform), null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) },
-                            trailing = { TextButton({ engine.focusPeer(o.peer.id) }) { Text(stringResource(R.string.conn_show_in_player)) } },
+                            leading = { Icon(platformIcon(o.peer.platform), null, Modifier.size(RowIconSize), tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                            trailing = { GlassTextButton(stringResource(R.string.conn_show_in_player), { engine.focusPeer(o.peer.id) }, ui.backdrop) },
                         )
                     }
                 }
@@ -173,8 +176,9 @@ fun ConnectionPage(ui: UiContext) {
             if (peers.isEmpty()) {
                 Text(stringResource(R.string.trusted_empty), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            for (p in peers) {
+            for ((i, p) in peers.withIndex()) {
                 val connected = link.sessions.any { it.peer.id == p.id && it.connected }
+                if (i > 0) ListDivider(icon = true)
                 InfoRow(
                     p.name,
                     subtitle = listOfNotNull(
@@ -189,15 +193,15 @@ fun ConnectionPage(ui: UiContext) {
                         },
                         p.appVersion.takeIf { it.isNotBlank() }?.let { stringResource(R.string.version_value, it) },
                     ).joinToString(stringResource(R.string.list_separator)),
-                    leading = { Icon(platformIcon(p.platform), null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                    leading = { Icon(platformIcon(p.platform), null, Modifier.size(RowIconSize), tint = MaterialTheme.colorScheme.onSurfaceVariant) },
                     trailing = {
-                        TextButton({
+                        GlassTextButton(removeLabel, {
                             ui.confirm(
                                 ConfirmRequest(revokeTitle.format(p.name), revokeText, removeLabel, cancelLabel, destructive = true) {
                                     engine.link.revoke(p.id)
                                 },
                             )
-                        }) { Text(removeLabel, color = glass.bad) }
+                        }, ui.backdrop, destructive = true)
                     },
                 )
             }
@@ -226,13 +230,14 @@ fun ConnectionPage(ui: UiContext) {
                         BluetoothListenState.ERROR -> R.string.bt_error
                     },
                 ),
-                leading = { Icon(AppIcons.Bluetooth, null, Modifier.size(24.dp), tint = if (btOk) glass.good else glass.warn) },
+                leading = { Icon(AppIcons.Bluetooth, null, Modifier.size(RowIconSize), tint = if (btOk) glass.good else glass.warn) },
                 trailing = if (transports.bluetooth == BluetoothListenState.NO_PERMISSION) {
-                    { TextButton({ ui.openSettings(SettingsRoute.PERMISSIONS) }) { Text(stringResource(R.string.fix)) } }
+                    { GlassTextButton(stringResource(R.string.fix), { ui.openSettings(SettingsRoute.PERMISSIONS) }, ui.backdrop) }
                 } else {
                     null
                 },
             )
+            ListDivider(icon = true)
             val lanOk = transports.lanAddresses.isNotEmpty() && transports.localNetworkAllowed && transports.lanPort != null
             val lanText = when {
                 transports.lanPort == null -> stringResource(R.string.lan_error, transports.lanError ?: stringResource(R.string.placeholder_none))
@@ -246,13 +251,20 @@ fun ConnectionPage(ui: UiContext) {
             InfoRow(
                 stringResource(R.string.transport_lan_tcp),
                 subtitle = lanText,
-                leading = { Icon(AppIcons.Wifi, null, Modifier.size(24.dp), tint = if (lanOk) glass.good else glass.warn) },
+                leading = { Icon(AppIcons.Wifi, null, Modifier.size(RowIconSize), tint = if (lanOk) glass.good else glass.warn) },
                 trailing = if (!transports.localNetworkAllowed) {
-                    { TextButton({ ui.openSettings(SettingsRoute.PERMISSIONS) }) { Text(stringResource(R.string.fix)) } }
+                    { GlassTextButton(stringResource(R.string.fix), { ui.openSettings(SettingsRoute.PERMISSIONS) }, ui.backdrop) }
                 } else {
                     null
                 },
             )
+            ListDivider(icon = true)
+            // Network discovery (DNS-SD): an icon coloured by its state, like the transports above.
+            val nsdTint = when (transports.nsd) {
+                NsdAdvertiser.State.REGISTERED -> glass.good
+                NsdAdvertiser.State.FAILED -> glass.warn
+                NsdAdvertiser.State.REGISTERING, NsdAdvertiser.State.OFF -> MaterialTheme.colorScheme.onSurfaceVariant
+            }
             InfoRow(
                 stringResource(R.string.nsd_title),
                 subtitle = stringResource(
@@ -263,6 +275,7 @@ fun ConnectionPage(ui: UiContext) {
                         NsdAdvertiser.State.OFF -> R.string.nsd_off
                     },
                 ),
+                leading = { Icon(AppIcons.Globe, null, Modifier.size(RowIconSize), tint = nsdTint) },
             )
         }
 
@@ -299,14 +312,16 @@ private fun NearbyDevicesCard(ui: UiContext) {
             Spacer(Modifier.height(8.dp))
             Text(stringResource(R.string.nearby_searching), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        for (d in unpaired) {
+        for ((i, d) in unpaired.withIndex()) {
             val busy = pairingWith == d.id
+            if (i > 0) ListDivider(icon = true)
             InfoRow(
                 d.name,
                 subtitle = stringResource(R.string.lan_endpoint, d.host, d.port),
-                leading = { Icon(AppIcons.Devices, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                leading = { Icon(AppIcons.Devices, null, Modifier.size(RowIconSize), tint = MaterialTheme.colorScheme.onSurfaceVariant) },
                 trailing = {
-                    TextButton(
+                    GlassTextButton(
+                        stringResource(if (busy) R.string.nearby_pairing else R.string.nearby_pair),
                         {
                             pairingWith = d.id
                             engine.pairing.clearOutcome()
@@ -319,8 +334,9 @@ private fun NearbyDevicesCard(ui: UiContext) {
                                 pairingWith = null
                             }
                         },
+                        ui.backdrop,
                         enabled = pairingWith == null,
-                    ) { Text(stringResource(if (busy) R.string.nearby_pairing else R.string.nearby_pair)) }
+                    )
                 },
             )
         }
@@ -361,7 +377,8 @@ private fun UnlockCard(ui: UiContext) {
         if (pcs.isEmpty()) {
             Text(stringResource(R.string.unlock_empty), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        for (pc in pcs) {
+        for ((i, pc) in pcs.withIndex()) {
+            if (i > 0) ListDivider(icon = true)
             InfoRow(
                 pc.pcName,
                 subtitle = if (pc.lastUsedMs > 0) {
@@ -369,15 +386,15 @@ private fun UnlockCard(ui: UiContext) {
                 } else {
                     stringResource(R.string.unlock_never_used)
                 },
-                leading = { Icon(AppIcons.Computer, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                leading = { Icon(AppIcons.Computer, null, Modifier.size(RowIconSize), tint = MaterialTheme.colorScheme.onSurfaceVariant) },
                 trailing = {
-                    TextButton({
+                    GlassTextButton(removeLabel, {
                         ui.confirm(
                             ConfirmRequest(removeTitle.format(pc.pcName), removeText, removeLabel, cancelLabel, destructive = true) {
                                 engine.removeUnlockPc(pc.enrollment)
                             },
                         )
-                    }) { Text(removeLabel, color = glass.bad) }
+                    }, ui.backdrop, destructive = true)
                 },
             )
         }
@@ -391,11 +408,11 @@ private fun UnlockCard(ui: UiContext) {
                 stringResource(R.string.unlock_overlay_title),
                 subtitle = stringResource(R.string.unlock_overlay_text),
                 trailing = {
-                    TextButton({
+                    GlassTextButton(stringResource(R.string.unlock_fullscreen_allow), {
                         runCatching {
                             context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, "package:${context.packageName}".toUri()))
                         }
-                    }) { Text(stringResource(R.string.unlock_fullscreen_allow)) }
+                    }, ui.backdrop)
                 },
             )
         }
@@ -405,13 +422,13 @@ private fun UnlockCard(ui: UiContext) {
                 stringResource(R.string.unlock_fullscreen_title),
                 subtitle = stringResource(R.string.unlock_fullscreen_text),
                 trailing = {
-                    TextButton({
+                    GlassTextButton(stringResource(R.string.unlock_fullscreen_allow), {
                         runCatching {
                             context.startActivity(
                                 Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, "package:${context.packageName}".toUri()),
                             )
                         }
-                    }) { Text(stringResource(R.string.unlock_fullscreen_allow)) }
+                    }, ui.backdrop)
                 },
             )
         }
@@ -452,13 +469,14 @@ private fun CompanionCard(ui: UiContext) {
             Text(stringResource(R.string.cdm_unsupported), color = glass.warn, style = MaterialTheme.typography.bodyMedium)
             return@GlassCard
         }
-        for (a in associations) {
+        for ((i, a) in associations.withIndex()) {
+            if (i > 0) ListDivider(icon = true)
             InfoRow(
                 a.name,
                 subtitle = a.address,
-                leading = { Icon(AppIcons.Computer, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                leading = { Icon(AppIcons.Computer, null, Modifier.size(RowIconSize), tint = MaterialTheme.colorScheme.onSurfaceVariant) },
                 trailing = {
-                    TextButton({
+                    GlassTextButton(cdmRemoveLabel, {
                         ui.confirm(
                             ConfirmRequest(cdmRemoveTitle.format(a.name), cdmRemoveText, cdmRemoveLabel, cancelLabel, destructive = true) {
                                 helper.disassociate(a)
@@ -467,7 +485,7 @@ private fun CompanionCard(ui: UiContext) {
                                 ui.refreshPermissions()
                             },
                         )
-                    }) { Text(cdmRemoveLabel, color = glass.bad) }
+                    }, ui.backdrop, destructive = true)
                 },
             )
         }
@@ -488,19 +506,20 @@ private fun CompanionCard(ui: UiContext) {
             Spacer(Modifier.height(8.dp))
             Text(stringResource(R.string.cdm_bonded), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        for (pc in bonded) {
+        for ((i, pc) in bonded.withIndex()) {
+            if (i > 0) ListDivider(icon = true)
             InfoRow(
                 pc.name,
                 subtitle = pc.address,
-                leading = { Icon(AppIcons.Computer, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                leading = { Icon(AppIcons.Computer, null, Modifier.size(RowIconSize), tint = MaterialTheme.colorScheme.onSurfaceVariant) },
                 trailing = {
-                    TextButton({ helper.associate(chooser, pc.address) }) { Text(stringResource(R.string.cdm_associate_bonded)) }
+                    GlassTextButton(stringResource(R.string.cdm_associate_bonded), { helper.associate(chooser, pc.address) }, ui.backdrop)
                 },
             )
         }
         Spacer(Modifier.height(16.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            GlassButton({ helper.associate(chooser) }, ui.backdrop, height = 40.dp) {
+            GlassButton({ helper.associate(chooser) }, ui.backdrop) {
                 Icon(AppIcons.Link, null, Modifier.size(18.dp))
                 Text(stringResource(if (bonded.isEmpty()) R.string.cdm_associate else R.string.cdm_associate_scan))
             }

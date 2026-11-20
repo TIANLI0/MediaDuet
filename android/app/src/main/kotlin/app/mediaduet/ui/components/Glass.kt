@@ -43,6 +43,20 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.requiredHeightIn
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.InputTransformation
+import androidx.compose.foundation.text.input.KeyboardActionHandler
+import androidx.compose.foundation.text.input.TextFieldDecorator
+import androidx.compose.foundation.text.input.TextFieldLineLimits
+import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.foundation.text.input.maxLengthTrim
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -169,8 +183,8 @@ fun Modifier.liquidGlass(
         blur(2.dp.toPx())
         lens(m * 0.22f, m * 0.5f, depthEffect = true, chromaticAberration = true)
     },
-    highlight = { Highlight.Default.copy(alpha = if (isDark) 0.85f else 1f) },
-    shadow = { Shadow(radius = 14.dp, color = Color.Black.copy(alpha = if (isDark) 0.28f else 0.10f)) },
+    highlight = { glassHighlight(isDark) },
+    shadow = { glassShadow(isDark) },
     layerBlock = if (press == null) null else {
         {
             val p = press.progress
@@ -192,26 +206,54 @@ fun Modifier.liquidGlass(
         if (overlay.isSpecified) drawRect(overlay)
     },
     onDrawFront = if (press == null) null else {
-        {
-            val p = press.progress
-            val at = press.position
-            if (p > 0.01f && at.isSpecified) {
-                val r = size.height / 2
-                clipPath(Path().apply { addRoundRect(RoundRect(0f, 0f, size.width, size.height, r, r)) }) {
-                    drawRect(
-                        Brush.radialGradient(
-                            0f to Color.White.copy(alpha = (if (isDark) 0.22f else 0.38f) * p),
-                            1f to Color.Transparent,
-                            center = at,
-                            radius = size.maxDimension * 0.8f,
-                        ),
-                        blendMode = BlendMode.Plus,
-                    )
-                }
-            }
-        }
+        { drawPressGlow(press, isDark) }
     },
 )
+
+/** Specular highlight of liquid glass (a little softer on dark backgrounds). */
+fun glassHighlight(isDark: Boolean): Highlight = Highlight.Default.copy(alpha = if (isDark) 0.85f else 1f)
+
+/** Soft shadow under floating liquid glass. */
+fun glassShadow(isDark: Boolean): Shadow = Shadow(radius = 14.dp, color = Color.Black.copy(alpha = if (isDark) 0.28f else 0.10f))
+
+/** The glow under the finger while a liquid-glass control is pressed (clipped to its capsule). */
+fun DrawScope.drawPressGlow(press: LiquidPress, isDark: Boolean) {
+    val p = press.progress
+    val at = press.position
+    if (p > 0.01f && at.isSpecified) {
+        val r = size.height / 2
+        clipPath(Path().apply { addRoundRect(RoundRect(0f, 0f, size.width, size.height, r, r)) }) {
+            drawRect(
+                Brush.radialGradient(
+                    0f to Color.White.copy(alpha = (if (isDark) 0.22f else 0.38f) * p),
+                    1f to Color.Transparent,
+                    center = at,
+                    radius = size.maxDimension * 0.8f,
+                ),
+                blendMode = BlendMode.Plus,
+            )
+        }
+    }
+}
+
+/**
+ * The material of the floating bars (tab bar and mini player): both are tinted with
+ * [app.mediaduet.ui.theme.GlassColors.bar] and use these blur / lens values, so they read as one.
+ */
+object BarGlass {
+    val Blur = 12.dp
+    val LensHeight = 24.dp
+    val LensAmount = 24.dp
+}
+
+/** Minimum touch target of every control (Android accessibility guideline). */
+val TouchTarget = 48.dp
+
+/** The two heights of [GlassButton]: compact (rows, cards, chips) and large (the primary action of a view). */
+object ButtonHeight {
+    val Compact = 44.dp
+    val Large = 52.dp
+}
 
 /**
  * Capsule liquid-glass button. Neutral by default; [prominent] uses the single accent colour and
@@ -226,7 +268,9 @@ fun GlassButton(
     prominent: Boolean = false,
     selected: Boolean = false,
     destructive: Boolean = false,
-    height: Dp = 48.dp,
+    /** [ButtonHeight.Compact] or [ButtonHeight.Large]. */
+    height: Dp = ButtonHeight.Compact,
+    horizontalPadding: Dp = 20.dp,
     content: @Composable RowScope.() -> Unit,
 ) {
     val press = rememberLiquidPress()
@@ -237,28 +281,116 @@ fun GlassButton(
         selected -> glass.accent
         else -> MaterialTheme.colorScheme.onSurface
     }
-    Row(
+    // The glass is [height] tall; the touch area around it is at least [TouchTarget].
+    Box(
         modifier
             .alpha(if (enabled) 1f else 0.4f)
-            .liquidGlass(
-                backdrop,
-                press.takeIf { enabled },
-                tint = when {
-                    prominent -> glass.accent.copy(alpha = 0.88f)
-                    selected -> glass.controlActive
-                    else -> glass.control
-                },
-                isDark = glass.isDark,
-                overlay = if (selected && !prominent) glass.accent.copy(alpha = 0.12f) else Color.Unspecified,
-            )
             .then(press.modifier)
             .clickable(interactionSource = null, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
-            .defaultMinSize(minHeight = height)
-            .padding(horizontal = 20.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-        verticalAlignment = Alignment.CenterVertically,
+            .defaultMinSize(minHeight = TouchTarget),
+        contentAlignment = Alignment.Center,
+        propagateMinConstraints = true,
     ) {
-        CompositionLocalProvider(LocalContentColor provides contentColor) { content() }
+        Row(
+            Modifier
+                .requiredHeightIn(min = height)
+                .liquidGlass(
+                    backdrop,
+                    press.takeIf { enabled },
+                    tint = when {
+                        prominent -> glass.accent.copy(alpha = 0.88f)
+                        selected -> glass.controlActive
+                        else -> glass.control
+                    },
+                    isDark = glass.isDark,
+                    overlay = if (selected && !prominent) glass.accent.copy(alpha = 0.12f) else Color.Unspecified,
+                )
+                .padding(horizontal = horizontalPadding),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CompositionLocalProvider(LocalContentColor provides contentColor) { content() }
+        }
+    }
+}
+
+/** Compact glass button with a text label (row actions: Remove, Fix, Pair, Reset …). */
+@Composable
+fun GlassTextButton(
+    text: String,
+    onClick: () -> Unit,
+    backdrop: Backdrop,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    prominent: Boolean = false,
+    destructive: Boolean = false,
+) {
+    GlassButton(onClick, backdrop, modifier, enabled = enabled, prominent = prominent, destructive = destructive, horizontalPadding = 16.dp) {
+        Text(text, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/**
+ * Single-line text field on liquid glass: a label above, the field as a glass capsule (it brightens
+ * and takes an accent tint while focused) and an optional hint below.
+ */
+@Composable
+fun GlassTextField(
+    state: TextFieldState,
+    backdrop: Backdrop,
+    label: String,
+    modifier: Modifier = Modifier,
+    supportingText: String? = null,
+    maxLength: Int? = null,
+    imeAction: ImeAction = ImeAction.Default,
+    /** Replaces the IME action's default behaviour when set. */
+    onImeAction: (() -> Unit)? = null,
+) {
+    val glass = LocalGlass.current
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    val onSurface = MaterialTheme.colorScheme.onSurface
+    Column(modifier) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = if (focused) glass.accent else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 16.dp, bottom = 6.dp),
+        )
+        BasicTextField(
+            state = state,
+            modifier = Modifier.fillMaxWidth(),
+            inputTransformation = maxLength?.let { InputTransformation.maxLengthTrim(it) },
+            textStyle = MaterialTheme.typography.bodyLarge.copy(color = onSurface),
+            keyboardOptions = KeyboardOptions(imeAction = imeAction),
+            onKeyboardAction = onImeAction?.let { action -> KeyboardActionHandler { action() } },
+            lineLimits = TextFieldLineLimits.SingleLine,
+            interactionSource = interaction,
+            cursorBrush = SolidColor(glass.accent),
+            decorator = TextFieldDecorator { inner ->
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .liquidGlass(
+                            backdrop, null,
+                            tint = if (focused) glass.controlActive else glass.control,
+                            isDark = glass.isDark,
+                            overlay = if (focused) glass.accent.copy(alpha = 0.10f) else Color.Unspecified,
+                        )
+                        .heightIn(min = ButtonHeight.Large)
+                        .padding(horizontal = 20.dp),
+                    contentAlignment = Alignment.CenterStart,
+                ) { inner() }
+            },
+        )
+        if (supportingText != null) {
+            Text(
+                supportingText,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 16.dp, top = 6.dp),
+            )
+        }
     }
 }
 
@@ -277,16 +409,23 @@ fun GlassIconButton(
 ) {
     val press = rememberLiquidPress()
     val glass = LocalGlass.current
+    // Smaller buttons keep their look; the touch area around them is at least [TouchTarget].
     Box(
         modifier
-            .size(size)
+            .size(maxOf(size, TouchTarget))
             .alpha(if (enabled) 1f else 0.35f)
-            .liquidGlass(backdrop, press.takeIf { enabled }, if (active) glass.controlActive else glass.control, glass.isDark)
             .then(press.modifier)
             .clickable(interactionSource = null, indication = null, enabled = enabled, role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription, Modifier.size(iconSize), tint = if (active) glass.accent else MaterialTheme.colorScheme.onSurface)
+        Box(
+            Modifier
+                .size(size)
+                .liquidGlass(backdrop, press.takeIf { enabled }, if (active) glass.controlActive else glass.control, glass.isDark),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription, Modifier.size(iconSize), tint = if (active) glass.accent else MaterialTheme.colorScheme.onSurface)
+        }
     }
 }
 
@@ -307,6 +446,28 @@ fun StatusChip(text: String, modifier: Modifier = Modifier, dot: Color? = null, 
         }
         Text(text, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
+}
+
+/**
+ * Leading icon of list rows and the gap after it: a row's text starts [RowTextInset] after the
+ * card's content edge.
+ */
+val RowIconSize = 22.dp
+val RowIconGap = 16.dp
+val RowTextInset = RowIconSize + RowIconGap
+
+/**
+ * Hairline between list rows. One rule everywhere (iOS-style): between rows with a leading icon
+ * it starts at the text column ([RowTextInset]), otherwise at the card's content edge; it always
+ * ends at the content edge. Cards whose rows pad themselves pass that padding as [cardPadding].
+ */
+@Composable
+fun ListDivider(modifier: Modifier = Modifier, icon: Boolean = false, cardPadding: Dp = 0.dp) {
+    HorizontalDivider(
+        modifier.padding(start = cardPadding + if (icon) RowTextInset else 0.dp, end = cardPadding),
+        thickness = 0.5.dp,
+        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
+    )
 }
 
 @Composable
@@ -361,7 +522,7 @@ fun InfoRow(
     ) {
         if (leading != null) {
             leading()
-            Spacer(Modifier.width(16.dp))
+            Spacer(Modifier.width(RowIconGap))
         }
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyLarge)

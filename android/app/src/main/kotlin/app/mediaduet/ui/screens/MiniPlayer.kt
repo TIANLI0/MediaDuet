@@ -50,7 +50,12 @@ import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
-import com.kyant.shapes.RoundedRectangle
+import app.mediaduet.ui.components.BarGlass
+import app.mediaduet.ui.components.drawPressGlow
+import app.mediaduet.ui.components.glassHighlight
+import app.mediaduet.ui.components.glassShadow
+import app.mediaduet.ui.components.rememberLiquidPress
+import com.kyant.shapes.Capsule
 import kotlinx.coroutines.launch
 
 /** Collapsed player above the tab bar; tap (or swipe up) expands to the full player. */
@@ -80,24 +85,37 @@ fun MiniPlayer(ui: UiContext, backdrop: Backdrop, modifier: Modifier = Modifier)
     }
     val playing = view.playing
     val canControl = view.canControl
+    val nextEnabled = canControl && Action.NEXT in session.actions
     val art = view.art
     val haptics = LocalHapticFeedback.current
     val failText = commandFailureText()
+    val press = rememberLiquidPress()
 
     Row(
         modifier
             .fillMaxWidth()
             .height(68.dp)
+            // The tab bar's material and capsule shape (they are stacked), with real-glass rim,
+            // shadow and the press response: a slight swell and a glow under the finger.
             .drawBackdrop(
                 backdrop = backdrop,
-                shape = { RoundedRectangle(20.dp) },
+                shape = { Capsule() },
                 effects = {
                     vibrancy()
-                    blur(12.dp.toPx())
-                    lens(14.dp.toPx(), 28.dp.toPx())
+                    blur(BarGlass.Blur.toPx())
+                    lens(BarGlass.LensHeight.toPx(), BarGlass.LensAmount.toPx())
+                },
+                highlight = { glassHighlight(glass.isDark) },
+                shadow = { glassShadow(glass.isDark) },
+                layerBlock = {
+                    val s = 1f + press.progress * (16.dp.toPx() / size.width)
+                    scaleX = s
+                    scaleY = s
                 },
                 onDrawSurface = { drawRect(glass.bar) },
+                onDrawFront = { drawPressGlow(press, glass.isDark) },
             )
+            .then(press.modifier)
             .clickable(role = Role.Button, onClickLabel = stringResource(R.string.a11y_open_player), onClick = { ui.openPlayer() })
             // Swipe up expands; horizontal swipe = next (left) / previous (right).
             .pointerInput(view.key, view.canControl) {
@@ -134,10 +152,10 @@ fun MiniPlayer(ui: UiContext, backdrop: Backdrop, modifier: Modifier = Modifier)
                     },
                 )
             }
-            .padding(start = 10.dp, end = 6.dp),
+            .padding(start = 12.dp, end = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(48.dp).clip(RoundedCornerShape(10.dp)).background(glass.fill), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(46.dp).clip(RoundedCornerShape(12.dp)).background(glass.fill), contentAlignment = Alignment.Center) {
             if (art != null) {
                 Image(art.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
             } else {
@@ -152,17 +170,9 @@ fun MiniPlayer(ui: UiContext, backdrop: Backdrop, modifier: Modifier = Modifier)
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (lyricLine != null) {
-                CurrentLyricLine(lyricLine, style = MaterialTheme.typography.bodyMedium)
-            } else {
-                Text(
-                    listOf(session.artist, deviceLabel(view)).filter { it.isNotEmpty() }.joinToString(stringResource(R.string.list_separator)),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
+            // Artist and lyric line share one animated slot: switching between them slides like a new line.
+            val byline = listOf(session.artist, deviceLabel(view)).filter { it.isNotEmpty() }.joinToString(stringResource(R.string.list_separator))
+            CurrentLyricLine(lyricLine ?: byline, style = MaterialTheme.typography.bodyMedium)
         }
         IconButton(
             onClick = {
@@ -178,7 +188,7 @@ fun MiniPlayer(ui: UiContext, backdrop: Backdrop, modifier: Modifier = Modifier)
                 if (playing) AppIcons.Pause else AppIcons.Play,
                 stringResource(if (playing) R.string.action_pause else R.string.action_play),
                 Modifier.size(28.dp),
-                tint = MaterialTheme.colorScheme.onSurface,
+                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = if (canControl) 1f else 0.38f),
             )
         }
         IconButton(
@@ -189,10 +199,10 @@ fun MiniPlayer(ui: UiContext, backdrop: Backdrop, modifier: Modifier = Modifier)
                     if (!r.ok) ui.toast(failText(r.error?.code))
                 }
             },
-            enabled = canControl && Action.NEXT in session.actions,
+            enabled = nextEnabled,
         ) {
-            Icon(AppIcons.Next, stringResource(R.string.action_next), Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurface)
+            // An explicit tint overrides IconButton's disabled colour: dim it here.
+            Icon(AppIcons.Next, stringResource(R.string.action_next), Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurface.copy(alpha = if (nextEnabled) 1f else 0.38f))
         }
-        Spacer(Modifier.padding(end = 4.dp))
     }
 }

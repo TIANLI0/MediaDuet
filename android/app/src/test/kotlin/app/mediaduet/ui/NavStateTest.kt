@@ -15,11 +15,13 @@ class NavStateTest {
 
     @Test
     fun backStackOrder() {
-        // The player in lyrics mode with the sheet open, over a page of the Settings tab.
-        var s: NavState? = NavState().open(SettingsRoute.ABOUT).showPlayer().copy(lyricsMode = true, sheetOpen = true)
+        // The player in lyrics mode with both sheets open, over a page of the Settings tab.
+        var s: NavState? = NavState().open(SettingsRoute.ABOUT).showPlayer().copy(lyricsMode = true, sheetOpen = true, queueOpen = true)
         assertFalse(s!!.backPopsSettingsPage)
         s = s.back()
-        assertEquals(NavState(Tab.SETTINGS, SettingsRoute.ABOUT, playerOpen = true, lyricsMode = true), s) // sheet first
+        assertEquals(NavState(Tab.SETTINGS, SettingsRoute.ABOUT, playerOpen = true, lyricsMode = true, queueOpen = true), s) // source sheet first
+        s = s!!.back()
+        assertEquals(NavState(Tab.SETTINGS, SettingsRoute.ABOUT, playerOpen = true, lyricsMode = true), s) // then the queue
         s = s!!.back()
         assertEquals(NavState(Tab.SETTINGS, SettingsRoute.ABOUT, playerOpen = true), s) // lyrics -> player
         s = s!!.back()
@@ -33,6 +35,16 @@ class NavStateTest {
     }
 
     @Test
+    fun backClosesLyricsOptionsBeforeLyricsMode() {
+        val s = NavState(playerOpen = true, lyricsMode = true, lyricsOptionsOpen = true)
+        assertEquals(NavState(playerOpen = true, lyricsMode = true), s.back())
+        assertEquals(NavState(playerOpen = true, lyricsMode = true, queueOpen = true, lyricsOptionsOpen = true).back(), s) // queue first
+        // Transient: not restored after process death, and reset when the player is reopened.
+        assertEquals(NavState(playerOpen = true, lyricsMode = true), NavState.decode(s.encode()))
+        assertEquals(NavState(playerOpen = true, lyricsMode = true), s.showPlayer())
+    }
+
+    @Test
     fun pagesOpenOnTheirTab() {
         assertEquals(NavState(Tab.HOME, SettingsRoute.UNLOCK), NavState(Tab.SETTINGS).open(SettingsRoute.UNLOCK))
         assertEquals(NavState(Tab.SETTINGS, SettingsRoute.PERMISSIONS), NavState().open(SettingsRoute.PERMISSIONS))
@@ -40,7 +52,7 @@ class NavStateTest {
         assertEquals(NavState(Tab.DEVICES), NavState(Tab.HOME, SettingsRoute.AUDIO).open(SettingsRoute.CONNECTION))
         assertEquals(NavState(Tab.SETTINGS), NavState().open(null))
         // Opening a page from the player closes it (lyrics mode is kept for next time).
-        assertEquals(NavState(Tab.DEVICES, lyricsMode = true), NavState(playerOpen = true, lyricsMode = true, sheetOpen = true).open(SettingsRoute.CONNECTION))
+        assertEquals(NavState(Tab.DEVICES, lyricsMode = true), NavState(playerOpen = true, lyricsMode = true, sheetOpen = true, queueOpen = true).open(SettingsRoute.CONNECTION))
     }
 
     @Test
@@ -56,16 +68,19 @@ class NavStateTest {
             NavState(),
             NavState(Tab.SETTINGS, SettingsRoute.AUDIO),
             NavState(Tab.DEVICES, playerOpen = true, lyricsMode = true, sheetOpen = true),
+            NavState(playerOpen = true, queueOpen = true),
         )) {
             assertEquals(s, NavState.decode(s.encode()))
         }
         assertEquals(NavState(), NavState.decode("garbage"))
         assertEquals(NavState(), NavState.decode(null))
-        assertEquals(NavState(), NavState.decode("v3|NOPE|-|false|false|false"))
+        assertEquals(NavState(), NavState.decode("v4|NOPE|-|false|false|false|false"))
     }
 
     @Test
     fun olderEncodingsDecode() {
+        // v3 (no queue sheet).
+        assertEquals(NavState(Tab.DEVICES, playerOpen = true, sheetOpen = true), NavState.decode("v3|DEVICES|-|true|false|true"))
         // v2 (Now Playing was home): the app now opens on Home; a Settings page opens on its tab.
         assertEquals(NavState(lyricsMode = true), NavState.decode("v2|NOW|-|true|false"))
         assertEquals(NavState(Tab.SETTINGS, SettingsRoute.LYRICS), NavState.decode("v2|SETTINGS|LYRICS|false|false"))

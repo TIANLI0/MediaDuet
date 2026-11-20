@@ -161,3 +161,29 @@ fun MediaSlider(
         }
     }
 }
+
+/**
+ * Read-only progress (a download, …) drawn like [MediaSlider] at rest: the same thin rounded
+ * track in the foreground colour, the done part brighter.
+ */
+@Composable
+fun ThinProgressBar(progress: () -> Float, modifier: Modifier = Modifier, color: Color = MaterialTheme.colorScheme.onSurface) {
+    val glass = LocalGlass.current
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    val playedAlpha = if (glass.isDark) 0.85f else 0.8f
+    Canvas(
+        modifier
+            .fillMaxWidth()
+            .height(5.dp)
+            .semantics { progressBarRangeInfo = ProgressBarRangeInfo(progress().coerceIn(0f, 1f), 0f..1f) },
+    ) {
+        val t = size.height
+        val r = CornerRadius(t / 2f, t / 2f)
+        drawRoundRect(color.copy(alpha = 0.22f), cornerRadius = r)
+        val f = progress().coerceIn(0f, 1f)
+        if (f > 0f) {
+            val w = (size.width * f).coerceAtLeast(t)
+            drawRoundRect(color.copy(alpha = playedAlpha), Offset(if (rtl) size.width - w else 0f, 0f), Size(w, t), r)
+        }
+    }
+}

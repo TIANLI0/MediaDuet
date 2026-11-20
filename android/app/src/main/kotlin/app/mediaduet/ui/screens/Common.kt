@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
@@ -41,6 +42,7 @@ import app.mediaduet.R
 import app.mediaduet.ui.LocalBottomInset
 import app.mediaduet.ui.components.AppIcons
 import app.mediaduet.ui.components.GlassIconButton
+import app.mediaduet.ui.components.TouchTarget
 import com.kyant.backdrop.Backdrop
 import kotlinx.coroutines.delay
 
@@ -71,9 +73,13 @@ fun ScreenScaffold(
             Spacer(Modifier.height(4.dp))
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 // Back button and title share one row; the subtitle runs full width beneath.
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     if (onBack != null && backdrop != null) {
-                        GlassIconButton(AppIcons.ChevronLeft, stringResource(R.string.back), onBack, backdrop, size = 40.dp, iconSize = 22.dp)
+                        // A 40 dp button in a 48 dp touch target, its glass aligned with the cards' edge.
+                        GlassIconButton(
+                            AppIcons.ChevronLeft, stringResource(R.string.back), onBack, backdrop,
+                            Modifier.offset(x = -(TouchTarget - 40.dp) / 2), size = 40.dp, iconSize = 22.dp,
+                        )
                     }
                     Text(
                         title,
@@ -94,13 +100,16 @@ fun ScreenScaffold(
                 }
             }
         }
+        // The fade grows with the scroll (up to 40 dp), so content at rest is never faded and
+        // scrolled content clearly leaves the title instead of reading as its subtitle.
         Column(
             Modifier
                 .fillMaxSize()
                 .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
                 .drawWithContent {
                     drawContent()
-                    val fade = 18.dp.toPx()
+                    val fade = minOf(scroll.value.toFloat(), 40.dp.toPx())
+                    if (fade < 1f) return@drawWithContent
                     drawRect(
                         Brush.verticalGradient(0f to Color.Transparent, 1f to Color.Black, endY = fade),
                         size = Size(size.width, fade),
@@ -111,7 +120,7 @@ fun ScreenScaffold(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Column(Modifier.widthIn(max = maxWidth).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(8.dp))
                 content()
                 // Never let content end behind the floating mini player + tab bar.
                 Spacer(Modifier.height(LocalBottomInset.current + 16.dp))

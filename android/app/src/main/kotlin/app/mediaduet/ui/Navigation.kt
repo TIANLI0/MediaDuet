@@ -21,9 +21,9 @@ enum class SettingsRoute(val key: String, val tab: Tab) {
  * Devices, Settings; the app opens on Home), each with at most one pushed page, and the full
  * player as a layer over all of them (opened from the mini player above the tab bar).
  *
- * Back order: sheet → lyrics mode → player → pushed page → Home tab → leave the app (null; the
- * activity moves to the back so its state survives). Lyrics mode belongs to the player and is
- * kept while it is closed.
+ * Back order: source sheet → "Up next" queue → lyrics options menu → lyrics mode → player → pushed page → Home tab →
+ * leave the app (null; the activity moves to the back so its state survives). Lyrics mode belongs
+ * to the player and is kept while it is closed.
  */
 data class NavState(
     val tab: Tab = Tab.HOME,
@@ -31,10 +31,16 @@ data class NavState(
     val playerOpen: Boolean = false,
     val lyricsMode: Boolean = false,
     val sheetOpen: Boolean = false,
+    /** The player's "Up next" sheet. */
+    val queueOpen: Boolean = false,
+    /** The lyrics ⋯ options menu. Transient: not part of [encode]. */
+    val lyricsOptionsOpen: Boolean = false,
 ) {
     /** The state after a system back, or null when back should leave the app. */
     fun back(): NavState? = when {
         playerOpen && sheetOpen -> copy(sheetOpen = false)
+        playerOpen && queueOpen -> copy(queueOpen = false)
+        playerOpen && lyricsOptionsOpen -> copy(lyricsOptionsOpen = false)
         playerOpen && lyricsMode -> copy(lyricsMode = false)
         playerOpen -> copy(playerOpen = false)
         route != null -> copy(route = null)
@@ -47,27 +53,36 @@ data class NavState(
 
     /** Opens page [r] on its tab ([SettingsRoute.CONNECTION]: the Devices tab), or the Settings tab (null); closes the player. */
     fun open(r: SettingsRoute?) = when (r) {
-        null -> copy(tab = Tab.SETTINGS, route = null, playerOpen = false, sheetOpen = false)
-        SettingsRoute.CONNECTION -> copy(tab = Tab.DEVICES, route = null, playerOpen = false, sheetOpen = false)
-        else -> copy(tab = r.tab, route = r, playerOpen = false, sheetOpen = false)
+        null -> copy(tab = Tab.SETTINGS, route = null, playerOpen = false, sheetOpen = false, queueOpen = false, lyricsOptionsOpen = false)
+        SettingsRoute.CONNECTION -> copy(tab = Tab.DEVICES, route = null, playerOpen = false, sheetOpen = false, queueOpen = false, lyricsOptionsOpen = false)
+        else -> copy(tab = r.tab, route = r, playerOpen = false, sheetOpen = false, queueOpen = false, lyricsOptionsOpen = false)
     }
 
     /** Tapping a tab: switches to it at its root (tapping the current tab pops its page). */
     fun select(t: Tab) = copy(tab = t, route = null)
 
     /** Opens the full player over the tabs. */
-    fun showPlayer() = copy(playerOpen = true, sheetOpen = false)
+    fun showPlayer() = copy(playerOpen = true, sheetOpen = false, queueOpen = false, lyricsOptionsOpen = false)
 
-    fun encode(): String = listOf(VERSION, tab.name, route?.name ?: "-", playerOpen, lyricsMode, sheetOpen).joinToString("|")
+    fun encode(): String = listOf(VERSION, tab.name, route?.name ?: "-", playerOpen, lyricsMode, sheetOpen, queueOpen).joinToString("|")
 
     companion object {
-        private const val VERSION = "v3"
+        private const val VERSION = "v4"
 
         fun decode(s: String?): NavState {
             val p = s?.split('|') ?: return NavState()
             return runCatching {
                 when {
-                    p.size == 6 && p[0] == VERSION -> NavState(
+                    p.size == 7 && p[0] == VERSION -> NavState(
+                        Tab.valueOf(p[1]),
+                        p[2].takeIf { it != "-" }?.let { SettingsRoute.valueOf(it) },
+                        p[3].toBooleanStrict(),
+                        p[4].toBooleanStrict(),
+                        p[5].toBooleanStrict(),
+                        p[6].toBooleanStrict(),
+                    )
+                    // v3 (no queue sheet).
+                    p.size == 6 && p[0] == "v3" -> NavState(
                         Tab.valueOf(p[1]),
                         p[2].takeIf { it != "-" }?.let { SettingsRoute.valueOf(it) },
                         p[3].toBooleanStrict(),

@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -44,7 +43,13 @@ import app.mediaduet.ui.SettingsRoute
 import app.mediaduet.ui.UiContext
 import app.mediaduet.ui.components.AppIcons
 import app.mediaduet.ui.components.GlassButton
+import app.mediaduet.ui.components.ButtonHeight
 import app.mediaduet.ui.components.GlassCard
+import app.mediaduet.ui.components.GlassTextButton
+import app.mediaduet.ui.components.ListDivider
+import app.mediaduet.ui.components.RowIconGap
+import app.mediaduet.ui.components.RowIconSize
+import app.mediaduet.ui.components.RowTextInset
 import app.mediaduet.ui.components.InfoRow
 import app.mediaduet.ui.components.SectionHeader
 import app.mediaduet.ui.components.liquid.LiquidToggle
@@ -89,7 +94,7 @@ fun PermissionsPage(ui: UiContext, onBack: () -> Unit) {
                 {
                     if (missingRuntime.isNotEmpty()) fixAll.launch(missingRuntime.toTypedArray()) else openListener()
                 },
-                ui.backdrop, Modifier.fillMaxWidth(), prominent = true,
+                ui.backdrop, Modifier.fillMaxWidth(), prominent = true, height = ButtonHeight.Large,
             ) { Text(stringResource(R.string.perm_fix_all)) }
         }
         SectionHeader(stringResource(R.string.perm_required_header))
@@ -149,7 +154,7 @@ fun PermissionsPage(ui: UiContext, onBack: () -> Unit) {
                 onClick = { setFgs(!fgsEnabled) },
                 role = Role.Switch,
             )
-            Divider()
+            Divider(icon = false)
             PermissionRow(
                 ui, stringResource(R.string.perm_listener_bound), stringResource(R.string.perm_listener_bound_text),
                 ok = listenerBound, okText = stringResource(R.string.state_bound), badText = stringResource(R.string.state_not_bound),
@@ -197,10 +202,9 @@ fun PermissionsPage(ui: UiContext, onBack: () -> Unit) {
     }
 }
 
+/** Below a permission row (it has a status icon) the hairline starts at the text column. */
 @Composable
-private fun Divider() {
-    HorizontalDivider(Modifier.padding(vertical = 4.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
-}
+private fun Divider(icon: Boolean = true) = ListDivider(Modifier.padding(vertical = 4.dp), icon = icon)
 
 @Composable
 private fun ColumnScope.PermissionRow(
@@ -231,10 +235,10 @@ private fun ColumnScope.PermissionRow(
         Icon(
             if (ok) AppIcons.CheckCircle else AppIcons.Warning,
             null,
-            Modifier.size(22.dp),
+            Modifier.size(RowIconSize),
             tint = if (ok) glass.good else glass.warn,
         )
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(RowIconGap))
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyLarge)
             Text(
@@ -245,12 +249,12 @@ private fun ColumnScope.PermissionRow(
         }
         if (!ok && action != null) {
             Spacer(Modifier.width(8.dp))
-            GlassButton(onAction, ui.backdrop, height = 40.dp, prominent = true) { Text(action, style = MaterialTheme.typography.labelLarge) }
+            GlassTextButton(action, onAction, ui.backdrop, prominent = true)
         }
         Icon(AppIcons.ExpandMore, null, Modifier.padding(start = 4.dp).size(20.dp).rotate(rotation), tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     AnimatedVisibility(expanded) {
-        Column(Modifier.padding(start = 34.dp, bottom = 8.dp)) {
+        Column(Modifier.padding(start = RowTextInset, bottom = 8.dp)) {
             Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (extra != null) {
                 Spacer(Modifier.height(4.dp))

@@ -6,7 +6,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -65,7 +64,7 @@ fun PhoneMediaSection(ui: UiContext) {
             !access -> GlassCard(ui.backdrop, Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.phone_no_access), style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(12.dp))
-                GlassButton({ ui.openSettings(SettingsRoute.PERMISSIONS) }, ui.backdrop, height = 40.dp, prominent = true) {
+                GlassButton({ ui.openSettings(SettingsRoute.PERMISSIONS) }, ui.backdrop, prominent = true) {
                     Text(stringResource(R.string.setup_permissions))
                 }
             }
@@ -102,7 +101,7 @@ private fun SessionCard(ui: UiContext, s: LocalSessionState, isActive: Boolean, 
     val thumb = remember(hash) {
         hash?.let { ui.engine.artwork.bytes(it) }?.let { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() }
     }
-    GlassCard(ui.backdrop, Modifier.fillMaxWidth(), contentPadding = PaddingValues(16.dp)) {
+    GlassCard(ui.backdrop, Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 Modifier.size(64.dp).clip(RoundedCornerShape(12.dp)).background(glass.fill),

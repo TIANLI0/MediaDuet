@@ -22,6 +22,21 @@ import app.mediaduet.handoff.HandoffOutcome
 import app.mediaduet.handoff.PlayResult
 import app.mediaduet.protocol.Caps
 import app.mediaduet.ui.components.InfoRow
+import app.mediaduet.ui.components.ListDivider
+import app.mediaduet.ui.components.RowIconGap
+import app.mediaduet.ui.components.RowIconSize
+import app.mediaduet.ui.components.TouchTarget
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import app.mediaduet.ui.components.liquid.LiquidToggle
 import app.mediaduet.util.VersionCompat
 import com.kyant.backdrop.backdrops.layerBackdrop
@@ -192,6 +207,8 @@ private class PlayerParts(
     val lyrics: LyricsState?,
     /** The phone is still looking for lyrics for this track. */
     val searching: Boolean,
+    /** Lyrics mode is waiting for this track's lyrics (after a track change; see [LYRICS_WAIT_MS]). */
+    val waiting: Boolean,
     val translations: Boolean,
     val romaji: Boolean,
     val lyricsSize: LyricsSize,
@@ -199,9 +216,13 @@ private class PlayerParts(
     val canSeek: Boolean,
     /** Opens the "Up next" sheet (the session exposes a queue). */
     val openQueue: () -> Unit,
+    /** The lyrics options popover (held here so the status pill can make way for it). */
+    val optionsOpen: Boolean,
+    val setOptionsOpen: (Boolean) -> Unit,
 ) {
     val info: MediaSessionInfo get() = view.info
-    val lyricsAvailable: Boolean get() = lyrics != null || searching
+    /** Lyrics are shown, being looked for, or lyrics mode still waits for them (the button agrees with the body). */
+    val lyricsAvailable: Boolean get() = lyrics != null || searching || waiting
 }
 
 /** The shared-element scopes of one layout (artwork, title, progress and buttons morph between modes). */
@@ -233,7 +254,11 @@ fun PlayerScreen(ui: UiContext) {
     val view = rememberPlayerView(engine)
     val bottomInset = LocalBottomInset.current
     val currentUi by rememberUpdatedState(ui)
-    var queueOpen by remember { mutableStateOf(false) }
+    // Lives in NavState so system back closes the menu before it leaves lyrics mode.
+    val optionsOpen = ui.nav.lyricsOptionsOpen
+    val setOptionsOpen: (Boolean) -> Unit = { open ->
+        if (currentUi.nav.lyricsOptionsOpen != open) currentUi.setNav(currentUi.nav.copy(lyricsOptionsOpen = open))
+    }
     // The status pill floats over the player (it never moves it) and refracts what is under it.
     val contentLayer = rememberLayerBackdrop()
     val pillBackdrop = rememberCombinedBackdrop(ui.backdrop, contentLayer)
@@ -248,6 +273,8 @@ fun PlayerScreen(ui: UiContext) {
             maxWidth >= 600.dp && !landscape -> 40.dp
             else -> 24.dp
         }
+        // Whether the layout shows lyrics (set while composing the player below; read for the status pill).
+        var lyricsShown = false
         Column(
             Modifier
                 .fillMaxSize()
@@ -262,7 +289,7 @@ fun PlayerScreen(ui: UiContext) {
                 Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     EmptyState(AppIcons.Music, stringResource(R.string.empty_nothing_playing_phone))
                 }
-                ActionRow(ui, null, lyricsAvailable = false, morph = null, onQueue = null)
+                ActionRow(ui, null, lyricsAvailable = false, morph = null, onQueue = null, Modifier.liftsToast(ui))
                 return@Column
             }
             val info = view.info
@@ -280,6 +307,8 @@ fun PlayerScreen(ui: UiContext) {
                 }
             }
             val lyricsMode = ui.nav.lyricsMode && (lyrics != null || searching || !waitOver)
+            lyricsShown = lyricsMode
+            LaunchedEffect(lyricsMode) { if (!lyricsMode) setOptionsOpen(false) }
 
             // ---- optimistic state (reconciled with every device update) -----------------
             var optimistic by remember(view.side, view.key) { mutableStateOf(OptimisticPlayback()) }
@@ -350,12 +379,15 @@ fun PlayerScreen(ui: UiContext) {
                 ),
                 lyrics = lyrics,
                 searching = searching,
+                waiting = lyricsMode && lyrics == null && !searching,
                 translations = translations,
                 romaji = romaji,
                 lyricsSize = lyricsSize,
                 reduced = reduced,
                 canSeek = view.canControl && Action.SEEK in info.actions && (info.durationMs ?: 0) > 0,
-                openQueue = { queueOpen = true },
+                openQueue = { currentUi.setNav(currentUi.nav.copy(queueOpen = true)) },
+                optionsOpen = optionsOpen,
+                setOptionsOpen = setOptionsOpen,
             )
 
             SharedTransitionLayout(Modifier.weight(1f).fillMaxWidth()) {
@@ -378,19 +410,61 @@ fun PlayerScreen(ui: UiContext) {
                 }
             }
         }
+        // The pill has a place of its own in every layout, so it never covers the player: a slot
+        // kept free at the top (portrait player), under the slim header (portrait lyrics, out of
+        // the options button's way), above the controls column (landscape).
+        val portraitLyrics = lyricsShown && !sideLyrics
+        val pillBelowHeader by animateDpAsState(
+            if (portraitLyrics) LYRICS_HEADER_HEIGHT + 4.dp else 0.dp,
+            if (reduced) snap() else spring(dampingRatio = 0.86f, stiffness = 260f),
+            label = "pillTop",
+        )
+        val inner = maxWidth - side * 2
         StatusPill(
             ui,
             view,
             pillBackdrop,
             reduced,
-            Modifier
-                .align(Alignment.TopCenter)
+            hidden = portraitLyrics && optionsOpen,
+            modifier = when {
+                sideLyrics && lyricsShown -> Modifier.align(Alignment.TopStart).padding(start = side).widthIn(max = landscapeLyricsLeftWidth(inner))
+                landscape -> Modifier.align(Alignment.TopEnd).padding(end = side).widthIn(max = inner * 0.5f)
+                else -> Modifier.align(Alignment.TopCenter).padding(horizontal = side)
+            }
                 .statusBarsPadding()
-                .padding(top = if (landscape) 4.dp else 12.dp, start = side, end = side),
+                .padding(top = (if (landscape) 4.dp else 12.dp) + pillBelowHeader),
         )
         TargetSheet(ui)
-        QueueSheet(ui, view, queueOpen) { queueOpen = false }
+        QueueSheet(ui, view, ui.nav.queueOpen) { currentUi.setNav(currentUi.nav.copy(queueOpen = false)) }
     }
+}
+
+/** Height of the status pill, and the room kept free for it (pill + gap). */
+private val PILL_HEIGHT = 40.dp
+private val PILL_SLOT = PILL_HEIGHT + 8.dp
+
+/** Lyrics mode's slim header (portrait). */
+private val LYRICS_HEADER_HEIGHT = 60.dp
+
+/** Width of the left column (artwork, title, dock) of [LandscapeLyrics] in a layout [width] wide. */
+private fun landscapeLyricsLeftWidth(width: androidx.compose.ui.unit.Dp) = (width * 0.4f).coerceIn(288.dp, 400.dp)
+
+/**
+ * Reports the top of the player's bottom controls (see [UiContext.liftToast]) so toasts float
+ * above them. Layouts without such a row report 0 dp.
+ */
+@Composable
+private fun Modifier.liftsToast(ui: UiContext): Modifier {
+    val density = LocalDensity.current
+    val windowHeight = androidx.compose.ui.platform.LocalWindowInfo.current.containerSize.height
+    return onGloballyPositioned { c ->
+        ui.liftToast(with(density) { (windowHeight - c.boundsInWindow().top).coerceAtLeast(0f).toDp() })
+    }
+}
+
+@Composable
+private fun NoToastLift(ui: UiContext) {
+    LaunchedEffect(Unit) { ui.liftToast(0.dp) }
 }
 
 // ============================================================================ layouts
@@ -398,6 +472,8 @@ fun PlayerScreen(ui: UiContext) {
 @Composable
 private fun PortraitPlayer(p: PlayerParts, m: Morph) {
     Column(Modifier.fillMaxSize()) {
+        // Kept free for the status pill whether or not it shows (showing it never moves the player).
+        Spacer(Modifier.height(PILL_SLOT))
         ArtworkBlock(p, m, Modifier.weight(1f).fillMaxWidth())
         Spacer(Modifier.height(24.dp))
         Progress(p, m, inlineTimes = false)
@@ -406,7 +482,7 @@ private fun PortraitPlayer(p: PlayerParts, m: Morph) {
         Spacer(Modifier.height(18.dp))
         VolumeRow(p.ui, p.view)
         Spacer(Modifier.height(16.dp))
-        ActionRow(p.ui, p.view, p.lyricsAvailable, m, onQueue = p.openQueue.takeIf { p.info.queue != null })
+        ActionRow(p.ui, p.view, p.lyricsAvailable, m, onQueue = p.openQueue.takeIf { p.info.queue != null }, Modifier.liftsToast(p.ui))
     }
 }
 
@@ -420,10 +496,10 @@ private fun PortraitLyrics(p: PlayerParts, m: Morph) {
     val lyricsLayer = rememberLayerBackdrop()
     val dockBackdrop = rememberCombinedBackdrop(p.ui.backdrop, lyricsLayer)
     var dockHeight by remember { mutableStateOf(140.dp) }
-    var optionsOpen by remember { mutableStateOf(false) }
+    val optionsOpen = p.optionsOpen
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            LyricsHeader(p, m, optionsOpen) { optionsOpen = !optionsOpen }
+            LyricsHeader(p, m, optionsOpen) { p.setOptionsOpen(!optionsOpen) }
             Box(Modifier.weight(1f).fillMaxWidth().layerBackdrop(lyricsLayer)) {
                 LyricsBody(p, Modifier.fillMaxSize(), bottomFade = dockHeight + 48.dp, bottomObscured = dockHeight)
             }
@@ -433,18 +509,20 @@ private fun PortraitLyrics(p: PlayerParts, m: Morph) {
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .onSizeChanged { dockHeight = with(density) { it.height.toDp() } }
+                .liftsToast(p.ui)
                 .padding(top = 8.dp),
         ) {
             Progress(p, m, inlineTimes = true)
             Spacer(Modifier.height(6.dp))
             DockRow(p, m, dockBackdrop)
         }
-        LyricsOptions(p, optionsOpen, Modifier.align(Alignment.TopEnd).padding(top = 64.dp)) { optionsOpen = false }
+        LyricsOptions(p, optionsOpen, Modifier.align(Alignment.TopEnd).padding(top = LYRICS_HEADER_HEIGHT + 4.dp)) { p.setOptionsOpen(false) }
     }
 }
 
 @Composable
 private fun LandscapePlayer(p: PlayerParts, m: Morph) {
+    NoToastLift(p.ui)
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val art = minOf(maxHeight, maxWidth * 0.46f)
         Row(
@@ -456,9 +534,10 @@ private fun LandscapePlayer(p: PlayerParts, m: Morph) {
                 ArtworkImage(p, m, art)
             }
             Column(
-                // On large screens the controls keep a comfortable width next to the artwork.
+                // On large screens the controls keep a comfortable width next to the artwork; the
+                // status pill has its slot above them.
                 Modifier.weight(1f, fill = false).widthIn(max = LANDSCAPE_CONTROLS_MAX_WIDTH).fillMaxHeight()
-                    .verticalScroll(rememberScrollState()).padding(vertical = 12.dp),
+                    .padding(top = PILL_SLOT).verticalScroll(rememberScrollState()).padding(vertical = 12.dp),
                 verticalArrangement = Arrangement.Center,
             ) {
                 // Compact: progress with inline times and one row of lyrics · transport · source
@@ -484,14 +563,18 @@ private fun LandscapePlayer(p: PlayerParts, m: Morph) {
 private fun LandscapeLyrics(p: PlayerParts, m: Morph) {
     val lyricsLayer = rememberLayerBackdrop()
     val dockBackdrop = rememberCombinedBackdrop(p.ui.backdrop, lyricsLayer)
-    var optionsOpen by remember { mutableStateOf(false) }
+    val optionsOpen = p.optionsOpen
+    NoToastLift(p.ui)
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val leftWidth = (maxWidth * 0.4f).coerceIn(288.dp, 400.dp)
-        val art = minOf(leftWidth * 0.46f, maxHeight * 0.34f)
+        val leftWidth = landscapeLyricsLeftWidth(maxWidth)
+        // The artwork takes what the pill slot, title, progress and dock leave (about 220 dp), so
+        // the dock never scrolls off a landscape phone.
+        val art = minOf(leftWidth * 0.46f, maxHeight * 0.34f, maxHeight - PILL_SLOT - 220.dp).coerceAtLeast(64.dp)
         Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(28.dp)) {
             Column(
-                // Vertical padding inside the scroll keeps the glass buttons' rims and shadows unclipped.
-                Modifier.width(leftWidth).fillMaxHeight().verticalScroll(rememberScrollState()).padding(vertical = 12.dp),
+                // Vertical padding inside the scroll keeps the glass buttons' rims and shadows unclipped;
+                // the status pill has its slot above the column.
+                Modifier.width(leftWidth).fillMaxHeight().padding(top = PILL_SLOT).verticalScroll(rememberScrollState()).padding(vertical = 12.dp),
                 verticalArrangement = Arrangement.Center,
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -509,9 +592,9 @@ private fun LandscapeLyrics(p: PlayerParts, m: Morph) {
                     LyricsBody(p, Modifier.fillMaxSize(), bottomFade = 72.dp, bottomObscured = 0.dp)
                 }
                 if (hasLyricsOptions(p)) {
-                    OptionsButton(p, m, optionsOpen, Modifier.align(Alignment.TopEnd).padding(top = 8.dp)) { optionsOpen = !optionsOpen }
+                    OptionsButton(p, m, optionsOpen, Modifier.align(Alignment.TopEnd).padding(top = 8.dp)) { p.setOptionsOpen(!optionsOpen) }
                 }
-                LyricsOptions(p, optionsOpen, Modifier.align(Alignment.TopEnd).padding(top = 60.dp)) { optionsOpen = false }
+                LyricsOptions(p, optionsOpen, Modifier.align(Alignment.TopEnd).padding(top = 60.dp)) { p.setOptionsOpen(false) }
             }
         }
     }
@@ -651,7 +734,7 @@ private fun LyricsHeader(p: PlayerParts, m: Morph, optionsOpen: Boolean, onOptio
     Row(
         Modifier
             .fillMaxWidth()
-            .padding(top = 4.dp, bottom = 4.dp),
+            .height(LYRICS_HEADER_HEIGHT),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Row(
@@ -685,7 +768,8 @@ private fun hasLyricsOptions(p: PlayerParts): Boolean = p.lyrics?.synced == true
 private fun OptionsButton(p: PlayerParts, m: Morph, open: Boolean, modifier: Modifier, onClick: () -> Unit) {
     val modeTransition = m.visibility.transition
     val settled = modeTransition.currentState == EnterExitState.Visible && modeTransition.targetState == EnterExitState.Visible
-    Box(modifier.size(40.dp)) {
+    // A 40 dp glass button in a 48 dp touch target (see GlassIconButton).
+    Box(modifier.size(TouchTarget)) {
         AnimatedVisibility(
             visible = settled,
             enter = if (p.reduced) EnterTransition.None else scaleIn(spring(dampingRatio = 0.6f, stiffness = 500f), initialScale = 0.5f),
@@ -729,6 +813,7 @@ private fun LyricsBody(p: PlayerParts, modifier: Modifier, bottomFade: androidx.
             else -> PlainLyrics(
                 shown.plain,
                 Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top = 16.dp, bottom = bottomObscured + 16.dp),
+                textScale = p.lyricsSize.scale,
             )
         }
     }
@@ -790,7 +875,7 @@ private fun LyricsOptions(p: PlayerParts, open: Boolean, modifier: Modifier, onD
                 InfoRow(
                     // "音" pairs with the translation (NetEase / QQ Music convention).
                     stringResource(R.string.lyrics_romaji_toggle),
-                    leading = { Icon(AppIcons.Globe, null, Modifier.size(20.dp)) },
+                    leading = { Icon(AppIcons.Globe, null, Modifier.size(RowIconSize)) },
                     trailing = {
                         LiquidToggle({ p.romaji }, {
                             touch++
@@ -803,14 +888,12 @@ private fun LyricsOptions(p: PlayerParts, open: Boolean, modifier: Modifier, onD
                     },
                     role = Role.Switch,
                 )
-                if (hasTranslations) {
-                    HorizontalDivider(Modifier.padding(start = 36.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
-                }
+                if (hasTranslations) ListDivider(icon = true)
             }
             if (hasTranslations) {
                 InfoRow(
                     stringResource(R.string.settings_translations),
-                    leading = { Icon(AppIcons.Translate, null, Modifier.size(20.dp)) },
+                    leading = { Icon(AppIcons.Translate, null, Modifier.size(RowIconSize)) },
                     trailing = {
                         LiquidToggle({ p.translations }, {
                             touch++
@@ -825,28 +908,31 @@ private fun LyricsOptions(p: PlayerParts, open: Boolean, modifier: Modifier, onD
                 )
             }
             if (p.lyrics?.synced == true) {
-                if (hasTranslations || hasRomaji) {
-                    HorizontalDivider(Modifier.padding(start = 36.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
-                }
+                if (hasTranslations || hasRomaji) ListDivider(icon = true)
                 LyricsSizePicker(p.lyricsSize) {
                     touch++
                     settings.setLyricsSize(it)
                 }
-                HorizontalDivider(Modifier.padding(start = 36.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
+                ListDivider(icon = true)
                 OffsetStepper(p.timing) { touch++ }
             }
         }
     }
 }
 
-/** Lyrics text size: three steps (small · standard · large) as one segmented pill. */
+/**
+ * Lyrics text size: three steps (small · standard · large) as one segmented pill. [icon] matches
+ * the rows around it (the options popover has icons, the Settings list does not).
+ */
 @Composable
-fun LyricsSizePicker(current: LyricsSize, onPick: (LyricsSize) -> Unit) {
+fun LyricsSizePicker(current: LyricsSize, icon: Boolean = true, onPick: (LyricsSize) -> Unit) {
     val glass = LocalGlass.current
     val haptics = LocalHapticFeedback.current
     Row(Modifier.fillMaxWidth().heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(AppIcons.TextSize, null, Modifier.size(20.dp))
-        Spacer(Modifier.width(16.dp))
+        if (icon) {
+            Icon(AppIcons.TextSize, null, Modifier.size(RowIconSize))
+            Spacer(Modifier.width(RowIconGap))
+        }
         Text(stringResource(R.string.lyrics_size), style = MaterialTheme.typography.bodyLarge)
     }
     Row(
@@ -905,8 +991,8 @@ private fun OffsetStepper(timing: LyricsTiming, onTouch: () -> Unit) {
         }
     }
     Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(AppIcons.Timer, null, Modifier.size(20.dp))
-        Spacer(Modifier.width(16.dp))
+        Icon(AppIcons.Timer, null, Modifier.size(RowIconSize))
+        Spacer(Modifier.width(RowIconGap))
         Column(Modifier.weight(1f)) {
             Text(stringResource(R.string.lyrics_timing), style = MaterialTheme.typography.bodyLarge)
             Text(
@@ -1061,7 +1147,7 @@ private fun TransportButtons(p: PlayerParts, m: Morph, backdrop: Backdrop, small
 @Composable
 private fun DockRow(p: PlayerParts, m: Morph, backdrop: Backdrop) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        LyricsToggle(p.ui, p.lyricsAvailable, m)
+        LyricsToggle(p.ui, backdrop, p.lyricsAvailable, m)
         Spacer(Modifier.weight(1f))
         Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
             TransportButtons(p, m, backdrop, small = 48.dp, big = 60.dp)
@@ -1071,20 +1157,24 @@ private fun DockRow(p: PlayerParts, m: Morph, backdrop: Backdrop) {
     }
 }
 
-/** Lyrics on / off: accent with a soft fill while on, dimmed (not hidden) when there are none. */
+/**
+ * Lyrics on / off: a plain icon like its neighbours while off; while on, the accent icon sits in a
+ * round liquid-glass button like the transport buttons. Dimmed (not hidden) when there are none.
+ */
 @Composable
-private fun LyricsToggle(ui: UiContext, lyricsAvailable: Boolean, m: Morph?) {
+private fun LyricsToggle(ui: UiContext, backdrop: Backdrop, lyricsAvailable: Boolean, m: Morph?) {
     val haptics = LocalHapticFeedback.current
     val glass = LocalGlass.current
     val secondary = MaterialTheme.colorScheme.onSurfaceVariant
     val active = ui.nav.lyricsMode && lyricsAvailable
     val unavailable = stringResource(R.string.lyrics_unavailable)
+    val press = rememberLiquidPress()
     Box(
         Modifier
             .then(if (m != null) Modifier.shared(m, "lyricsBtn") else Modifier)
             .size(48.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(if (active) glass.fill else Color.Transparent)
+            .then(if (active) Modifier.liquidGlass(backdrop, press, glass.controlActive, glass.isDark).then(press.modifier) else Modifier)
+            .clip(CircleShape)
             .clickable(role = Role.Button, onClickLabel = if (lyricsAvailable) null else unavailable) {
                 if (!lyricsAvailable) {
                     haptics.performHapticFeedback(HapticFeedbackType.Reject)
@@ -1143,7 +1233,7 @@ private fun SourceIconButton(ui: UiContext, view: PlayerView, m: Morph) {
  * the top of the player: showing or hiding it never moves the player.
  */
 @Composable
-private fun StatusPill(ui: UiContext, view: PlayerView?, backdrop: Backdrop, reduced: Boolean, modifier: Modifier) {
+private fun StatusPill(ui: UiContext, view: PlayerView?, backdrop: Backdrop, reduced: Boolean, hidden: Boolean, modifier: Modifier) {
     val peers by ui.engine.trust.peers.collectAsStateWithLifecycle()
     val link by ui.engine.link.status.collectAsStateWithLifecycle()
     val mode by ui.engine.settings.mode.collectAsStateWithLifecycle()
@@ -1167,7 +1257,7 @@ private fun StatusPill(ui: UiContext, view: PlayerView?, backdrop: Backdrop, red
     val glass = LocalGlass.current
     val press = rememberLiquidPress()
     AnimatedVisibility(
-        issue != null,
+        issue != null && !hidden,
         modifier = modifier,
         enter = if (reduced) fadeIn(snap()) else slideInVertically(spring(dampingRatio = 0.8f)) { -it / 2 } + fadeIn(),
         exit = if (reduced) fadeOut(snap()) else slideOutVertically { -it / 2 } + fadeOut(),
@@ -1178,13 +1268,14 @@ private fun StatusPill(ui: UiContext, view: PlayerView?, backdrop: Backdrop, red
                 .liquidGlass(backdrop, press, glass.bar, glass.isDark)
                 .then(press.modifier)
                 .clickable(interactionSource = null, indication = null, role = Role.Button) { ui.openSettings(route) }
-                .heightIn(min = 40.dp)
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+                .height(PILL_HEIGHT)
+                .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(Modifier.size(8.dp).background(glass.warn, RoundedCornerShape(50)))
             Spacer(Modifier.width(10.dp))
-            Text(text, style = MaterialTheme.typography.labelLarge, maxLines = 2)
+            // One line: the pill's slot has a fixed height.
+            Text(text, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Icon(AppIcons.ChevronRight, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
@@ -1228,25 +1319,29 @@ fun deviceLabel(view: PlayerView): String {
  * text with 48 dp targets.
  */
 @Composable
-private fun ActionRow(ui: UiContext, view: PlayerView?, lyricsAvailable: Boolean, morph: Morph?, onQueue: (() -> Unit)?) {
+private fun ActionRow(ui: UiContext, view: PlayerView?, lyricsAvailable: Boolean, morph: Morph?, onQueue: (() -> Unit)?, modifier: Modifier = Modifier) {
     val haptics = LocalHapticFeedback.current
     val secondary = MaterialTheme.colorScheme.onSurfaceVariant
-    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-            LyricsToggle(ui, lyricsAvailable, morph)
+            LyricsToggle(ui, ui.backdrop, lyricsAvailable, morph)
         }
-        // Centre: where the playback is (icon + caption, like Apple Music's AirPlay row).
+        // Centre: where the playback is (icon + caption, like Apple Music's AirPlay row). The icon
+        // already says which device; the caption names just the app, Auto is a small badge.
         val sink by ui.engine.remote.sink.collectAsStateWithLifecycle()
+        val app = view?.info?.let { it.appName.ifEmpty { it.appId } }.orEmpty()
         val base = when {
             view == null -> stringResource(R.string.source_title)
-            view.automatic -> stringResource(R.string.target_auto_caption, deviceLabel(view))
-            else -> deviceLabel(view)
+            app.isEmpty() -> deviceLabel(view)
+            else -> app
         }
         val caption = if (sink?.state == SinkState.ON) stringResource(R.string.pc_speaker_caption, base) else base
+        val sourceLabel = view?.let { deviceLabel(it) }
         Column(
             Modifier
                 .weight(2f)
                 .clip(RoundedCornerShape(14.dp))
+                .semantics(mergeDescendants = true) { if (sourceLabel != null) contentDescription = sourceLabel }
                 .clickable(role = Role.Button, onClickLabel = stringResource(R.string.source_title)) {
                     haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
                     ui.setNav(ui.nav.copy(sheetOpen = true))
@@ -1266,15 +1361,21 @@ private fun ActionRow(ui: UiContext, view: PlayerView?, lyricsAvailable: Boolean
                 (if (morph != null) Modifier.shared(morph, "source") else Modifier).size(22.dp),
                 tint = secondary,
             )
-            Text(
-                caption,
-                style = MaterialTheme.typography.labelSmall,
-                color = secondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(top = 2.dp),
-            )
+            Row(Modifier.padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (view?.automatic == true) {
+                    Icon(AppIcons.Auto, null, Modifier.size(14.dp), tint = secondary)
+                    Spacer(Modifier.width(4.dp))
+                }
+                Text(
+                    caption,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = secondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+            }
         }
         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1397,7 +1498,29 @@ private fun QueueSheet(ui: UiContext, view: PlayerView?, open: Boolean, onClose:
                 Spacer(Modifier.height(8.dp))
                 val activeIndex = q.items.indexOfFirst { it.id == q.activeId }
                 val listState = androidx.compose.foundation.lazy.rememberLazyListState((activeIndex - 1).coerceAtLeast(0))
-                androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxWidth().heightIn(max = 480.dp), state = listState) {
+                // The list fades out under the title (and at the bottom) while there is more to
+                // scroll, instead of cutting rows in half (an alpha mask, not a colour gradient).
+                androidx.compose.foundation.lazy.LazyColumn(
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 480.dp)
+                        .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
+                        .drawWithContent {
+                            drawContent()
+                            val fade = 28.dp.toPx()
+                            if (listState.canScrollBackward) {
+                                drawRect(Brush.verticalGradient(0f to Color.Transparent, 1f to Color.Black, endY = fade), size = Size(size.width, fade), blendMode = BlendMode.DstIn)
+                            }
+                            if (listState.canScrollForward) {
+                                val top = size.height - fade
+                                drawRect(
+                                    Brush.verticalGradient(0f to Color.Black, 1f to Color.Transparent, startY = top, endY = size.height),
+                                    topLeft = Offset(0f, top), size = Size(size.width, fade), blendMode = BlendMode.DstIn,
+                                )
+                            }
+                        },
+                    state = listState,
+                ) {
                     // No item keys: players may repeat a queue id (the same song twice, or every
                     // entry 0), and duplicate keys crash the list.
                     items(q.items.size) { i ->
@@ -1643,19 +1766,22 @@ private fun VolumeSlider(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.fillMaxWidth().padding(start = 48.dp, top = 2.dp),
+            modifier = Modifier.fillMaxWidth().padding(start = VOLUME_ICON_SLOT, top = 2.dp),
         )
     }
+    // Symmetric icon slots, each icon at its outer edge (like the progress bar's ends): the bar
+    // sits centred between them. The mute button's touch area is the full row height.
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Box(
             Modifier
-                .size(48.dp)
+                .width(VOLUME_ICON_SLOT)
+                .height(TouchTarget)
                 .clip(RoundedCornerShape(50))
                 .clickable(enabled = enabled, role = Role.Button) {
                     haptics.performHapticFeedback(if (muted) HapticFeedbackType.ToggleOn else HapticFeedbackType.ToggleOff)
                     send(VolumeSet(muted = !muted))
                 },
-            contentAlignment = Alignment.Center,
+            contentAlignment = Alignment.CenterStart,
         ) {
             Icon(
                 if (muted) AppIcons.VolumeOff else AppIcons.VolumeDown,
@@ -1680,9 +1806,14 @@ private fun VolumeSlider(
                 if (value != null) send(VolumeSet(level = value.toDouble()))
             },
         )
-        Icon(AppIcons.VolumeUp, null, Modifier.padding(start = 14.dp, end = 2.dp).size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Box(Modifier.width(VOLUME_ICON_SLOT), contentAlignment = Alignment.CenterEnd) {
+            Icon(AppIcons.VolumeUp, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
+
+/** Width of the volume row's icon slot on each side (20 dp icon + gap). */
+private val VOLUME_ICON_SLOT = 36.dp
 
 
 /** Control-target switcher (the player's sheet): [SourceChoices] on strong glass. */
@@ -1804,7 +1935,6 @@ internal fun SourceChoices(ui: UiContext, showUnavailable: Boolean = false, clos
                             engine.focusPeer(d.peer.id)
                         },
                         ui.backdrop,
-                        height = 36.dp,
                         selected = d.sid == link.current?.sid,
                     ) {
                         Icon(platformIcon(d.peer.platform), null, Modifier.size(18.dp))
@@ -2002,11 +2132,12 @@ private fun SourceRow(icon: ImageVector, title: String, subtitle: String, select
             .clip(RoundedCornerShape(12.dp))
             .clickable(role = if (chevron) Role.Button else Role.RadioButton, onClick = onClick)
             .heightIn(min = 56.dp)
-            .padding(vertical = 8.dp, horizontal = 4.dp),
+            .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, null, Modifier.size(22.dp), tint = if (selected) glass.accent else MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.width(12.dp))
+        // Same icon column as every other list row (InfoRow, NavRow): the cards' icons line up.
+        Icon(icon, null, Modifier.size(RowIconSize), tint = if (selected) glass.accent else MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.width(RowIconGap))
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyLarge, color = if (selected) glass.accent else MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (subtitle.isNotEmpty()) {

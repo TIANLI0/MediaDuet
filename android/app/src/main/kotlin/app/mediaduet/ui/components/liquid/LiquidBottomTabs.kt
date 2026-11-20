@@ -50,6 +50,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastCoerceIn
 import androidx.compose.ui.util.fastRoundToInt
 import androidx.compose.ui.util.lerp
+import app.mediaduet.ui.components.BarGlass
+import app.mediaduet.ui.components.glassHighlight
+import app.mediaduet.ui.components.glassShadow
 import app.mediaduet.ui.theme.LocalGlass
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
@@ -92,9 +95,8 @@ fun LiquidBottomTabs(
     val glass = LocalGlass.current
     val isLightTheme = !glass.isDark
     val accentColor = glass.accent
-    val containerColor =
-        if (isLightTheme) Color(0xFFFAFAFA).copy(0.4f)
-        else Color(0xFF121212).copy(0.4f)
+    // The floating bars' shared material (the mini player above uses the same).
+    val containerColor = glass.bar
     val onSelected by rememberUpdatedState(onTabSelected)
 
     val tabsBackdrop = rememberLayerBackdrop()
@@ -188,9 +190,11 @@ fun LiquidBottomTabs(
                     shape = { Capsule() },
                     effects = {
                         vibrancy()
-                        blur(8f.dp.toPx())
-                        lens(24f.dp.toPx(), 24f.dp.toPx())
+                        blur(BarGlass.Blur.toPx())
+                        lens(BarGlass.LensHeight.toPx(), BarGlass.LensAmount.toPx())
                     },
+                    highlight = { glassHighlight(glass.isDark) },
+                    shadow = { glassShadow(glass.isDark) },
                     layerBlock = {
                         val progress = dampedDragAnimation.pressProgress
                         val scale = lerp(1f, 1f + 16f.dp.toPx() / size.width, progress)
@@ -227,7 +231,7 @@ fun LiquidBottomTabs(
                         effects = {
                             val progress = dampedDragAnimation.pressProgress
                             vibrancy()
-                            blur(8f.dp.toPx())
+                            blur(BarGlass.Blur.toPx())
                             lens(
                                 24f.dp.toPx() * progress,
                                 24f.dp.toPx() * progress,
