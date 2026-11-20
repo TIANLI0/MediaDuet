@@ -54,11 +54,6 @@ namespace
         return Widen(t);
     }
 
-    SolidColorBrush MakeBrush(uint8_t a, uint8_t r, uint8_t g, uint8_t b)
-    {
-        return SolidColorBrush(Color{ a, r, g, b });
-    }
-
     // How long host echoes are ignored after a volume change: the phone's result waits for the
     // phone itself (up to 3 s, docs/ipc.md volume.set), this PC answers at once.
     double EchoWindowMs(Side side)
@@ -96,8 +91,18 @@ namespace winrt::MediaDuetUI::implementation
             UpdateTimer();
             if (m_settings) m_settings->SetActive(m_settingsShown && m_host.IsShowing());
         };
+        // Theme brushes set from code follow the window's theme, not the app's: re-resolve them.
+        m_host.themeChanged = [this] {
+            if (m_closed) return;
+            if (Controller::Get().Link() == HostLink::Connected) UpdateConnection();
+            if (QueueFlyout().IsOpen()) FillQueue();
+        };
         PlaceInitially();
         m_ambient.Attach(TintLayer());
+        m_placeholder.Attach(ArtPlaceholder());
+        BottomButtons().SizeChanged([weak = get_weak()](auto&&, auto&&) {
+            if (auto self = weak.get(); self && !self->m_closed) self->UpdateBottomNoticeInset();
+        });
 
         m_timer = DispatcherQueue().CreateTimer();
         m_timer.IsRepeating(true);
@@ -475,6 +480,7 @@ namespace winrt::MediaDuetUI::implementation
         m_tokens.clear();
         m_host.Detach();
         m_ambient.Detach();
+        m_placeholder.Detach();
         m_lyricsView.Detach();
         m_art.Clear();
         ArtBrush().ImageSource(nullptr);
@@ -535,14 +541,12 @@ namespace winrt::MediaDuetUI::implementation
         double cardMax = std::clamp(std::min(available - 24.0, viewport * 0.62), 360.0, 680.0);
         double cardWidth = std::clamp(available - 24.0, 200.0, cardMax);
         if (std::abs(Card().Width() - cardWidth) > 0.5) Card().Width(cardWidth);
-        // Text grows with the card (22 / 26 / 30 epx titles).
+        // Text and controls grow with the card (22 / 26 / 30 epx titles, 60 / 72 / 84 epx play button).
         int step = cardWidth >= 600 ? 2 : cardWidth >= 440 ? 1 : 0;
-        double titleSize = 22.0 + 4.0 * step;
-        if (TitleLabel().FontSize() != titleSize)
+        if (step != m_cardStep)
         {
-            TitleLabel().FontSize(titleSize);
-            ArtistLabel().FontSize(15.0 + 2.0 * step);
-            StatusLabel().FontSize(12.0 + 1.0 * step);
+            m_cardStep = step;
+            ApplyCardScale();
         }
 
         // Short windows: drop the least important rows first (album; inline volume, which is also in
@@ -566,6 +570,85 @@ namespace winrt::MediaDuetUI::implementation
             ArtFrame().Width(artWidth);
             ArtFrame().Height(artHeight);
         }
+    }
+
+    // The card's controls at the current step (0 / 1 / 2), in proportion to its titles and artwork:
+    // a 680 epx cover over 48 epx transport buttons and 12 epx captions looked out of scale.
+    void MainWindow::ApplyCardScale()
+    {
+        int step = std::max(0, m_cardStep);
+        double k = 1.0 + 0.2 * step;   // 1.0 / 1.2 / 1.4
+        auto round = [](Button const& b, double size) {
+            b.Width(size);
+            b.Height(size);
+            b.CornerRadius(CornerRadius{ size / 2, size / 2, size / 2, size / 2 });
+        };
+        TitleLabel().FontSize(22.0 + 4.0 * step);
+        ArtistLabel().FontSize(15.0 + 2.0 * step);
+        StatusLabel().FontSize(12.0 + 1.0 * step);
+        // Source chip and time labels: caption size + 1 per step.
+        double caption = 12.0 + 1.0 * step;
+        SourceButtonText().FontSize(caption);
+        DeviceIcon().FontSize(caption);
+        double chip = 14.0 + 2.0 * step;
+        SourceButton().Padding(Thickness{ 10.0 + 2 * step, 4.0 + step, 8.0 + 2 * step, 5.0 + step });
+        SourceButton().CornerRadius(CornerRadius{ chip, chip, chip, chip });
+        SourceButton().MaxWidth(320.0 * k);
+        ElapsedLabel().FontSize(caption);
+        DurationLabel().FontSize(caption);
+        // Transport: 48 / 60 / 48 -> 58 / 72 / 58 -> 67 / 84 / 67.
+        TransportPanel().Spacing(std::round(18.0 * k));
+        round(PrevButton(), std::round(48.0 * k));
+        round(NextButton(), std::round(48.0 * k));
+        round(PlayPauseButton(), 60.0 + 12.0 * step);
+        PrevIcon().FontSize(20.0 + 2.0 * step);
+        NextIcon().FontSize(20.0 + 2.0 * step);
+        PlayPauseIcon().FontSize(24.0 + 4.0 * step);
+        // The player's own buttons, queue and handoff.
+        round(QueueButton(), std::round(40.0 * k));
+        round(HandoffButton(), std::round(40.0 * k));
+        QueueIcon().FontSize(16.0 + 2.0 * step);
+        HandoffIcon().FontSize(16.0 + 2.0 * step);
+        ScaleCustomActions();
+        // Inline volume.
+        round(InlineMuteButton(), std::round(32.0 * k));
+        InlineMuteIcon().FontSize(14.0 + 2.0 * step);
+        InlineVolumeSlider().Width(std::round(160.0 * k));
+        InlineVolumeText().FontSize(caption);
+        InlineVolumeText().Width(std::round(36.0 * k));
+    }
+
+    void MainWindow::ScaleCustomActions()
+    {
+        int step = std::max(0, m_cardStep);
+        double size = std::round(40.0 * (1.0 + 0.2 * step));
+        for (auto const& child : CustomActionsPanel().Children())
+        {
+            auto b = child.try_as<Button>();
+            if (!b) continue;
+            b.CornerRadius(CornerRadius{ size / 2, size / 2, size / 2, size / 2 });
+            b.Height(size);
+            if (auto icon = b.Content().try_as<BitmapIcon>())
+            {
+                b.Width(size);
+                icon.Width(18.0 + 2.0 * step);
+                icon.Height(18.0 + 2.0 * step);
+            }
+            else if (auto text = b.Content().try_as<TextBlock>())
+            {
+                text.FontSize(12.0 + 1.0 * step);
+                text.MaxWidth(96.0 + 16.0 * step);
+            }
+        }
+    }
+
+    // The bottom notices float over the policy line and end before the bottom bar's buttons, which
+    // are 4 or 5 (the A2DP quick switch): a fixed inset let a notice cover the volume button.
+    void MainWindow::UpdateBottomNoticeInset()
+    {
+        double right = BottomBar().Padding().Right + BottomButtons().ActualWidth() + 14.0;
+        auto m = BottomNotices().Margin();
+        if (std::abs(m.Right - right) > 0.5) BottomNotices().Margin(Thickness{ m.Left, m.Top, right, m.Bottom });
     }
 
     winrt::Windows::Foundation::Point MainWindow::CardOrigin()
@@ -715,6 +798,7 @@ namespace winrt::MediaDuetUI::implementation
                 });
                 panel.Children().Append(b);
             }
+            ScaleCustomActions();
         }
         bool hasActions = s && !s->customActions.empty();
         bool hasQueue = s && s->queueCount > 0 && queue && !queue->items.empty();
@@ -745,8 +829,12 @@ namespace winrt::MediaDuetUI::implementation
         QueueSubtitle().Text(sub.empty() ? count : sub + L"  \x00B7  " + count);
         FrameworkElement current{ nullptr };
         bool marked = false; // players may repeat an id: only its first entry is "now playing"
-        auto secondary = Application::Current().Resources().Lookup(box_value(L"TextFillColorSecondaryBrush")).as<Brush>();
-        auto accent = Application::Current().Resources().Lookup(box_value(L"AccentTextFillColorPrimaryBrush")).as<Brush>();
+        // The window's theme, not the app's (Application resources looked up from code follow the app
+        // theme: a light MediaDuet on a dark Windows got dark-theme text brushes here).
+        auto secondary = ThemeBrush(Root(), L"TextFillColorSecondaryBrush");
+        auto accent = ThemeBrush(Root(), L"AccentTextFillColorPrimaryBrush");
+        if (!secondary) secondary = Application::Current().Resources().Lookup(box_value(L"TextFillColorSecondaryBrush")).as<Brush>();
+        if (!accent) accent = Application::Current().Resources().Lookup(box_value(L"AccentTextFillColorPrimaryBrush")).as<Brush>();
         for (size_t i = 0; i < q->items.size(); ++i)
         {
             auto const& e = q->items[i];
@@ -887,11 +975,12 @@ namespace winrt::MediaDuetUI::implementation
 
         std::wstring text;
         wchar_t const* glyph = L"\xE8EA";
-        SolidColorBrush dot = MakeBrush(255, 138, 138, 138);
+        // App.xaml's status brushes (light / dark / high contrast) for the window's theme.
+        wchar_t const* dotKey = L"StatusIdleBrush";
         if (cn.status == "connected")
         {
             glyph = cn.transport == "bt" ? L"\xE702" : L"\xE839";
-            dot = MakeBrush(255, 46, 173, 75);
+            dotKey = L"StatusGoodBrush";
             text = peer + L"  \x00B7  " + TransportName(cn.transport);
             if (!cn.secondary.empty() && cn.secondary != cn.transport) text += L" + " + TransportName(cn.secondary);
             if (cn.rttMs >= 0) text += L"  \x00B7  " + StrF(L"Milliseconds", { std::to_wstring(cn.rttMs) });
@@ -899,7 +988,7 @@ namespace winrt::MediaDuetUI::implementation
         else if (cn.status == "connecting")
         {
             glyph = L"\xE895";
-            dot = MakeBrush(255, 227, 162, 26);
+            dotKey = L"StatusBusyBrush";
             text = StrF(L"ConnConnectingTo", { peer });
         }
         else if (cn.status == "disconnected")
@@ -911,7 +1000,7 @@ namespace winrt::MediaDuetUI::implementation
             text = Str(L"ConnNoPeer");
         }
         ConnectionIcon().Glyph(glyph);
-        ConnectionDot().Fill(dot);
+        if (auto dot = ThemeBrush(Root(), dotKey)) ConnectionDot().Fill(dot);
         ConnectionText().Text(text);
         ToolTipService::SetToolTip(ConnectionPill(), box_value(cn.lastError.empty() ? text : text + L"\n" + Widen(cn.lastError)));
         ConnectionPill().Visibility(Visibility::Visible);

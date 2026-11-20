@@ -528,7 +528,8 @@
   <data name="SetTaskbarResumeTitle.Text" xml:space="preserve"><value>在任务栏显示手机上的播放</value></data>
   <data name="SetTaskbarResumeDesc.Text" xml:space="preserve"><value>手机用网易云音乐、QQ 音乐或 Spotify 播放，且这台电脑装有同一款应用时，任务栏会出现一个按钮，点击即在电脑上从相同进度继续播放。</value></data>
   <data name="SetTaskbarAlignTitle.Text" xml:space="preserve"><value>对齐方式</value></data>
-  <data name="SetTaskbarAlignDesc.Text" xml:space="preserve"><value>组件贴靠所在空白区域的哪一侧，歌词也向这一侧对齐。打开或关闭应用时任务栏图标会增减：“靠左”“靠右”贴住区域稳定的一端（如屏幕边缘、小组件或通知区域），歌词位置不随图标数量移动；“自动”紧贴任务栏图标。</value></data>
+  <data name="SetTaskbarAlignDesc.Text" xml:space="preserve"><value>组件和歌词贴靠空白区域的哪一侧。</value></data>
+  <data name="SetTaskbarAlignDesc.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>组件贴靠所在空白区域的哪一侧，歌词也向这一侧对齐。打开或关闭应用时任务栏图标会增减：“靠左”“靠右”贴住区域稳定的一端（如屏幕边缘、小组件或通知区域），歌词位置不随图标数量移动；“自动”紧贴任务栏图标。</value></data>
   <data name="TaskbarAlignAuto.Content" xml:space="preserve"><value>自动（紧贴任务栏图标）</value></data>
   <data name="TaskbarAlignLeft.Content" xml:space="preserve"><value>靠左</value></data>
   <data name="TaskbarAlignRight.Content" xml:space="preserve"><value>靠右</value></data>
@@ -601,7 +602,7 @@
   <data name="UpdateBarButton.Content" xml:space="preserve"><value>更新</value></data>
   <data name="UpdateBarTitle" xml:space="preserve"><value>MediaDuet {0} 已发布</value></data>
   <data name="UpdateBarMessage" xml:space="preserve"><value>一键下载并安装，完成后自动重启。</value></data>
-  <data name="RomajiButton.Content" xml:space="preserve"><value>音</value></data>
+  <data name="RomajiButton.Content" xml:space="preserve"><value>罗马音</value></data>
   <data name="RomajiButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>显示或隐藏罗马音</value></data>
   <data name="RomajiButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>歌词罗马音</value></data>
   <data name="LyricsMenuRomaji" xml:space="preserve"><value>显示罗马音</value></data>

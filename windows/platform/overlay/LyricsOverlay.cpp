@@ -684,11 +684,13 @@ struct LyricsOverlay::Impl {
         float W = sz.cx / scale(), H = sz.cy / scale();
         bool showToolbar = hover && !locked;
         if (showToolbar) {
-            // Glass panel behind the lyrics while hovering (and hit-testable everywhere).
+            // Glass panel behind the toolbar and the lyrics while hovering (and hit-testable
+            // everywhere). It starts above the toolbar, so the toolbar sits inside it: a panel
+            // starting at the toolbar's middle ran its top edge through both ends of the pill.
             com_ptr<ID2D1SolidColorBrush> bg, border;
             rt->CreateSolidColorBrush(D2D1::ColorF(0.05f, 0.05f, 0.07f, 0.34f), bg.put());
             rt->CreateSolidColorBrush(D2D1::ColorF(1, 1, 1, 0.14f), border.put());
-            auto rr = D2D1::RoundedRect(D2D1::RectF(1, kToolbarH * 0.5f, W - 1, H - 1), 14, 14);
+            auto rr = D2D1::RoundedRect(D2D1::RectF(1, 1, W - 1, H - 1), 14, 14);
             rt->FillRoundedRectangle(rr, bg.get());
             rt->DrawRoundedRectangle(rr, border.get(), 1.f);
         }
@@ -1084,7 +1086,7 @@ void LyricsOverlay::configure(const nlohmann::json& o, bool animations, bool low
     i.layout = o.value("layout", std::string("alternate")) == "center" ? lyrics::RowLayout::Center
                                                                        : lyrics::RowLayout::Alternate;
     i.active = parseColor(o.value("colorActive", std::string("#FFFFFFFF")), {1, 1, 1, 1});
-    i.inactive = parseColor(o.value("colorInactive", std::string("#B3FFFFFF")), {1, 1, 1, 0.7f});
+    i.inactive = parseColor(o.value("colorInactive", std::string("#80FFFFFF")), {1, 1, 1, 0x80 / 255.f});
     i.widthDip = static_cast<float>(o.value("width", 900.0));
     i.posX = o.contains("x") && o["x"].is_number() ? std::optional<int>(o["x"].get<int>()) : std::nullopt;
     i.posY = o.contains("y") && o["y"].is_number() ? std::optional<int>(o["y"].get<int>()) : std::nullopt;

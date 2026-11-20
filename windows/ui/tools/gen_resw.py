@@ -29,7 +29,7 @@ S += [
     ("TranslationButton.Content", "Translation", "译"),
     (f"TranslationButton.{TT}", "Show or hide the lyric translation", "显示或隐藏歌词翻译"),
     (f"TranslationButton.{AN}", "Lyric translation", "歌词翻译"),
-    ("RomajiButton.Content", "Romaji", "音"),
+    ("RomajiButton.Content", "Romaji", "罗马音"),
     (f"RomajiButton.{TT}", "Show or hide the romaji", "显示或隐藏罗马音"),
     (f"RomajiButton.{AN}", "Lyric romaji", "歌词罗马音"),
 ]
@@ -621,7 +621,8 @@ S += [
     ('SetTaskbarResumeTitle.Text', 'Continue from the phone on the taskbar', '在任务栏显示手机上的播放'),
     ('SetTaskbarResumeDesc.Text', 'While the phone plays in NetEase Cloud Music, QQ Music or Spotify and this PC has the same app, a taskbar button continues the song here at the same position.', '手机用网易云音乐、QQ 音乐或 Spotify 播放，且这台电脑装有同一款应用时，任务栏会出现一个按钮，点击即在电脑上从相同进度继续播放。'),
     ('SetTaskbarAlignTitle.Text', 'Alignment', '对齐方式'),
-    ('SetTaskbarAlignDesc.Text', 'Which edge of its free area the widget sticks to; the lyrics are aligned to that side too. Opening and closing apps changes the taskbar: Left and Right stay at the steady end of the area (screen edge, Widgets or the notification area), so the lyrics do not move with the icons; Auto keeps them next to the taskbar icons.', '组件贴靠所在空白区域的哪一侧，歌词也向这一侧对齐。打开或关闭应用时任务栏图标会增减：“靠左”“靠右”贴住区域稳定的一端（如屏幕边缘、小组件或通知区域），歌词位置不随图标数量移动；“自动”紧贴任务栏图标。'),
+    ('SetTaskbarAlignDesc.Text', 'Which side of its free area the widget and its lyrics keep to.', '组件和歌词贴靠空白区域的哪一侧。'),
+    (f'SetTaskbarAlignDesc.{TT}', 'Which edge of its free area the widget sticks to; the lyrics are aligned to that side too. Opening and closing apps changes the taskbar: Left and Right stay at the steady end of the area (screen edge, Widgets or the notification area), so the lyrics do not move with the icons; Auto keeps them next to the taskbar icons.', '组件贴靠所在空白区域的哪一侧，歌词也向这一侧对齐。打开或关闭应用时任务栏图标会增减：“靠左”“靠右”贴住区域稳定的一端（如屏幕边缘、小组件或通知区域），歌词位置不随图标数量移动；“自动”紧贴任务栏图标。'),
     ('TaskbarAlignAuto.Content', 'Auto (next to the taskbar icons)', '自动（紧贴任务栏图标）'),
     ('TaskbarAlignLeft.Content', 'Left', '靠左'),
     ('TaskbarAlignRight.Content', 'Right', '靠右'),

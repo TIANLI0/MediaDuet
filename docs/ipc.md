@@ -387,7 +387,7 @@ Unknown keys are preserved. Defaults:
       "topmost": true, "hideInFullscreen": false, "layout": "alternate",
       "fontFamily": "Microsoft YaHei UI", "fontSize": 32, "opacity": 0.92,
       "karaoke": true, "twoLines": true,
-      "colorActive": "#FFFFFFFF", "colorInactive": "#B3FFFFFF",
+      "colorActive": "#FFFFFFFF", "colorInactive": "#80FFFFFF",
       "x": null, "y": null, "width": 900
     }
   },

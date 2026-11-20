@@ -64,6 +64,7 @@ namespace winrt::MediaDuetUI::implementation
         };
         PlaceInitially();
         m_ambient.Attach(TintLayer());
+        m_placeholder.Attach(ArtPlaceholder());
 
         m_timer = DispatcherQueue().CreateTimer();
         m_timer.IsRepeating(true);
@@ -337,6 +338,7 @@ namespace winrt::MediaDuetUI::implementation
         m_tokens.clear();
         m_host.Detach();
         m_ambient.Detach();
+        m_placeholder.Detach();
         m_art.Clear();
         ArtBrush().ImageSource(nullptr);
         c.WindowClosed(WindowKind::Compact, *this);
@@ -373,6 +375,15 @@ namespace winrt::MediaDuetUI::implementation
         ApplyLyricColors();
         if (auto presenter = AppWindow().Presenter().try_as<OverlappedPresenter>(); presenter && !render::Active())
             presenter.IsAlwaysOnTop(c.Model().Setting("ui.compact.alwaysOnTop", true));
+    }
+
+    void CompactWindow::SetHoverForRenderTest(bool on)
+    {
+        if (!render::Active() || m_closed) return;
+        m_hoverTimer.Stop();
+        m_leaveTimer.Stop();
+        m_hover = on;
+        UpdateControlsVisibility();
     }
 
     void CompactWindow::CheckHover()

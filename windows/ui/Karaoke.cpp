@@ -410,6 +410,7 @@ namespace mdui
         {
             m_ro.Inlines().Clear();
             m_roFilled = false;
+            m_roFaded = false;
         }
         m_roSplit = -1;
         if (m_ro.Text() != m_roText) m_ro.Text(m_roText);
@@ -430,9 +431,13 @@ namespace mdui
         {
             m_ro.Text(L"");
             m_ro.Inlines().Clear();
-            m_roSung.Foreground(m_trBrush);
+            // Same colours as the line it belongs to: sung = the line's sung colour (the accent in the
+            // compact window), unsung = its unsung colour. (The translation colour as "sung" was barely
+            // darker than unsung in the light compact window.)
+            m_roSung.Foreground(m_sungBrush);
             m_roEdge.Foreground(m_roEdgeBrush);
             m_roRest.Foreground(m_unsungBrush);
+            m_roFaded = false;
             m_ro.Inlines().Append(m_roSung);
             m_ro.Inlines().Append(m_roEdge);
             m_ro.Inlines().Append(m_roRest);
@@ -449,9 +454,10 @@ namespace mdui
         }
         // The edge character blends from unsung to sung as the edge crosses it.
         double t = pos - idx;
-        Color a = m_unsung, b = m_trBrush.Color();
+        Color a = m_unsung, b = m_sung;
         auto mix = [t](uint8_t x, uint8_t y) { return static_cast<uint8_t>(std::lround(x + (y - x) * t)); };
-        m_roEdgeBrush.Color(Color{ mix(a.A, b.A), mix(a.R, b.R), mix(a.G, b.G), mix(a.B, b.B) });
+        Color edge{ mix(a.A, b.A), mix(a.R, b.R), mix(a.G, b.G), mix(a.B, b.B) };
+        m_roEdgeBrush.Color(edge);
         if (m_style.scrollLongLine)
         {
             double view = m_root.ActualWidth(), total = m_ro.ActualWidth();
@@ -462,6 +468,61 @@ namespace mdui
             {
                 m_roScroll = off;
                 m_ro.Translation({ static_cast<float>(-off), 0, 0 });
+            }
+            // Edge fade while it overflows: one gradient per run, in the TextBlock's x (= view x + scroll).
+            auto fade = lyrics::EdgeFadeFor(total, view, m_roScroll);
+            if (fade.Active())
+            {
+                Color colors[3] = { m_sung, edge, m_unsung };
+                Documents::Run runs[3] = { m_roSung, m_roEdge, m_roRest };
+                for (int k = 0; k < 3; ++k)
+                {
+                    Color c = colors[k];
+                    FadeBrush(m_roFade[k], fade, -m_roScroll, total, lyrics::FadeStops(fade, -m_roScroll, total), [c](double) { return c; });
+                    if (!m_roFaded) runs[k].Foreground(m_roFade[k]);
+                }
+                m_roFaded = true;
+            }
+            else if (m_roFaded)
+            {
+                m_roSung.Foreground(m_sungBrush);
+                m_roEdge.Foreground(m_roEdgeBrush);
+                m_roRest.Foreground(m_unsungBrush);
+                m_roFaded = false;
+            }
+        }
+    }
+
+    void KaraokeLine::FadeBrush(LinearGradientBrush& brush, lyrics::EdgeFade const& fade, double x0, double w,
+        std::vector<double> const& stops, std::function<Color(double)> const& colorAt)
+    {
+        if (!brush)
+        {
+            brush = LinearGradientBrush();
+            brush.MappingMode(BrushMappingMode::Absolute);
+        }
+        brush.StartPoint({ 0, 0 });
+        brush.EndPoint({ static_cast<float>(std::max(1.0, w)), 0 });
+        auto list = brush.GradientStops();
+        // Reuse the stops (a handful per frame for the items under a fade).
+        while (list.Size() > stops.size()) list.RemoveAtEnd();
+        for (size_t i = 0; i < stops.size(); ++i)
+        {
+            double x = stops[i];
+            Color c = colorAt(x);
+            c.A = static_cast<uint8_t>(std::lround(c.A * fade.At(x0 + x)));
+            if (i < list.Size())
+            {
+                auto s = list.GetAt(static_cast<uint32_t>(i));
+                s.Offset(x / std::max(1.0, w));
+                s.Color(c);
+            }
+            else
+            {
+                GradientStop s;
+                s.Offset(x / std::max(1.0, w));
+                s.Color(c);
+                list.Append(s);
             }
         }
     }
@@ -535,6 +596,22 @@ namespace mdui
         // Feather like the overlay: max(6, 0.5 x font size), centred on the edge.
         double feather = std::max(6.0, m_style.fontSize * 0.5);
         lyrics::SegmentFills(edgeX, feather, lineX, m_fills);
+        // Single-row views (compact window): scroll a line wider than the view like the overlay, and
+        // fade it out at an edge with more text beyond it.
+        lyrics::EdgeFade fade;
+        double off = 0;
+        if (m_style.scrollLongLine)
+        {
+            double view = m_root.ActualWidth();
+            double total = lineX.back();
+            off = view > 0 ? md::lyrics::scrollOffset(static_cast<float>(total), static_cast<float>(view), static_cast<float>(std::clamp(edgeX, 0.0, total))) : 0.0;
+            if (std::abs(off - m_lastScroll) > 0.4)
+            {
+                m_lastScroll = off;
+                m_panel.Translation({ static_cast<float>(-off), 0, 0 });
+            }
+            fade = lyrics::EdgeFadeFor(total, view, m_lastScroll);
+        }
         for (size_t i = 0; i < m_segs.size(); ++i)
         {
             auto& s = m_segs[i];
@@ -542,6 +619,25 @@ namespace mdui
             if (m_segments[i].space)
             {
                 s.mode = f.mode;   // nothing to draw
+                continue;
+            }
+            double x0 = lineX[i] - m_lastScroll, w = lineX[i + 1] - lineX[i];
+            if (fade.Active() && fade.Touches(x0, x0 + w))
+            {
+                Color sung = m_sung, unsung = m_unsung;
+                auto colorAt = [&f, sung, unsung](double x) {
+                    if (f.mode == lyrics::FillMode::Sung) return sung;
+                    if (f.mode == lyrics::FillMode::Unsung) return unsung;
+                    double t = std::clamp((x - f.gradientStart) / std::max(0.01, f.gradientEnd - f.gradientStart), 0.0, 1.0);
+                    auto mix = [t](uint8_t a, uint8_t b) { return static_cast<uint8_t>(std::lround(a + (b - a) * t)); };
+                    return Color{ mix(sung.A, unsung.A), mix(sung.R, unsung.R), mix(sung.G, unsung.G), mix(sung.B, unsung.B) };
+                };
+                auto stops = f.mode == lyrics::FillMode::Edge ? lyrics::FadeStops(fade, x0, w, { f.gradientStart, f.gradientEnd })
+                                                              : lyrics::FadeStops(fade, x0, w);
+                FadeBrush(s.fade, fade, x0, w, stops, colorAt);
+                if (s.text.Foreground() != s.fade) s.text.Foreground(s.fade);
+                s.mode = f.mode;
+                s.applied = false;   // repaint normally once it leaves the fade
                 continue;
             }
             if (f.mode == lyrics::FillMode::Edge)
@@ -574,18 +670,6 @@ namespace mdui
             }
             s.mode = f.mode;
             s.applied = true;
-        }
-        // Single-row views (compact window): scroll a line wider than the view like the overlay.
-        if (m_style.scrollLongLine)
-        {
-            double view = m_root.ActualWidth();
-            double total = lineX.back();
-            double off = view > 0 ? md::lyrics::scrollOffset(static_cast<float>(total), static_cast<float>(view), static_cast<float>(std::clamp(edgeX, 0.0, total))) : 0.0;
-            if (std::abs(off - m_lastScroll) > 0.4)
-            {
-                m_lastScroll = off;
-                m_panel.Translation({ static_cast<float>(-off), 0, 0 });
-            }
         }
     }
 

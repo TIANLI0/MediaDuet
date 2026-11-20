@@ -65,6 +65,8 @@ namespace winrt::MediaDuetUI::implementation
         void UpdateWorkMode();
         void UpdateDevicesVersionBar();
         static std::wstring DeviceVersionText(std::string const& platform, std::string const& app, std::string const& match);
+        // "android" -> "Android", "windows" -> "Windows" (other values as reported).
+        static std::wstring PlatformName(std::string const& platform);
         void UpdateTaskbar();
         void UpdateProviders();
         void UpdateOutputs();

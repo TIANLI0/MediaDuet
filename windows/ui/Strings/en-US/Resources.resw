@@ -528,7 +528,8 @@
   <data name="SetTaskbarResumeTitle.Text" xml:space="preserve"><value>Continue from the phone on the taskbar</value></data>
   <data name="SetTaskbarResumeDesc.Text" xml:space="preserve"><value>While the phone plays in NetEase Cloud Music, QQ Music or Spotify and this PC has the same app, a taskbar button continues the song here at the same position.</value></data>
   <data name="SetTaskbarAlignTitle.Text" xml:space="preserve"><value>Alignment</value></data>
-  <data name="SetTaskbarAlignDesc.Text" xml:space="preserve"><value>Which edge of its free area the widget sticks to; the lyrics are aligned to that side too. Opening and closing apps changes the taskbar: Left and Right stay at the steady end of the area (screen edge, Widgets or the notification area), so the lyrics do not move with the icons; Auto keeps them next to the taskbar icons.</value></data>
+  <data name="SetTaskbarAlignDesc.Text" xml:space="preserve"><value>Which side of its free area the widget and its lyrics keep to.</value></data>
+  <data name="SetTaskbarAlignDesc.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Which edge of its free area the widget sticks to; the lyrics are aligned to that side too. Opening and closing apps changes the taskbar: Left and Right stay at the steady end of the area (screen edge, Widgets or the notification area), so the lyrics do not move with the icons; Auto keeps them next to the taskbar icons.</value></data>
   <data name="TaskbarAlignAuto.Content" xml:space="preserve"><value>Auto (next to the taskbar icons)</value></data>
   <data name="TaskbarAlignLeft.Content" xml:space="preserve"><value>Left</value></data>
   <data name="TaskbarAlignRight.Content" xml:space="preserve"><value>Right</value></data>

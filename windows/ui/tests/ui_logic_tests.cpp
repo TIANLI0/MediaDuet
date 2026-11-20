@@ -556,6 +556,73 @@ TEST_CASE("ambient render: dithered upsampling, no banding")
     CHECK(maxPixelErr <= 1.6);
 }
 
+TEST_CASE("lyric segments: edge fade of a scrolling row")
+{
+    // Fits: no fade.
+    CHECK_FALSE(lyrics::EdgeFadeFor(300, 320, 0).Active());
+    // Overflows, not scrolled yet: only the right edge fades.
+    auto f = lyrics::EdgeFadeFor(600, 320, 0);
+    CHECK(f.Active());
+    CHECK_FALSE(f.left);
+    CHECK(f.right);
+    CHECK(f.At(0) == doctest::Approx(1.0));
+    CHECK(f.At(314) == doctest::Approx(0.5));
+    CHECK(f.At(320) == doctest::Approx(0.0));
+    // Scrolled to the middle: both edges; scrolled to the end: only the left one.
+    f = lyrics::EdgeFadeFor(600, 320, 140);
+    CHECK((f.left && f.right));
+    CHECK(f.At(6) == doctest::Approx(0.5));
+    f = lyrics::EdgeFadeFor(600, 320, 280);
+    CHECK((f.left && !f.right));
+    // Breakpoints of a 40 px item at view x -20 (half under the left fade): its ends and the fade's.
+    f = lyrics::EdgeFadeFor(600, 320, 140);
+    auto stops = lyrics::FadeStops(f, -20, 40, { 25.0 });
+    REQUIRE(stops.size() == 5);
+    CHECK(stops[0] == doctest::Approx(0));
+    CHECK(stops[1] == doctest::Approx(20));   // view x 0
+    CHECK(stops[2] == doctest::Approx(25));   // extra (a fill edge)
+    CHECK(stops[3] == doctest::Approx(32));   // view x 12: end of the fade
+    CHECK(stops[4] == doctest::Approx(40));
+    CHECK(f.Touches(-20, 20));
+    CHECK_FALSE(f.Touches(40, 80));
+    CHECK(f.Touches(300, 330));
+}
+
+TEST_CASE("ambient render: dithered placeholder gradient")
+{
+    // The artwork placeholder's two colours (light theme) over a 680 px frame: the diagonal means
+    // (x + y = const) follow the exact gradient, each pixel stays within the dither.
+    ambient::Rgb a{ 0xE4 / 255.0f, 0xDE / 255.0f, 0xFF / 255.0f }, b{ 0xFF / 255.0f, 0xDC / 255.0f, 0xE6 / 255.0f };
+    int w = 680, h = 680;
+    std::vector<uint8_t> px;
+    ambient::DiagonalGradient(a, b, w, h, px);
+    REQUIRE(px.size() == static_cast<size_t>(w) * h * 4);
+    double maxMeanErr = 0, maxPixelErr = 0;
+    for (int d = 40; d < w + h - 41; d += 7)
+    {
+        double sum = 0, exactSum = 0;
+        int n = 0;
+        for (int x = std::max(0, d - h + 1); x <= std::min(w - 1, d); ++x)
+        {
+            int y = d - x;
+            uint8_t const* q = &px[(static_cast<size_t>(y) * w + x) * 4];
+            double t = ((x + 0.5) / w + (y + 0.5) / h) * 0.5;
+            double exact = (a.r + (b.r - a.r) * t) * 255.0;
+            CHECK(q[3] == 255);
+            sum += q[2];
+            exactSum += exact;
+            maxPixelErr = std::max(maxPixelErr, std::abs(q[2] - exact));
+            ++n;
+        }
+        maxMeanErr = std::max(maxMeanErr, std::abs(sum - exactSum) / n);
+    }
+    CHECK(maxMeanErr < 0.25);
+    CHECK(maxPixelErr <= 1.6);
+    // Corners are the two colours.
+    CHECK(std::abs(px[2] - 0xE4) <= 1);
+    CHECK(std::abs(px[(static_cast<size_t>(h - 1) * w + (w - 1)) * 4 + 2] - 0xFF) <= 1);
+}
+
 TEST_CASE("ambient render: flowing artwork")
 {
     int side = ambient::kArtSide;

@@ -204,7 +204,7 @@ DEFAULT_SETTINGS = {
                "overlay": {"visible": False, "locked": False, "clickThrough": False, "autoHide": True,
                            "fontFamily": "Microsoft YaHei UI", "fontSize": 32, "opacity": 0.92,
                            "karaoke": True, "twoLines": True, "colorActive": "#FFFFFFFF",
-                           "colorInactive": "#B3FFFFFF", "x": None, "y": None, "width": 900,
+                           "colorInactive": "#80FFFFFF", "x": None, "y": None, "width": 900,
                            "topmost": True, "hideInFullscreen": False, "layout": "alternate"}},
     "ui": {"alwaysOnTop": False, "animations": True, "lowPower": False,
            "main": {"x": None, "y": None, "width": None, "height": None, "maximized": False},

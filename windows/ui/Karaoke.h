@@ -18,6 +18,7 @@
 // light up one after another over the gap and breathe, then shrink away just before the next line.
 #pragma once
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -113,6 +114,9 @@ namespace mdui
         void ApplyRomajiFill(double fraction);
         void UpdateInterlude(double positionMs, bool animate);
         void SetAllSegments(winrt::Microsoft::UI::Xaml::Media::Brush const& brush);
+        // A gradient through `stops` (local x) of colour(x) x fade(x0 + x), Absolute mapping.
+        void FadeBrush(winrt::Microsoft::UI::Xaml::Media::LinearGradientBrush& brush, lyrics::EdgeFade const& fade, double x0, double w,
+            std::vector<double> const& stops, std::function<winrt::Windows::UI::Color(double)> const& colorAt);
 
         winrt::Microsoft::UI::Xaml::Controls::Grid m_root;
         winrt::Microsoft::UI::Xaml::Controls::Panel m_panel{ nullptr };
@@ -134,6 +138,8 @@ namespace mdui
         std::wstring m_roText;
         winrt::Microsoft::UI::Xaml::Documents::Run m_roSung, m_roEdge, m_roRest;
         winrt::Microsoft::UI::Xaml::Media::SolidColorBrush m_roEdgeBrush;
+        winrt::Microsoft::UI::Xaml::Media::LinearGradientBrush m_roFade[3]{ nullptr, nullptr, nullptr };   // sung / edge / rest
+        bool m_roFaded{ false };
         bool m_roFilled{ false };   // shown as the three runs (else plain text)
         int m_roSplit{ -1 };        // index of the edge character
 
@@ -143,6 +149,7 @@ namespace mdui
             winrt::Microsoft::UI::Xaml::Media::LinearGradientBrush gradient{ nullptr };
             winrt::Microsoft::UI::Xaml::Media::GradientStop on{ nullptr };
             winrt::Microsoft::UI::Xaml::Media::GradientStop off{ nullptr };
+            winrt::Microsoft::UI::Xaml::Media::LinearGradientBrush fade{ nullptr };   // fill x edge fade (scrolling row)
             lyrics::FillMode mode{ lyrics::FillMode::Unsung };
             bool applied{ false };
             double gStart{ 0 }, gEnd{ 0 };

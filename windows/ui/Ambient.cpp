@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "Ambient.h"
 #include "RenderTest.h"
+#include "WindowUtil.h"
 
 #include <winrt/Windows.Storage.Streams.h>
 
@@ -301,5 +302,96 @@ namespace mdui
             m_release.Stop();
             m_release.Start();
         }
+    }
+
+    // ---- PlaceholderGradient ------------------------------------------------------------------
+
+    void PlaceholderGradient::Attach(Border const& border)
+    {
+        Detach();
+        m_border = border;
+        m_debounce = border.DispatcherQueue().CreateTimer();
+        m_debounce.IsRepeating(false);
+        m_debounce.Interval(std::chrono::milliseconds(120));
+        m_debounce.Tick([this](auto&&, auto&&) { Render(); });
+        m_sizeToken = border.SizeChanged([this](auto&&, SizeChangedEventArgs const&) {
+            // The first size renders at once (no flash of the XAML gradient); resizes are debounced.
+            if (!m_bitmap) Render();
+            else
+            {
+                m_debounce.Stop();
+                m_debounce.Start();
+            }
+        });
+        m_themeToken = border.ActualThemeChanged([this](auto&&, auto&&) { Refresh(); });
+        m_loadedToken = border.Loaded([this](auto&&, auto&&) {
+            WatchXamlRoot();
+            Render();
+        });
+        if (border.XamlRoot()) WatchXamlRoot();
+    }
+
+    void PlaceholderGradient::WatchXamlRoot()
+    {
+        auto root = m_border ? m_border.XamlRoot() : nullptr;
+        if (!root || root == m_xamlRoot) return;
+        if (m_xamlRoot) m_xamlRoot.Changed(m_rootToken);
+        m_xamlRoot = root;
+        m_rootToken = root.Changed([this](auto&&, auto&&) { Render(); });   // DPI (RasterizationScale)
+    }
+
+    void PlaceholderGradient::Detach()
+    {
+        if (m_debounce) m_debounce.Stop();
+        if (m_border)
+        {
+            m_border.SizeChanged(m_sizeToken);
+            m_border.ActualThemeChanged(m_themeToken);
+            m_border.Loaded(m_loadedToken);
+        }
+        if (m_xamlRoot) m_xamlRoot.Changed(m_rootToken);
+        m_xamlRoot = nullptr;
+        m_border = nullptr;
+        m_bitmap = nullptr;
+        m_brush = nullptr;
+        m_debounce = nullptr;
+        m_width = m_height = 0;
+    }
+
+    void PlaceholderGradient::Refresh()
+    {
+        m_width = m_height = 0;   // force: the colours may have changed
+        Render();
+    }
+
+    void PlaceholderGradient::Render()
+    {
+        if (!m_border) return;
+        double scale = m_border.XamlRoot() ? m_border.XamlRoot().RasterizationScale() : 1.0;
+        int w = std::clamp(static_cast<int>(std::ceil(m_border.ActualWidth() * scale)), 0, 2048);
+        int h = std::clamp(static_cast<int>(std::ceil(m_border.ActualHeight() * scale)), 0, 2048);
+        if (w <= 0 || h <= 0) return;
+        auto from = ThemeColor(m_border, L"ArtPlaceholderStart", winrt::Windows::UI::Color{ 255, 0x80, 0x80, 0x80 });
+        auto to = ThemeColor(m_border, L"ArtPlaceholderEnd", from);
+        if (w == m_width && h == m_height && from == m_from && to == m_to && m_bitmap) return;
+        m_width = w;
+        m_height = h;
+        m_from = from;
+        m_to = to;
+        auto rgb = [](winrt::Windows::UI::Color c) { return ambient::Rgb{ c.R / 255.0f, c.G / 255.0f, c.B / 255.0f }; };
+        std::vector<uint8_t> pixels;
+        ambient::DiagonalGradient(rgb(from), rgb(to), w, h, pixels, 0x2545F491u ^ static_cast<uint32_t>(w * 7919 + h));
+        if (!m_bitmap || m_bitmap.PixelWidth() != w || m_bitmap.PixelHeight() != h) m_bitmap = WriteableBitmap(w, h);
+        auto buffer = m_bitmap.PixelBuffer();
+        if (buffer.Capacity() < pixels.size()) return;
+        std::memcpy(buffer.data(), pixels.data(), pixels.size());
+        m_bitmap.Invalidate();
+        if (!m_brush)
+        {
+            m_brush = ImageBrush();
+            m_brush.Stretch(Stretch::Fill);
+        }
+        m_brush.ImageSource(m_bitmap);
+        if (m_border.Background() != m_brush) m_border.Background(m_brush);
     }
 }

@@ -4,6 +4,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string_view>
 
 #include <winrt/Microsoft.UI.Windowing.h>
 #include <winrt/Windows.Foundation.Numerics.h>
@@ -46,6 +47,16 @@ namespace mdui
     // Stops those animations and puts the visual back to opacity 1 / no translation.
     void ResetVisual(winrt::Microsoft::UI::Xaml::UIElement const& element);
 
+    // A theme resource (App.xaml theme dictionaries, then WinUI's own) as `element`'s *actual* theme
+    // resolves it. Resources().Lookup() from code follows the application's theme, which differs
+    // from the window's when MediaDuet's theme is not the Windows one. nullptr when not found.
+    winrt::Windows::Foundation::IInspectable LookupThemeResource(winrt::Microsoft::UI::Xaml::FrameworkElement const& element,
+        std::wstring_view key);
+    winrt::Microsoft::UI::Xaml::Media::Brush ThemeBrush(winrt::Microsoft::UI::Xaml::FrameworkElement const& element, std::wstring_view key);
+    // Colour resources (and solid brushes, by their colour); `fallback` when not found.
+    winrt::Windows::UI::Color ThemeColor(winrt::Microsoft::UI::Xaml::FrameworkElement const& element, std::wstring_view key,
+        winrt::Windows::UI::Color fallback);
+
     // Common per-window plumbing: backdrop, icon, theme + caption colours, minimum size and
     // "is the window actually showing" tracking (visible and not minimised).
     class WindowHost
@@ -61,6 +72,8 @@ namespace mdui
         bool IsDark() const;
 
         std::function<void()> showingChanged;
+        // The root's ActualTheme changed (MediaDuet's theme or, with "system", Windows' own).
+        std::function<void()> themeChanged;
         MessageHook extraHook;
 
     private:

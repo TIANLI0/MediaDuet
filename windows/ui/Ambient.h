@@ -66,4 +66,35 @@ namespace mdui
         winrt::event_token m_rootChangedToken{};
         winrt::Microsoft::UI::Xaml::XamlRoot m_xamlRoot{ nullptr };
     };
+
+    // The artwork placeholder's two-colour diagonal gradient (ArtPlaceholderStart / End for the
+    // border's *actual* theme) as a dithered bitmap behind a Border: a LinearGradientBrush shows
+    // 8-bit diagonal bands across a large artwork frame. Rendered at the border's pixel size on
+    // size (debounced), DPI and theme changes; the XAML gradient stays until the first render.
+    class PlaceholderGradient
+    {
+    public:
+        void Attach(winrt::Microsoft::UI::Xaml::Controls::Border const& border);
+        void Detach();
+        // Re-reads the theme colours (also done on the border's ActualThemeChanged).
+        void Refresh();
+
+    private:
+        void Render();
+        void WatchXamlRoot();
+
+        winrt::Microsoft::UI::Xaml::Controls::Border m_border{ nullptr };
+        winrt::Microsoft::UI::Xaml::Media::Imaging::WriteableBitmap m_bitmap{ nullptr };
+        winrt::Microsoft::UI::Xaml::Media::ImageBrush m_brush{ nullptr };
+        winrt::Microsoft::UI::Dispatching::DispatcherQueueTimer m_debounce{ nullptr };
+        winrt::event_token m_sizeToken{};
+        winrt::event_token m_themeToken{};
+        winrt::event_token m_loadedToken{};
+        winrt::event_token m_rootToken{};
+        winrt::Microsoft::UI::Xaml::XamlRoot m_xamlRoot{ nullptr };
+        int m_width{ 0 };
+        int m_height{ 0 };
+        winrt::Windows::UI::Color m_from{};
+        winrt::Windows::UI::Color m_to{};
+    };
 }

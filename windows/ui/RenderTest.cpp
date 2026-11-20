@@ -1,7 +1,9 @@
 #include "pch.h"
 #include "RenderTest.h"
 
+#include "CompactWindow.xaml.h"
 #include "Controller.h"
+#include "Strings.h"
 #include "Karaoke.h"
 #include "MainWindow.xaml.h"
 #include "WindowUtil.h"
@@ -362,6 +364,38 @@ namespace mdui::render
             co_await SeekTo(18200);
             }
 
+            // Floating notices over the bottom bar (5 buttons with the A2DP switch): they must end
+            // before the bar's buttons, whatever their number.
+            if (Section(L"notices")) {
+            auto mw = winrt::get_self<winrt::MediaDuetUI::implementation::MainWindow>(main.as<winrt::MediaDuetUI::MainWindow>());
+            PrepareOffscreen(GetHwnd(main), 1040, 760);
+            co_await Delay(700ms);
+            co_await SeekTo(18200);
+            mw->ErrorBar().Title(Str(L"CommandFailed"));
+            mw->ErrorBar().Message(L"timeout");
+            mw->ErrorBar().IsOpen(true);
+            mw->HandoffBar().Title(Str(L"HandoffToPhone"));
+            mw->HandoffBar().IsOpen(true);
+            co_await Delay(600ms);
+            co_await Capture(main, L"25-main-dark-notices", true);
+            mw->ErrorBar().IsOpen(false);
+            mw->HandoffBar().IsOpen(false);
+            co_await Delay(300ms);
+            // The artwork placeholder at its largest (680 epx at 4K 100 %): dithered, no bands.
+            PrepareOffscreen(GetHwnd(main), 3840, 2160);
+            co_await Delay(800ms);
+            mw->ArtImageBorder().Opacity(0);
+            co_await Delay(900ms);
+            co_await Capture(main, L"26-main-dark-placeholder-3840", true);
+            c.SetSetting("theme", "light");
+            co_await Delay(900ms);
+            co_await Capture(main, L"27-main-light-placeholder-3840", false);
+            c.SetSetting("theme", "dark");
+            mw->ArtImageBorder().Opacity(1);
+            PrepareOffscreen(GetHwnd(main), 1040, 760);
+            co_await Delay(900ms);
+            }
+
             // Lyrics -> no lyrics (a video without lyrics) and back, mid-animation frames (the
             // composition transitions run 8x slower here so frames can be taken during them).
             if (Section(L"transitions")) {
@@ -477,6 +511,25 @@ namespace mdui::render
             co_await Capture(compact, L"51-compact-dark-cjk", true);
             co_await SeekTo(58500, 300);
             co_await Capture(compact, L"52-compact-dark-long", true);
+            co_await SeekTo(60500, 300);
+            co_await Capture(compact, L"53-compact-dark-long-scrolled", true);
+            auto cw = winrt::get_self<winrt::MediaDuetUI::implementation::CompactWindow>(compact.as<winrt::MediaDuetUI::CompactWindow>());
+            cw->SetHoverForRenderTest(true);
+            co_await Delay(700ms);
+            co_await Capture(compact, L"54-compact-dark-hover", true);
+            cw->SetHoverForRenderTest(false);
+            c.SetSetting("theme", "light");
+            co_await Delay(900ms);
+            co_await SeekTo(17900, 300);
+            co_await Capture(compact, L"55-compact-light-spaces", false);
+            co_await SeekTo(60500, 300);
+            co_await Capture(compact, L"56-compact-light-long-scrolled", false);
+            cw->SetHoverForRenderTest(true);
+            co_await Delay(700ms);
+            co_await Capture(compact, L"57-compact-light-hover", false);
+            cw->SetHoverForRenderTest(false);
+            c.SetSetting("theme", "dark");
+            co_await Delay(500ms);
             }
 
             CheckForeground(L"end");

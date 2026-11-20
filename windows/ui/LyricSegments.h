@@ -250,4 +250,67 @@ namespace mdui::lyrics
         }
         return runs;
     }
+
+    // Edge fade of a single row that is wider than its view (the compact window's scrolling line):
+    // the text fades out over `width` px at an edge with more text beyond it, like the main window's
+    // and the desktop lyrics' edge fades, instead of being cut hard by the clip.
+    struct EdgeFade
+    {
+        double view{ 0 };      // visible width
+        double width{ 12 };    // fade length
+        bool left{ false };    // text continues past the left edge (scrolled)
+        bool right{ false };   // ... past the right edge
+
+        bool Active() const { return view > 0 && (left || right); }
+        // Opacity factor at view x.
+        double At(double x) const
+        {
+            double a = 1.0;
+            if (left) a = std::min(a, std::clamp(x / width, 0.0, 1.0));
+            if (right) a = std::min(a, std::clamp((view - x) / width, 0.0, 1.0));
+            return a;
+        }
+        // True when [x0, x1) (view x) reaches into a fade.
+        bool Touches(double x0, double x1) const
+        {
+            return (left && x0 < width) || (right && x1 > view - width);
+        }
+    };
+
+    // For a row of `total` px scrolled by `offset` in a view of `view` px.
+    inline EdgeFade EdgeFadeFor(double total, double view, double offset, double width = 12)
+    {
+        EdgeFade f;
+        f.view = view;
+        f.width = width;
+        bool overflow = view > 0 && total > view + 0.5;
+        f.left = overflow && offset > 0.5;
+        f.right = overflow && offset < total - view - 0.5;
+        return f;
+    }
+
+    // Gradient breakpoints (local x, sorted, within [0, w]) for an item drawn at view x `x0`, `w`
+    // wide: its ends, the fade boundaries and any extra local points (a fill edge's gradient), so a
+    // piecewise-linear gradient through them reproduces fade x fill.
+    inline std::vector<double> FadeStops(EdgeFade const& f, double x0, double w, std::initializer_list<double> extra = {})
+    {
+        std::vector<double> p{ 0.0, w };
+        auto add = [&](double local) {
+            if (local > 0 && local < w) p.push_back(local);
+        };
+        if (f.left)
+        {
+            add(-x0);
+            add(f.width - x0);
+        }
+        if (f.right)
+        {
+            add(f.view - f.width - x0);
+            add(f.view - x0);
+        }
+        for (double e : extra) add(e);
+        std::sort(p.begin(), p.end());
+        p.erase(std::unique(p.begin(), p.end(), [](double a, double b) { return std::abs(a - b) < 0.01; }), p.end());
+        return p;
+    }
 }

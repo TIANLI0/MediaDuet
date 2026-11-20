@@ -9,6 +9,7 @@
 #include "RenderTest.h"
 #include "Strings.h"
 #include "Version.h"
+#include "WindowUtil.h"
 
 #include <dwrite.h>
 #include <psapi.h>
@@ -317,7 +318,7 @@ namespace winrt::MediaDuetUI::implementation
                 ActiveColorPicker().Color(*col);
         });
         InactiveColorFlyout().Opening([this](auto&&, auto&&) {
-            if (auto col = ParseColor(Controller::Get().Model().Setting("lyrics.overlay.colorInactive", std::string("#B3FFFFFF"))))
+            if (auto col = ParseColor(Controller::Get().Model().Setting("lyrics.overlay.colorInactive", std::string("#80FFFFFF"))))
                 InactiveColorPicker().Color(*col);
         });
         ActiveColorApply().Click([this](auto&&, auto&&) {
@@ -431,6 +432,11 @@ namespace winrt::MediaDuetUI::implementation
                     self->ShowResultError(error);
             }
         }));
+
+        // Status dots set from code use App.xaml's theme brushes for the page's theme: re-resolve them.
+        Root().ActualThemeChanged([weak = get_weak()](auto&&, auto&&) {
+            if (auto self = weak.get(); self && !self->m_closed) self->UpdateTaskbar();
+        });
 
         // A pending pairing confirmation needs a XamlRoot, which exists only once the content is loaded.
         Root().Loaded([weak = get_weak()](auto&&, auto&&) {
@@ -842,30 +848,35 @@ namespace winrt::MediaDuetUI::implementation
 
         PairedList().Children().Clear();
         PairedEmpty().Visibility(st.devices.empty() ? Visibility::Visible : Visibility::Collapsed);
-        auto cardStyle = Application::Current().Resources().Lookup(box_value(L"CardStyle")).as<Microsoft::UI::Xaml::Style>();
-        auto descStyle = Application::Current().Resources().Lookup(box_value(L"CardDescriptionStyle")).as<Microsoft::UI::Xaml::Style>();
+        auto res = Application::Current().Resources();
+        auto cardStyle = res.Lookup(box_value(L"CardStyle")).as<Microsoft::UI::Xaml::Style>();
+        auto descStyle = res.Lookup(box_value(L"CardDescriptionStyle")).as<Microsoft::UI::Xaml::Style>();
+        auto titleStyle = res.Lookup(box_value(L"CardTitleStyle")).as<Microsoft::UI::Xaml::Style>();
+        auto iconStyle = res.Lookup(box_value(L"CardIconStyle")).as<Microsoft::UI::Xaml::Style>();
+        double spacing = unbox_value<double>(res.Lookup(box_value(L"CardColumnSpacing")));
         for (auto const& d : st.devices)
         {
             Border card;
             card.Style(cardStyle);
+            // Same columns as the XAML cards: CardIconStyle icon, CardColumnSpacing, title in CardTitleStyle.
             Grid grid;
-            grid.ColumnSpacing(12);
+            grid.ColumnSpacing(spacing);
             grid.ColumnDefinitions().Append(ColumnDefinition());
             grid.ColumnDefinitions().Append(ColumnDefinition());
             grid.ColumnDefinitions().Append(ColumnDefinition());
             grid.ColumnDefinitions().GetAt(0).Width(GridLength{ 0, GridUnitType::Auto });
             grid.ColumnDefinitions().GetAt(2).Width(GridLength{ 0, GridUnitType::Auto });
 
-            auto icon = MakeIcon(L"\xE8EA");
-            icon.Margin(Thickness{ 2, 0, 6, 0 });
-            icon.VerticalAlignment(VerticalAlignment::Center);
+            FontIcon icon;
+            icon.Style(iconStyle);
+            icon.Glyph(L"\xE8EA");
             grid.Children().Append(icon);
 
             StackPanel text;
             text.VerticalAlignment(VerticalAlignment::Center);
             TextBlock name;
+            name.Style(titleStyle);
             name.Text(Widen(d.name.empty() ? d.id : d.name));
-            name.FontWeight(Microsoft::UI::Text::FontWeights::SemiBold());
             text.Children().Append(name);
             TextBlock status;
             status.Style(descStyle);
@@ -923,11 +934,15 @@ namespace winrt::MediaDuetUI::implementation
         }
     }
 
+    std::wstring SettingsPage::PlatformName(std::string const& platform)
+    {
+        return platform == "android" ? L"Android" : platform == "windows" ? L"Windows" : Widen(platform);
+    }
+
     std::wstring SettingsPage::DeviceVersionText(std::string const& platform, std::string const& app, std::string const& match)
     {
         if (app.empty()) return std::wstring(Str(L"DeviceVersionUnknown"));
-        std::wstring os = platform == "android" ? L"Android" : platform == "windows" ? L"Windows" : Widen(platform);
-        std::wstring t = StrF(L"DeviceVersion", { os, Widen(app) });
+        std::wstring t = StrF(L"DeviceVersion", { PlatformName(platform), Widen(app) });
         if (match == "patch") t += L"  \x00B7  " + std::wstring(Str(L"VersionPatchNote"));
         else if (match == "mismatch") t += L"  \x00B7  " + std::wstring(Str(L"VersionMismatchShort"));
         return t;
@@ -978,26 +993,44 @@ namespace winrt::MediaDuetUI::implementation
 
         DiscoveredList().Children().Clear();
         DiscoveredEmpty().Visibility(st.discovered.empty() ? Visibility::Visible : Visibility::Collapsed);
-        auto cardStyle = Application::Current().Resources().Lookup(box_value(L"CardStyle")).as<Microsoft::UI::Xaml::Style>();
-        auto descStyle = Application::Current().Resources().Lookup(box_value(L"CardDescriptionStyle")).as<Microsoft::UI::Xaml::Style>();
+        auto res = Application::Current().Resources();
+        auto cardStyle = res.Lookup(box_value(L"CardStyle")).as<Microsoft::UI::Xaml::Style>();
+        auto descStyle = res.Lookup(box_value(L"CardDescriptionStyle")).as<Microsoft::UI::Xaml::Style>();
+        auto titleStyle = res.Lookup(box_value(L"CardTitleStyle")).as<Microsoft::UI::Xaml::Style>();
+        auto iconStyle = res.Lookup(box_value(L"CardIconStyle")).as<Microsoft::UI::Xaml::Style>();
+        double spacing = unbox_value<double>(res.Lookup(box_value(L"CardColumnSpacing")));
+        // Status text in the control column: right-aligned, wraps within a fixed width.
+        auto statusText = [&](hstring const& s) {
+            TextBlock t;
+            t.Style(descStyle);
+            t.Text(s);
+            t.VerticalAlignment(VerticalAlignment::Center);
+            t.HorizontalAlignment(HorizontalAlignment::Right);
+            t.TextAlignment(TextAlignment::Right);
+            t.TextWrapping(TextWrapping::Wrap);
+            t.MaxWidth(220);
+            Grid::SetColumn(t, 2);
+            return t;
+        };
         for (auto const& d : st.discovered)
         {
             Border card;
             card.Style(cardStyle);
             Grid grid;
-            grid.ColumnSpacing(12);
+            grid.ColumnSpacing(spacing);
             for (int i = 0; i < 3; ++i) grid.ColumnDefinitions().Append(ColumnDefinition());
             grid.ColumnDefinitions().GetAt(0).Width(GridLength{ 0, GridUnitType::Auto });
             grid.ColumnDefinitions().GetAt(2).Width(GridLength{ 0, GridUnitType::Auto });
 
-            auto icon = MakeIcon(d.kind == "bt" ? L"\xE702" : L"\xE839", 18);
-            icon.Margin(Thickness{ 2, 0, 6, 0 });
-            icon.VerticalAlignment(VerticalAlignment::Center);
+            FontIcon icon;
+            icon.Style(iconStyle);
+            icon.Glyph(d.kind == "bt" ? L"\xE702" : L"\xE839");
             grid.Children().Append(icon);
 
             StackPanel text;
             text.VerticalAlignment(VerticalAlignment::Center);
             TextBlock name;
+            name.Style(titleStyle);
             name.Text(Widen(d.name.empty() ? d.id : d.name));
             text.Children().Append(name);
             TextBlock detail;
@@ -1011,24 +1044,12 @@ namespace winrt::MediaDuetUI::implementation
 
             if (!d.ready && !d.paired)
             {
-                TextBlock notReady;
-                notReady.Style(descStyle);
                 // LAN: announced, but our probe gets no answer (the phone left, AP isolation, a VPN on the phone).
-                notReady.Text(Str(d.kind == "lan" ? L"DiscoveredUnreachable" : L"DiscoveredNotReady"));
-                notReady.VerticalAlignment(VerticalAlignment::Center);
-                notReady.TextWrapping(TextWrapping::Wrap);
-                notReady.MaxWidth(220);
-                Grid::SetColumn(notReady, 2);
-                grid.Children().Append(notReady);
+                grid.Children().Append(statusText(Str(d.kind == "lan" ? L"DiscoveredUnreachable" : L"DiscoveredNotReady")));
             }
             else if (d.paired)
             {
-                TextBlock paired;
-                paired.Style(descStyle);
-                paired.Text(Str(L"AlreadyPaired"));
-                paired.VerticalAlignment(VerticalAlignment::Center);
-                Grid::SetColumn(paired, 2);
-                grid.Children().Append(paired);
+                grid.Children().Append(statusText(Str(L"AlreadyPaired")));
             }
             else
             {
@@ -1057,7 +1078,7 @@ namespace winrt::MediaDuetUI::implementation
         auto const& cn = st.connection;
         ConnStatusValue().Text(Str(L"ConnState_" + Widen(cn.status)));
         std::wstring peer = Widen(st.PeerDisplayName());
-        if (!cn.peer.platform.empty() && !peer.empty()) peer += L" (" + Widen(cn.peer.platform) + L")";
+        if (!cn.peer.platform.empty() && !peer.empty()) peer += L" (" + PlatformName(cn.peer.platform) + L")";
         ConnPeerValue().Text(Dash(peer));
         std::wstring transport = cn.status == "connected" ? TransportName(cn.transport) : std::wstring(L"\x2014");
         if (cn.status == "connected" && !cn.secondary.empty() && cn.secondary != cn.transport)
@@ -1268,7 +1289,7 @@ namespace winrt::MediaDuetUI::implementation
             b.Background(SolidColorBrush(color.value_or(Color{ 255, 255, 255, 255 })));
         };
         swatch(ActiveColorSwatch(), "lyrics.overlay.colorActive", "#FFFFFFFF");
-        swatch(InactiveColorSwatch(), "lyrics.overlay.colorInactive", "#B3FFFFFF");
+        swatch(InactiveColorSwatch(), "lyrics.overlay.colorInactive", "#80FFFFFF");
 
         // The alternating / centred layout only matters with two lines.
         OverlayLayoutCombo().IsEnabled(st.Setting("lyrics.overlay.twoLines", true));
@@ -1946,19 +1967,20 @@ namespace winrt::MediaDuetUI::implementation
         auto const& tb = st.taskbar;
         bool enabled = st.Setting("taskbar.enabled", true);
         std::wstring text;
-        Color dot{ 255, 138, 138, 138 };
+        // App.xaml's status brushes, for the page's theme (light / dark / high contrast).
+        wchar_t const* dot = L"StatusIdleBrush";
         if (!tb.known) text = L"\x2014";
         else if (!tb.supported) text = Str(L"TaskbarStatusUnsupported");
         else if (!enabled) text = Str(L"TaskbarStatusDisabled");
         else if (tb.shown)
         {
             text = Str(L"TaskbarStatusShown");
-            dot = Color{ 255, 46, 173, 75 };
+            dot = L"StatusGoodBrush";
         }
         else
         {
             text = Str(L"TaskbarStatusHidden");
-            dot = Color{ 255, 227, 162, 26 };
+            dot = L"StatusBusyBrush";
         }
         // taskbar.reason codes (docs/ipc.md) are localised; anything else is shown as is (secondary).
         if (tb.known && !tb.reason.empty() && !(tb.reason == "disabled" && !enabled))
@@ -1971,7 +1993,7 @@ namespace winrt::MediaDuetUI::implementation
             text += L"  \x00B7  " + reason;
         }
         TaskbarStatusText().Text(text);
-        TaskbarStatusDot().Fill(SolidColorBrush(dot));
+        if (auto brush = ThemeBrush(Root(), dot)) TaskbarStatusDot().Fill(brush);
     }
 }
 

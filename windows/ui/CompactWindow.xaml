@@ -91,7 +91,7 @@
                 <Button x:Name="PrevButton" x:Uid="PrevButton" Style="{StaticResource IconButtonStyle}" Width="36" Height="36" CornerRadius="18">
                     <FontIcon FontSize="13" Glyph="&#xE892;" />
                 </Button>
-                <Button x:Name="PlayPauseButton" x:Uid="PlayPauseButton" Style="{StaticResource IconButtonStyle}" Width="40" Height="36" CornerRadius="18">
+                <Button x:Name="PlayPauseButton" x:Uid="PlayPauseButton" Style="{StaticResource IconButtonStyle}" Width="36" Height="36" CornerRadius="18">
                     <FontIcon x:Name="PlayPauseIcon" FontSize="17" Glyph="&#xE768;" />
                 </Button>
                 <Button x:Name="NextButton" x:Uid="NextButton" Style="{StaticResource IconButtonStyle}" Width="36" Height="36" CornerRadius="18">

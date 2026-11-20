@@ -133,16 +133,17 @@
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="--:--" />
                 </Grid>
 
-                <StackPanel Margin="0,10,0,0" HorizontalAlignment="Center" Orientation="Horizontal" Spacing="18">
+                <!-- Sizes here are the smallest card's; MainWindow::ApplyCardScale grows them with the card. -->
+                <StackPanel x:Name="TransportPanel" Margin="0,10,0,0" HorizontalAlignment="Center" Orientation="Horizontal" Spacing="18">
                     <Button x:Name="PrevButton" x:Uid="PrevButton" Style="{StaticResource IconButtonStyle}" Width="48" Height="48" CornerRadius="24">
-                        <FontIcon FontSize="20" Glyph="&#xE892;" />
+                        <FontIcon x:Name="PrevIcon" FontSize="20" Glyph="&#xE892;" />
                     </Button>
                     <Button x:Name="PlayPauseButton" x:Uid="PlayPauseButton" Style="{StaticResource AccentButtonStyle}"
                             Width="60" Height="60" CornerRadius="30" Padding="0">
                         <FontIcon x:Name="PlayPauseIcon" FontSize="24" Glyph="&#xE768;" />
                     </Button>
                     <Button x:Name="NextButton" x:Uid="NextButton" Style="{StaticResource IconButtonStyle}" Width="48" Height="48" CornerRadius="24">
-                        <FontIcon FontSize="20" Glyph="&#xE893;" />
+                        <FontIcon x:Name="NextIcon" FontSize="20" Glyph="&#xE893;" />
                     </Button>
                 </StackPanel>
 
@@ -151,7 +152,7 @@
                             Spacing="2" Visibility="Collapsed">
                     <StackPanel x:Name="CustomActionsPanel" Orientation="Horizontal" Spacing="2" />
                     <Button x:Name="QueueButton" x:Uid="QueueButton" Style="{StaticResource IconButtonStyle}" Visibility="Collapsed">
-                        <FontIcon FontSize="16" Glyph="&#xE8FD;" />
+                        <FontIcon x:Name="QueueIcon" FontSize="16" Glyph="&#xE8FD;" />
                         <Button.Flyout>
                             <Flyout x:Name="QueueFlyout" Placement="Top">
                                 <Grid Width="360" RowSpacing="6">
@@ -366,7 +367,7 @@
                 <TextBlock x:Name="PolicyText" Grid.Column="1" Style="{StaticResource CaptionTextBlockStyle}" VerticalAlignment="Center"
                            TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </Grid>
-            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2">
+            <StackPanel x:Name="BottomButtons" Grid.Column="1" Orientation="Horizontal" Spacing="2">
                 <Button x:Name="VolumeButton" x:Uid="VolumeButton" Style="{StaticResource IconButtonStyle}">
                     <FontIcon x:Name="VolumeButtonIcon" FontSize="16" Glyph="&#xE995;" />
                     <Button.Flyout>
@@ -484,8 +485,9 @@
                 </InfoBar.ActionButton>
             </InfoBar>
         </Grid>
-        <!-- Bottom: over the policy line, clear of the bottom bar's buttons. -->
-        <StackPanel Grid.RowSpan="3" VerticalAlignment="Bottom" Margin="24,0,196,12">
+        <!-- Bottom: over the policy line, clear of the bottom bar's buttons (the right margin follows
+             BottomButtons' width: 4 or 5 buttons, see MainWindow::UpdateBottomNoticeInset). -->
+        <StackPanel x:Name="BottomNotices" Grid.RowSpan="3" VerticalAlignment="Bottom" Margin="24,0,212,12">
             <Grid>
                 <Border Style="{StaticResource FloatingNoticeStyle}" />
                 <InfoBar x:Name="ErrorBar" IsOpen="False" Severity="Error" IsClosable="True" />

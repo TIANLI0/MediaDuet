@@ -96,6 +96,9 @@ namespace winrt::MediaDuetUI::implementation
         void AdjustLyricsOffset(int64_t deltaMs);
         void AdjustLyricsScale(int steps);   // 0 = default size
         void SetupLyricsMenu();
+        void ApplyCardScale();
+        void ScaleCustomActions();
+        void UpdateBottomNoticeInset();
         bool OnKey(winrt::Windows::System::VirtualKey key, Microsoft::UI::Xaml::DependencyObject const& source);
 
         mdui::WindowHost m_host;
@@ -103,12 +106,14 @@ namespace winrt::MediaDuetUI::implementation
         Microsoft::UI::Dispatching::DispatcherQueueTimer m_timer{ nullptr };
         mdui::ArtworkSlot m_art;
         mdui::AmbientBackground m_ambient;
+        mdui::PlaceholderGradient m_placeholder;
         std::optional<mdui::Session> m_session;
         bool m_dirty{ false };
         bool m_closed{ false };
         bool m_a2dpRequested{ false };   // the quick toggle asked for it: report a failure once
         bool m_settingsShown{ false };
         bool m_cardCompact{ false };   // short window: optional card rows collapsed
+        int m_cardStep{ -1 };   // 0 / 1 / 2: the card's controls and text grow with the artwork
         double m_artAspect{ 1.0 };   // landscape video covers keep their full width
         SettingsPage* m_settings{ nullptr };   // implementation of m_settingsView (owned by the XAML tree)
         MediaDuetUI::SettingsPage m_settingsView{ nullptr };

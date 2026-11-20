@@ -10,6 +10,7 @@
 #include <winrt/Microsoft.UI.Composition.SystemBackdrops.h>
 #include <winrt/Microsoft.UI.Xaml.Hosting.h>
 #include <winrt/Microsoft.UI.Xaml.Media.h>
+#include <winrt/Windows.UI.ViewManagement.h>
 
 #include <memory>
 
@@ -241,6 +242,79 @@ namespace mdui
         visual.Properties().InsertVector3(L"Translation", { 0, 0, 0 });
     }
 
+    // ---- Theme resources ---------------------------------------------------------------------
+
+    namespace
+    {
+        using winrt::Windows::Foundation::IInspectable;
+
+        // Theme dictionaries of `d` (for the given theme names), then its merged dictionaries, last
+        // first - the order XAML resolves {ThemeResource} in.
+        IInspectable FindThemed(ResourceDictionary const& d, IInspectable const& key, std::initializer_list<wchar_t const*> themes, int depth)
+        {
+            if (!d || depth > 12) return nullptr;
+            auto themed = d.ThemeDictionaries();
+            for (auto name : themes)
+            {
+                auto themeKey = box_value(name);
+                if (!themed.HasKey(themeKey)) continue;
+                auto dict = themed.Lookup(themeKey).try_as<ResourceDictionary>();
+                if (!dict) continue;
+                if (auto v = FindThemed(dict, key, themes, depth + 1)) return v;
+                if (dict.HasKey(key)) return dict.Lookup(key);
+            }
+            auto merged = d.MergedDictionaries();
+            for (uint32_t i = merged.Size(); i-- > 0;)
+                if (auto v = FindThemed(merged.GetAt(i), key, themes, depth + 1)) return v;
+            return nullptr;
+        }
+    }
+
+    IInspectable LookupThemeResource(FrameworkElement const& element, std::wstring_view key)
+    {
+        auto app = Application::Current();
+        if (!app) return nullptr;
+        auto boxed = box_value(winrt::hstring(key));
+        bool highContrast = false;
+        try
+        {
+            highContrast = winrt::Windows::UI::ViewManagement::AccessibilitySettings().HighContrast();
+        }
+        catch (...)
+        {
+        }
+        bool dark = element && element.ActualTheme() == ElementTheme::Dark;
+        std::initializer_list<wchar_t const*> light{ L"Light" }, darkNames{ L"Dark", L"Default" }, hc{ L"HighContrast" };
+        auto names = highContrast ? hc : dark ? darkNames : light;
+        // The element's own resources first (local overrides), then the application's.
+        for (FrameworkElement e = element; e; e = e.Parent().try_as<FrameworkElement>())
+            if (auto v = FindThemed(e.Resources(), boxed, names, 0)) return v;
+        if (auto v = FindThemed(app.Resources(), boxed, names, 0)) return v;
+        // Not theme dependent (or not found in a theme dictionary): the usual lookup.
+        if (auto v = app.Resources().TryLookup(boxed)) return v;
+        return nullptr;
+    }
+
+    Media::Brush ThemeBrush(FrameworkElement const& element, std::wstring_view key)
+    {
+        if (auto v = LookupThemeResource(element, key))
+        {
+            if (auto brush = v.try_as<Media::Brush>()) return brush;
+            if (auto color = v.try_as<winrt::Windows::UI::Color>()) return Media::SolidColorBrush(*color);
+        }
+        return nullptr;
+    }
+
+    winrt::Windows::UI::Color ThemeColor(FrameworkElement const& element, std::wstring_view key, winrt::Windows::UI::Color fallback)
+    {
+        if (auto v = LookupThemeResource(element, key))
+        {
+            if (auto color = v.try_as<winrt::Windows::UI::Color>()) return *color;
+            if (auto brush = v.try_as<Media::SolidColorBrush>()) return brush.Color();
+        }
+        return fallback;
+    }
+
     // ---- WindowHost --------------------------------------------------------------------------
 
     void WindowHost::Attach(Window const& window, FrameworkElement const& root, SIZE minSizeDip, bool backdrop)
@@ -261,6 +335,7 @@ namespace mdui
             if (!*alive) return;
             SetDwmDark(m_hwnd, IsDark());
             if (auto w = m_window.get(); w && m_customCaption) ApplyCaptionColors(w, IsDark());
+            if (themeChanged) themeChanged();
         });
 
         InstallMessageHook(m_hwnd, [this, alive = m_alive](HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) -> std::optional<LRESULT> {
@@ -299,6 +374,7 @@ namespace mdui
         if (auto w = m_window.get()) w.VisibilityChanged(m_visibilityToken);
         if (auto r = m_root.get()) r.ActualThemeChanged(m_themeToken);
         showingChanged = nullptr;
+        themeChanged = nullptr;
         extraHook = nullptr;
     }
 

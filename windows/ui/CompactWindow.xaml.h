@@ -16,6 +16,8 @@ namespace winrt::MediaDuetUI::implementation
     {
         CompactWindow() = default;
         void InitializeComponent();
+        // Render test only: show (or hide) the hover controls without a pointer.
+        void SetHoverForRenderTest(bool on);
 
     private:
         void RefreshAll();
@@ -52,6 +54,7 @@ namespace winrt::MediaDuetUI::implementation
         bool m_pillBrushDark{ false };
         mdui::ArtworkSlot m_art;
         mdui::AmbientBackground m_ambient;
+        mdui::PlaceholderGradient m_placeholder;
         std::optional<mdui::Session> m_session;
         // Lyric clock (smoothed, minus the session's lyricsDelayMs) and optimistic play/pause.
         md::lyrics::LyricsClock m_clock;

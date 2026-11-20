@@ -263,6 +263,40 @@ namespace mdui::ambient
         }
     }
 
+    // A two-colour diagonal gradient (top-left a -> bottom-right b, like a LinearGradientBrush from
+    // 0,0 to 1,1 in the box: t = (x / w + y / h) / 2) as opaque BGRA8 with the same TPDF dither, for
+    // the artwork placeholder: 8-bit steps of a large two-colour gradient show as diagonal bands.
+    inline void DiagonalGradient(Rgb a, Rgb b, int w, int h, std::vector<uint8_t>& out, uint32_t seed = 0x2545F491u)
+    {
+        if (w <= 0 || h <= 0)
+        {
+            out.clear();
+            return;
+        }
+        out.resize(static_cast<size_t>(w) * static_cast<size_t>(h) * 4);
+        Noise noise{ seed ? seed : 1u };
+        float from[3] = { a.b * 255.0f, a.g * 255.0f, a.r * 255.0f };
+        float span[3] = { (b.b - a.b) * 255.0f, (b.g - a.g) * 255.0f, (b.r - a.r) * 255.0f };
+        uint8_t* dst = out.data();
+        for (int y = 0; y < h; ++y)
+        {
+            float ty = (y + 0.5f) / h * 0.5f;
+            for (int x = 0; x < w; ++x)
+            {
+                float t = ty + (x + 0.5f) / w * 0.5f;
+                uint32_t n0 = noise.Next(), n1 = noise.Next();
+                auto tpdf = [](uint32_t bits) {
+                    return (static_cast<float>(bits & 0xFF) + static_cast<float>((bits >> 8) & 0xFF)) * (1.0f / 255.0f) - 1.0f;
+                };
+                float d[3] = { tpdf(n0), tpdf(n0 >> 16), tpdf(n1) };
+                for (int k = 0; k < 3; ++k)
+                    dst[k] = static_cast<uint8_t>(std::clamp(static_cast<int>(std::floor(from[k] + span[k] * t + 0.5f + d[k])), 0, 255));
+                dst[3] = 255;
+                dst += 4;
+            }
+        }
+    }
+
     // Renders the frame at `seconds` for a host of the given sizes (see SizesFor) into out
     // (outW x outH opaque BGRA8; capacity is reused).
     inline void Render(Artwork const& art, float seconds, bool dark, Sizes const& sizes, std::vector<uint8_t>& out,
