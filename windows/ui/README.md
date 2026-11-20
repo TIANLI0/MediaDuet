@@ -21,9 +21,11 @@ Requirements: Visual Studio 2022 17.x or Visual Studio 2026 with the *WinUI appl
 | Microsoft.Windows.CppWinRT | 3.0.260818.1 |
 | Microsoft.Windows.SDK.BuildTools | 10.0.28000.2705 |
 | Microsoft.Windows.ImplementationLibrary | 1.0.260126.7 |
+| Microsoft.WindowsAppSDK.Runtime | 2.5.1 |
 
-The three `Microsoft.WindowsAppSDK.*` packages are the components of the Windows App SDK 2.5.1
-metapackage that the UI needs. Referencing the metapackage would also deploy the AI, ML, Search
+The `Microsoft.WindowsAppSDK.*` packages are the components of the Windows App SDK 2.5.1
+metapackage that the UI needs (`.Runtime` carries the release's runtime version, which the shared
+build's bootstrapper asks for). Referencing the metapackage would also deploy the AI, ML, Search
 and Widgets components (~175 MB instead of ~58 MB in the self-contained output).
 
 ```powershell
@@ -37,6 +39,12 @@ msbuild windows\ui\MediaDuetUI.slnx -restore -p:Configuration=Release -p:Platfor
 Output: `windows\ui\bin\<Platform>\Release\` — `MediaDuetUI.exe` plus the self-contained Windows App
 SDK runtime and `MediaDuetUI.pri`. Copy the whole folder next to `MediaDuet.exe` (the UI launches the
 host from its own directory). Intermediate files go to `obj\` and `Generated Files\` (git-ignored).
+
+`-p:WindowsAppSDKSelfContained=false` builds the framework-dependent ("shared") variant into
+`bin\<Platform>\Release-shared\`: no Windows App SDK files, only `Microsoft.WindowsAppRuntime.Bootstrap.dll`,
+which finds the Windows App Runtime 2.5.1+ installed on the PC at start-up. The installer carries both
+builds and installs the shared one only where that runtime is already present
+(`windows\packaging\fluentsetup.json`, `files.variantSelection: "auto"`).
 
 ## Command line
 

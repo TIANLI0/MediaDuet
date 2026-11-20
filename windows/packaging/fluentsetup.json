@@ -2,7 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/TIANLI0/FluentSetup/latest/shared/schemas/fluentsetup.project.schema.json",
   "schemaVersion": 1,
   // MediaDuet installer, built with FluentSetup by package.ps1 (-D Version=<version> -D Arch=<x64|ARM64>) from the
-  // staged folder dist\MediaDuet-<version>-win-<arch>.
+  // staged folders dist\MediaDuet-<version>-win-<arch> (self-contained) and ...-win-<arch>-shared (see "files").
   //
   // Per-user install into %LOCALAPPDATA%\Programs\MediaDuet, no administrator rights, registered under the uninstall
   // key "MediaDuet" (the in-app updater compares its InstallLocation with its own folder to tell an installed copy
@@ -18,7 +18,11 @@
   // Installer updates too ("update"): the GitHub releases (asset MediaDuet-<version>-<arch>-setup.exe, checked against
   // SHA256SUMS.txt) are FluentSetup's update source, so Apps & features > Modify offers a newer version with an
   // Update button, uninstall.exe /check-update | /install-update work, and Repair can download the installed version
-  // when its setup is gone (the in-app updater deletes it after updating).
+  // when its setup is gone (the in-app updater deletes it after updating). Differential: FluentSetup's updater keeps
+  // the last Setup.exe it downloaded (%LocalAppData%\FluentSetup\updates\MediaDuet) and next time fetches only the
+  // changed streams; that kept file is the repair source too. The in-app updater still downloads the whole setup.
+  // Links (installer first page and finish page, Settings > Apps): GitHub, release notes, issues for support. The
+  // MIT license is accepted inline ("By installing, you accept the license terms"), without a page of its own.
   // Uninstall: phone sign-in is revoked first (MediaDuet.exe --unlock-remove, may ask for administrator rights);
   // if that fails nothing is removed. Pairings, settings and cache are deleted only if the user agrees.
   // Code signing (release workflow only: pack.ps1 adds --sign -D CodesignThumbprint=<Certum certificate>): FluentSetup
@@ -37,9 +41,50 @@
     "mainExecutable": "MediaDuet.exe",
     "appUserModelId": "MediaDuet.Host"
   },
+  // One package, two builds of the WinUI front end; setup picks (variantSelection "auto", no choice shown): the shared
+  // build when this PC already has the Windows App Runtime 2.5.1+ ("requirements"), else the self-contained one. Nothing
+  // extra is ever installed. Picked again on every install and update (in-app /S /UPDATE too), so a PC that gains or
+  // loses the runtime gets the matching build. MediaDuet.exe and every file identical in both are stored once. The
+  // labels only show in logs and with /variant. The portable zip is always the self-contained build.
   "files": {
-    "source": "../../dist/MediaDuet-$(Version)-win-$(Arch)",
-    "include": ["**/*"]
+    "include": ["**/*"],
+    "variantSelection": "auto",
+    "variants": [
+      {
+        "id": "selfContained",
+        "label": {
+          "en-US": "Standard (runtime included)",
+          "zh-CN": "标准版（自带运行时）",
+          "zh-TW": "標準版（內含執行階段）"
+        },
+        "description": {
+          "en-US": "Includes the Windows App SDK. Works on any PC without installing anything else.",
+          "zh-CN": "包含 Windows App SDK，无需另外安装任何组件即可在任意电脑上运行。",
+          "zh-TW": "包含 Windows App SDK，無需另外安裝任何元件即可在任何電腦上執行。"
+        },
+        "default": true,
+        "source": "../../dist/MediaDuet-$(Version)-win-$(Arch)"
+      },
+      {
+        "id": "shared",
+        "label": {
+          "en-US": "Compact (shared runtime)",
+          "zh-CN": "精简版（共享运行时）",
+          "zh-TW": "精簡版（共用執行階段）"
+        },
+        "description": {
+          "en-US": "Uses the Windows App Runtime installed on this PC; smaller.",
+          "zh-CN": "使用这台电脑上已安装的 Windows App Runtime，体积更小。",
+          "zh-TW": "使用這台電腦上已安裝的 Windows App Runtime，體積更小。"
+        },
+        "source": "../../dist/MediaDuet-$(Version)-win-$(Arch)-shared"
+      }
+    ]
+  },
+  // What the shared build needs: the Windows App SDK release its bootstrapper asks for (Microsoft.WindowsAppSDK.Runtime
+  // in ui/MediaDuetUI.vcxproj; keep in step). Only decides which build is installed: no installer is attached.
+  "requirements": {
+    "windowsAppRuntime": { "required": true, "version": "2.5.1", "variants": ["shared"] }
   },
   "install": {
     "scope": "user",
@@ -81,7 +126,7 @@
     "licenseStyle": "inline",
     "defaultLanguage": "auto"
   },
-  "update": { "github": "TIANLI0/MediaDuet", "checksums": "SHA256SUMS.txt" },
+  "update": { "github": "TIANLI0/MediaDuet", "checksums": "SHA256SUMS.txt", "differential": true },
   "signing": {
     "enabled": false,
     "provider": "signtool",

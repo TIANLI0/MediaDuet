@@ -18,9 +18,12 @@
     <WindowsTargetPlatformMinVersion>10.0.19041.0</WindowsTargetPlatformMinVersion>
     <UseWinUI>true</UseWinUI>
     <WinUISDKReferences>false</WinUISDKReferences>
-    <!-- Unpackaged, self-contained: the exe runs straight from the build/output folder. -->
+    <!-- Unpackaged, self-contained: the exe runs straight from the build/output folder.
+         -p:WindowsAppSDKSelfContained=false builds the installer's "shared" variant instead (package.ps1): it uses
+         the Windows App Runtime 2.5.1+ installed on the PC, started by the bootstrapper's auto-initializer, and
+         goes to bin\<platform>\<configuration>-shared. -->
     <WindowsPackageType>None</WindowsPackageType>
-    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <WindowsAppSDKSelfContained Condition="'$(WindowsAppSDKSelfContained)' == ''">true</WindowsAppSDKSelfContained>
     <!-- Needed so that resources.pri (x:Uid strings) is generated for an unpackaged app. -->
     <EnableMsixTooling>true</EnableMsixTooling>
     <!-- The packages are consumed through their build\*.props/targets (imported by the PackageReference
@@ -71,8 +74,9 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup>
-    <OutDir>$(MSBuildProjectDirectory)\bin\$(Platform)\$(Configuration)\</OutDir>
-    <IntDir>$(MSBuildProjectDirectory)\obj\$(Platform)\$(Configuration)\</IntDir>
+    <MDOutputSuffix Condition="'$(WindowsAppSDKSelfContained)' != 'true'">-shared</MDOutputSuffix>
+    <OutDir>$(MSBuildProjectDirectory)\bin\$(Platform)\$(Configuration)$(MDOutputSuffix)\</OutDir>
+    <IntDir>$(MSBuildProjectDirectory)\obj\$(Platform)\$(Configuration)$(MDOutputSuffix)\</IntDir>
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>
@@ -281,6 +285,9 @@
     <PackageReference Include="Microsoft.WindowsAppSDK.Foundation" Version="2.3.12" />
     <PackageReference Include="Microsoft.WindowsAppSDK.InteractiveExperiences" Version="2.1.9" />
     <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" Version="2.3.9" />
+    <!-- The release's runtime version (2.5.1, also in the metapackage): what the shared build's bootstrapper asks
+         for, and requirements.windowsAppRuntime in packaging/fluentsetup.json. Keep the two in step. -->
+    <PackageReference Include="Microsoft.WindowsAppSDK.Runtime" Version="2.5.1" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
