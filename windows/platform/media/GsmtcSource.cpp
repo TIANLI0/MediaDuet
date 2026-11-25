@@ -223,7 +223,11 @@ void GsmtcSource::updatePlayback(const std::string& key) {
     Entry* e = find(key);
     if (!e) return;
     try {
+        // A session whose player is shutting down can hand back a null PlaybackInfo (and
+        // null Controls) with S_OK; calling into it is an access violation, not an hresult_error.
+        if (!e->session) return;
         auto info = e->session.GetPlaybackInfo();
+        if (!info) return;
         auto& m = e->info;
         PlaybackStatus before = m.status;
         // Re-anchor the position before the status changes so extrapolation stays continuous.
@@ -233,16 +237,17 @@ void GsmtcSource::updatePlayback(const std::string& key) {
         }
         m.status = mapStatus(info.PlaybackStatus());
         if (auto rate = info.PlaybackRate()) m.rate = rate.Value();
-        auto c = info.Controls();
-        uint32_t a = 0;
-        if (c.IsPlayEnabled()) a |= media::action::Play;
-        if (c.IsPauseEnabled()) a |= media::action::Pause;
-        if (c.IsPlayPauseToggleEnabled()) a |= media::action::Toggle;
-        if (c.IsNextEnabled()) a |= media::action::Next;
-        if (c.IsPreviousEnabled()) a |= media::action::Previous;
-        if (c.IsPlaybackPositionEnabled()) a |= media::action::Seek;
-        if (c.IsStopEnabled()) a |= media::action::Stop;
-        m.actions = a;
+        if (auto c = info.Controls()) {
+            uint32_t a = 0;
+            if (c.IsPlayEnabled()) a |= media::action::Play;
+            if (c.IsPauseEnabled()) a |= media::action::Pause;
+            if (c.IsPlayPauseToggleEnabled()) a |= media::action::Toggle;
+            if (c.IsNextEnabled()) a |= media::action::Next;
+            if (c.IsPreviousEnabled()) a |= media::action::Previous;
+            if (c.IsPlaybackPositionEnabled()) a |= media::action::Seek;
+            if (c.IsStopEnabled()) a |= media::action::Stop;
+            m.actions = a;
+        }
         if (auto t = info.PlaybackType()) {
             auto v = t.Value();
             m.kind = v == Windows::Media::MediaPlaybackType::Video ? media::MediaKind::Video
@@ -269,7 +274,9 @@ void GsmtcSource::updateTimeline(const std::string& key) {
 
 bool GsmtcSource::readTimeline(Entry& e, bool trackChanged) {
     try {
+        if (!e.session) return false;
         auto tl = e.session.GetTimelineProperties();
+        if (!tl) return false;
         int64_t start = ticksToMs(tl.StartTime());
         int64_t end = ticksToMs(tl.EndTime());
         int64_t pos = ticksToMs(tl.Position()) - start;
@@ -559,7 +566,9 @@ void GsmtcSource::execute(const media::MediaCommand& cmd, ResultFn done) {
             case A::Seek: {
                 int64_t p = std::max<int64_t>(0, cmd.positionMs.value_or(0));
                 if (durationMs) p = std::min(p, *durationMs);
-                auto start = s.GetTimelineProperties().StartTime();
+                auto tl = s.GetTimelineProperties();
+                if (!tl) break;
+                auto start = tl.StartTime();
                 ok = co_await s.TryChangePlaybackPositionAsync((start + std::chrono::milliseconds(p)).count());
                 break;
             }
